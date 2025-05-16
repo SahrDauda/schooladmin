@@ -30,10 +30,11 @@ import {
   Accessibility,
   Activity,
   Filter,
+  Search,
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, getDoc, where } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, Timestamp, getDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -106,6 +107,9 @@ export default function StudentsPage() {
     initialFilter === "special-needs" ? "all-special" : "all",
   )
   const [schoolId, setSchoolId] = useState("")
+  const [schoolName, setSchoolName] = useState("")
+  const [isSearchingNIN, setIsSearchingNIN] = useState(false)
+  const [ninSearchQuery, setNinSearchQuery] = useState("")
 
   const fetchStudents = async () => {
     setIsLoading(true)
@@ -113,37 +117,44 @@ export default function StudentsPage() {
       // Get current admin's school ID
       const adminId = localStorage.getItem("adminId")
       let currentSchoolId = ""
+      let currentSchoolName = ""
 
       if (adminId) {
         const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
         if (adminDoc.exists()) {
           const adminData = adminDoc.data()
           currentSchoolId = adminData.school_id || adminId
+          currentSchoolName = adminData.schoolName || "Holy Family Junior Secondary School"
           setSchoolId(currentSchoolId)
+          setSchoolName(currentSchoolName)
         }
       }
 
-      // Create query with school ID filter
+      // Create query with school ID filter only (no ordering)
       let studentsQuery = collection(db, "students")
 
       if (currentSchoolId) {
-        studentsQuery = query(
-          collection(db, "students"),
-          where("school_id", "==", currentSchoolId),
-          orderBy("created_at", "desc"),
-        )
+        studentsQuery = query(collection(db, "students"), where("school_id", "==", currentSchoolId))
       } else {
-        studentsQuery = query(collection(db, "students"), orderBy("created_at", "desc"))
+        studentsQuery = query(collection(db, "students"))
       }
 
       const querySnapshot = await getDocs(studentsQuery)
 
+      // Sort students by created_at client-side
       const studentsList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
 
-      setStudents(studentsList)
+      // Sort by created_at in descending order (newest first)
+      const sortedStudents = studentsList.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(0)
+        const dateB = b.created_at?.toDate?.() || new Date(0)
+        return dateB.getTime() - dateA.getTime()
+      })
+
+      setStudents(sortedStudents)
     } catch (error) {
       console.error("Error fetching students:", error)
       toast({
@@ -221,23 +232,36 @@ export default function StudentsPage() {
     try {
       const studentsRef = collection(db, "students")
 
-      // Apply school ID filter if available
-      let q = query(studentsRef, orderBy("created_at", "desc"))
+      // Apply school ID filter if available (without ordering)
+      let q = query(studentsRef)
 
       if (schoolId) {
-        q = query(studentsRef, where("school_id", "==", schoolId), orderBy("created_at", "desc"))
+        q = query(studentsRef, where("school_id", "==", schoolId))
       }
 
       const querySnapshot = await getDocs(q)
 
+      // Sort students by created_at client-side
       const studentsList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
 
-      setStudents(studentsList)
+      // Sort by created_at in descending order (newest first)
+      const sortedStudents = studentsList.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(0)
+        const dateB = b.created_at?.toDate?.() || new Date(0)
+        return dateB.getTime() - dateA.getTime()
+      })
+
+      setStudents(sortedStudents)
     } catch (error) {
       console.error("Error refreshing students:", error)
+      toast({
+        title: "Error",
+        description: "Failed to refresh students data",
+        variant: "destructive",
+      })
     }
   }
 
@@ -534,6 +558,7 @@ export default function StudentsPage() {
       const updatedData = {
         ...editFormData,
         school_id: editFormData.school_id || schoolId,
+        schoolname: editFormData.schoolname || schoolName,
         updated_at: Timestamp.fromDate(new Date()),
       }
 
@@ -571,6 +596,73 @@ export default function StudentsPage() {
     }
   }
 
+  // Function to search for student by NIN
+  const searchStudentByNIN = async () => {
+    if (!ninSearchQuery) {
+      toast({
+        title: "Error",
+        description: "Please enter a NIN to search",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSearchingNIN(true)
+    try {
+      // In a real implementation, this would call an API to get student data
+      // For now, we'll simulate by searching our local data
+
+      // First check if we have the student in our local data
+      const foundStudent = students.find((student) => student.nin === ninSearchQuery)
+
+      if (foundStudent) {
+        // Populate the form with the found student's data
+        setFormData({
+          ...formData,
+          firstname: foundStudent.firstname || "",
+          lastname: foundStudent.lastname || "",
+          dob: foundStudent.dob || "",
+          gender: foundStudent.gender || "",
+          homeaddress: foundStudent.homeaddress || "",
+          phonenumber: foundStudent.phonenumber || "",
+          emailaddress: foundStudent.emailaddress || "",
+          nationality: foundStudent.nationality || "Sierra Leone",
+          nin: foundStudent.nin || ninSearchQuery,
+        })
+
+        toast({
+          title: "Success",
+          description: "Student information found and populated",
+        })
+      } else {
+        // Simulate API call to National ID database
+        // In a real implementation, this would be an actual API call
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+
+        // For demo purposes, we'll just set the NIN and show a message
+        setFormData({
+          ...formData,
+          nin: ninSearchQuery,
+        })
+
+        toast({
+          title: "Information",
+          description:
+            "No student found with this NIN. When API is connected, this would fetch data from the National ID database.",
+        })
+      }
+    } catch (error) {
+      console.error("Error searching by NIN:", error)
+      toast({
+        title: "Error",
+        description: "Failed to search by NIN. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingNIN(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <Card>
@@ -599,7 +691,7 @@ export default function StudentsPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Dialog>
+            <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <UserPlus className="w-4 h-4 mr-2" />
@@ -616,6 +708,32 @@ export default function StudentsPage() {
                     <TabsTrigger value="personal">Personal</TabsTrigger>
                   </TabsList>
                   <TabsContent value="personal" className="space-y-2">
+                    {/* NIN Search Section */}
+                    <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                      <h3 className="text-sm font-medium mb-2">Search by National ID Number</h3>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter NIN"
+                          value={ninSearchQuery}
+                          onChange={(e) => setNinSearchQuery(e.target.value)}
+                        />
+                        <Button variant="secondary" onClick={searchStudentByNIN} disabled={isSearchingNIN}>
+                          {isSearchingNIN ? (
+                            <span className="flex items-center">
+                              <span className="animate-spin mr-2">⏳</span> Searching...
+                            </span>
+                          ) : (
+                            <span className="flex items-center">
+                              <Search className="w-4 h-4 mr-2" /> Search
+                            </span>
+                          )}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enter the student's National ID Number to automatically fill their information
+                      </p>
+                    </div>
+
                     <form onSubmit={handleSubmitStudent} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -643,7 +761,10 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="gender">Gender</Label>
-                          <Select onValueChange={(value) => handleSelectChange("gender", value)}>
+                          <Select
+                            onValueChange={(value) => handleSelectChange("gender", value)}
+                            value={formData.gender}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select gender" />
                             </SelectTrigger>
@@ -659,6 +780,7 @@ export default function StudentsPage() {
                           <Select
                             onValueChange={(value) => handleSelectChange("bgroup", value)}
                             defaultValue="Not Known"
+                            value={formData.bgroup || "Not Known"}
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select blood group" />
@@ -678,7 +800,7 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="class">Class</Label>
-                          <Select onValueChange={(value) => handleSelectChange("class", value)}>
+                          <Select onValueChange={(value) => handleSelectChange("class", value)} value={formData.class}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select class" />
                             </SelectTrigger>
@@ -693,7 +815,10 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="faculty">Faculty</Label>
-                          <Select onValueChange={(value) => handleSelectChange("faculty", value)}>
+                          <Select
+                            onValueChange={(value) => handleSelectChange("faculty", value)}
+                            value={formData.faculty}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select faculty" />
                             </SelectTrigger>
@@ -727,7 +852,10 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="religion">Religion</Label>
-                          <Select onValueChange={(value) => handleSelectChange("religion", value)}>
+                          <Select
+                            onValueChange={(value) => handleSelectChange("religion", value)}
+                            value={formData.religion}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select religion" />
                             </SelectTrigger>
@@ -740,7 +868,10 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="nationality">Nationality</Label>
-                          <Select onValueChange={(value) => handleSelectChange("nationality", value)}>
+                          <Select
+                            onValueChange={(value) => handleSelectChange("nationality", value)}
+                            value={formData.nationality}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select nationality" />
                             </SelectTrigger>
@@ -952,7 +1083,10 @@ export default function StudentsPage() {
                         </div>
                         <div>
                           <Label htmlFor="disability">Disability</Label>
-                          <Select onValueChange={(value) => handleSelectChange("disability", value)}>
+                          <Select
+                            onValueChange={(value) => handleSelectChange("disability", value)}
+                            value={formData.disability}
+                          >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select option" />
                             </SelectTrigger>
@@ -971,7 +1105,7 @@ export default function StudentsPage() {
                         )}
                         <div>
                           <Label htmlFor="sick">Medical Condition</Label>
-                          <Select onValueChange={(value) => handleSelectChange("sick", value)}>
+                          <Select onValueChange={(value) => handleSelectChange("sick", value)} value={formData.sick}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select option" />
                             </SelectTrigger>

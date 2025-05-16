@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc, where } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -84,7 +84,8 @@ export default function TeachersPage() {
       if (!schoolInfo.school_id) return
 
       const teachersRef = collection(db, "teachers")
-      const q = query(teachersRef, where("school_id", "==", schoolInfo.school_id), orderBy("lastname", "asc"))
+      // Modified query to remove orderBy to avoid needing a composite index
+      const q = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
       const querySnapshot = await getDocs(q)
 
       const teachersList = querySnapshot.docs.map((doc) => ({
@@ -92,7 +93,10 @@ export default function TeachersPage() {
         ...doc.data(),
       }))
 
-      setTeachers(teachersList)
+      // Sort teachers by lastname client-side instead
+      const sortedTeachers = teachersList.sort((a, b) => (a.lastname || "").localeCompare(b.lastname || ""))
+
+      setTeachers(sortedTeachers)
     } catch (error) {
       console.error("Error fetching teachers:", error)
       toast({
@@ -136,6 +140,7 @@ export default function TeachersPage() {
         ...formData,
         id: teacherId,
         school_id: schoolInfo.school_id,
+        schoolName: schoolInfo.schoolName, // Include school name
         created_at: Timestamp.fromDate(currentDate),
       }
 
@@ -192,6 +197,7 @@ export default function TeachersPage() {
       await setDoc(doc(db, "teachers", selectedTeacher.id), {
         ...editFormData,
         school_id: schoolInfo.school_id,
+        schoolName: schoolInfo.schoolName, // Include school name
         updated_at: Timestamp.fromDate(new Date()),
       })
 

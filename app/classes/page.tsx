@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label"
 import { BookOpen, Users, GraduationCap, Plus, Search, Edit, Trash2 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc, where } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
@@ -73,7 +73,8 @@ export default function ClassesPage() {
       if (!schoolInfo.school_id) return
 
       const classesRef = collection(db, "classes")
-      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id), orderBy("level", "asc"))
+      // Modified query to only filter by school_id without ordering
+      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id))
       const querySnapshot = await getDocs(q)
 
       const classesList = querySnapshot.docs.map((doc) => ({
@@ -81,7 +82,25 @@ export default function ClassesPage() {
         ...doc.data(),
       }))
 
-      setClasses(classesList)
+      // Sort the classes by level client-side instead of in the query
+      const sortedClasses = classesList.sort((a, b) => {
+        // Extract numeric part for proper sorting (e.g., "JSS 1" -> 1, "SSS 3" -> 3)
+        const levelA = a.level.split(" ").pop() || ""
+        const levelB = b.level.split(" ").pop() || ""
+
+        // First sort by level type (JSS, SSS)
+        const typeA = a.level.split(" ")[0] || ""
+        const typeB = b.level.split(" ")[0] || ""
+
+        if (typeA !== typeB) {
+          return typeA.localeCompare(typeB)
+        }
+
+        // Then sort by level number
+        return Number.parseInt(levelA) - Number.parseInt(levelB)
+      })
+
+      setClasses(sortedClasses)
     } catch (error) {
       console.error("Error fetching classes:", error)
       toast({
@@ -150,6 +169,7 @@ export default function ClassesPage() {
         ...formData,
         id: classId,
         school_id: schoolInfo.school_id,
+        schoolName: schoolInfo.schoolName, // Add school name to the record
         created_at: Timestamp.fromDate(currentDate),
         students_count: 0,
       }
@@ -202,6 +222,7 @@ export default function ClassesPage() {
       await setDoc(doc(db, "classes", selectedClass.id), {
         ...editFormData,
         school_id: schoolInfo.school_id,
+        schoolName: schoolInfo.schoolName, // Add school name to the record
         updated_at: Timestamp.fromDate(new Date()),
       })
 

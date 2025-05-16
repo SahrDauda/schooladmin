@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, where, Timestamp, orderBy } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { format } from "date-fns"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 export default function AttendancePage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -24,6 +25,7 @@ export default function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState("")
   const [attendanceData, setAttendanceData] = useState<{ [key: string]: string }>({})
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false)
+  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [attendanceSummary, setAttendanceSummary] = useState({
     present: 0,
     absent: 0,
@@ -32,9 +34,21 @@ export default function AttendancePage() {
     percentage: 0,
   })
 
+  useEffect(() => {
+    const loadSchoolInfo = async () => {
+      const info = await getCurrentSchoolInfo()
+      setSchoolInfo(info)
+    }
+
+    loadSchoolInfo()
+  }, [])
+
   const fetchClasses = async () => {
     try {
+      if (!schoolInfo.school_id) return
+
       const classesRef = collection(db, "classes")
+      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id))
       const querySnapshot = await getDocs(classesRef)
 
       const classesList = querySnapshot.docs.map((doc) => ({
@@ -51,8 +65,15 @@ export default function AttendancePage() {
   const fetchStudentsByClass = async (classId: string) => {
     setIsLoading(true)
     try {
+      if (!schoolInfo.school_id) return
+
       const studentsRef = collection(db, "students")
-      const q = query(studentsRef, where("class", "==", classId), orderBy("lastname", "asc"))
+      const q = query(
+        studentsRef,
+        where("school_id", "==", schoolInfo.school_id),
+        where("class", "==", classId),
+        orderBy("lastname", "asc"),
+      )
       const querySnapshot = await getDocs(q)
 
       const studentsList = querySnapshot.docs.map((doc) => ({
@@ -86,8 +107,15 @@ export default function AttendancePage() {
   const fetchAttendanceRecords = async (classId: string, date: string) => {
     setIsLoading(true)
     try {
+      if (!schoolInfo.school_id) return
+
       const attendanceRef = collection(db, "attendance")
-      const q = query(attendanceRef, where("class_id", "==", classId), where("date", "==", date))
+      const q = query(
+        attendanceRef,
+        where("school_id", "==", schoolInfo.school_id),
+        where("class_id", "==", classId),
+        where("date", "==", date),
+      )
       const querySnapshot = await getDocs(q)
 
       if (!querySnapshot.empty) {
@@ -143,15 +171,17 @@ export default function AttendancePage() {
   }
 
   useEffect(() => {
-    fetchClasses()
-  }, [])
+    if (schoolInfo.school_id) {
+      fetchClasses()
+    }
+  }, [schoolInfo.school_id])
 
   useEffect(() => {
-    if (selectedClass && selectedDate) {
+    if (selectedClass && selectedDate && schoolInfo.school_id) {
       fetchStudentsByClass(selectedClass)
       fetchAttendanceRecords(selectedClass, selectedDate)
     }
-  }, [selectedClass, selectedDate])
+  }, [selectedClass, selectedDate, schoolInfo.school_id])
 
   const handleAttendanceChange = (studentId: string, status: string) => {
     setAttendanceData((prev) => {
@@ -193,6 +223,8 @@ export default function AttendancePage() {
         total_students: attendanceSummary.total,
         attendance_percentage: attendanceSummary.percentage,
         created_at: Timestamp.fromDate(new Date()),
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
       }
 
       // Save to Firestore
@@ -321,7 +353,7 @@ export default function AttendancePage() {
                   <SelectContent>
                     {classes.map((cls) => (
                       <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name} - {cls.level} {cls.section}
+                        {cls.name} - {cls.level} {cls.section || ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

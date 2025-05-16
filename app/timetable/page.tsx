@@ -20,10 +20,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, Clock, Plus, Trash2, BookOpen, FileText } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, where, orderBy, Timestamp, deleteDoc } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, where, Timestamp, deleteDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 // Validation schemas
 const timetableEntrySchema = z.object({
@@ -117,6 +118,9 @@ export default function TimetablePage() {
   const [isAddExamEntryOpen, setIsAddExamEntryOpen] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<any>(null)
 
+  // State for school info
+  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
+
   // State for form data
   const [classTimetableFormData, setClassTimetableFormData] = useState({
     class_id: "",
@@ -127,6 +131,8 @@ export default function TimetablePage() {
     teacher_id: "",
     room: "",
     type: "class" as const,
+    school_id: "",
+    schoolname: "",
   })
 
   const [examTimetableFormData, setExamTimetableFormData] = useState({
@@ -138,34 +144,53 @@ export default function TimetablePage() {
     room: "",
     examiner: "",
     type: "exam" as const,
+    school_id: "",
+    schoolname: "",
   })
 
   // State for submission
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  useEffect(() => {
+    const loadSchoolInfo = async () => {
+      const info = await getCurrentSchoolInfo()
+      setSchoolInfo(info)
+      setClassTimetableFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
+      setExamTimetableFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
+    }
+
+    loadSchoolInfo()
+  }, [])
+
   // Fetch classes and teachers
   useEffect(() => {
     const fetchData = async () => {
+      if (!schoolInfo.school_id) return
+
       setIsLoading(true)
       try {
         // Fetch classes
         const classesRef = collection(db, "classes")
-        const classesQuery = query(classesRef, orderBy("name", "asc"))
+        const classesQuery = query(classesRef, where("school_id", "==", schoolInfo.school_id))
         const classesSnapshot = await getDocs(classesQuery)
         const classesList = classesSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }))
+        // Sort classes client-side
+        classesList.sort((a, b) => a.name.localeCompare(b.name))
         setClasses(classesList)
 
         // Fetch teachers
         const teachersRef = collection(db, "teachers")
-        const teachersQuery = query(teachersRef, orderBy("lastname", "asc"))
+        const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
         const teachersSnapshot = await getDocs(teachersQuery)
         const teachersList = teachersSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }))
+        // Sort teachers client-side
+        teachersList.sort((a, b) => a.lastname.localeCompare(b.lastname))
         setTeachers(teachersList)
 
         // Set default selected class if available
@@ -187,50 +212,71 @@ export default function TimetablePage() {
       }
     }
 
-    fetchData()
-  }, [])
+    if (schoolInfo.school_id) {
+      fetchData()
+    }
+  }, [schoolInfo.school_id])
 
   // Fetch timetable entries when selected class changes
   useEffect(() => {
-    if (selectedClassId) {
+    if (selectedClassId && schoolInfo.school_id) {
       fetchTimetableEntries(selectedClassId)
     }
-  }, [selectedClassId])
+  }, [selectedClassId, schoolInfo.school_id])
 
   // Fetch timetable entries
   const fetchTimetableEntries = async (classId: string) => {
+    if (!schoolInfo.school_id) return
+
     setIsLoading(true)
     try {
       // Fetch class timetable entries
       const classTimetableRef = collection(db, "timetable")
       const classTimetableQuery = query(
         classTimetableRef,
+        where("school_id", "==", schoolInfo.school_id),
         where("class_id", "==", classId),
         where("type", "==", "class"),
-        orderBy("day", "asc"),
-        orderBy("start_time", "asc"),
       )
       const classTimetableSnapshot = await getDocs(classTimetableQuery)
       const classTimetableList = classTimetableSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
+      // Sort class timetable entries client-side
+      classTimetableList.sort((a, b) => {
+        // First sort by day of week
+        const dayOrder = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 }
+        const dayDiff = dayOrder[a.day] - dayOrder[b.day]
+        if (dayDiff !== 0) return dayDiff
+
+        // Then sort by start time
+        return a.start_time.localeCompare(b.start_time)
+      })
       setClassTimetableEntries(classTimetableList)
 
       // Fetch exam timetable entries
       const examTimetableRef = collection(db, "timetable")
       const examTimetableQuery = query(
         examTimetableRef,
+        where("school_id", "==", schoolInfo.school_id),
         where("class_id", "==", classId),
         where("type", "==", "exam"),
-        orderBy("date", "asc"),
-        orderBy("start_time", "asc"),
       )
       const examTimetableSnapshot = await getDocs(examTimetableQuery)
       const examTimetableList = examTimetableSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
+      // Sort exam timetable entries client-side
+      examTimetableList.sort((a, b) => {
+        // First sort by date
+        const dateDiff = a.date.localeCompare(b.date)
+        if (dateDiff !== 0) return dateDiff
+
+        // Then sort by start time
+        return a.start_time.localeCompare(b.start_time)
+      })
       setExamTimetableEntries(examTimetableList)
     } catch (error) {
       console.error("Error fetching timetable entries:", error)
@@ -289,6 +335,8 @@ export default function TimetablePage() {
       const entryData = {
         ...classTimetableFormData,
         id: entryId,
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
         created_at: Timestamp.fromDate(currentDate),
       }
 
@@ -314,6 +362,8 @@ export default function TimetablePage() {
         teacher_id: "",
         room: "",
         type: "class",
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
       })
       setIsAddClassEntryOpen(false)
     } catch (error) {
@@ -353,6 +403,8 @@ export default function TimetablePage() {
       const entryData = {
         ...examTimetableFormData,
         id: entryId,
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
         created_at: Timestamp.fromDate(currentDate),
         type: "exam",
       }
@@ -379,6 +431,8 @@ export default function TimetablePage() {
         room: "",
         examiner: "",
         type: "exam",
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
       })
       setIsAddExamEntryOpen(false)
     } catch (error) {
@@ -452,6 +506,8 @@ export default function TimetablePage() {
       day,
       start_time: period.start,
       end_time: period.end,
+      school_id: schoolInfo.school_id,
+      schoolname: schoolInfo.schoolName,
     })
     setIsAddClassEntryOpen(true)
   }
@@ -467,6 +523,8 @@ export default function TimetablePage() {
       date: formattedDate,
       start_time: period.start,
       end_time: period.end,
+      school_id: schoolInfo.school_id,
+      schoolname: schoolInfo.schoolName,
     })
     setIsAddExamEntryOpen(true)
   }
@@ -837,7 +895,7 @@ export default function TimetablePage() {
                     <SelectValue placeholder="Select teacher" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="not_assigned">Not Assigned</SelectItem>
+                    <SelectItem value="none">Not Assigned</SelectItem>
                     {teachers.map((teacher) => (
                       <SelectItem key={teacher.id} value={teacher.id}>
                         {teacher.firstname} {teacher.lastname}
