@@ -22,10 +22,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 const teacherSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -50,6 +51,7 @@ export default function TeachersPage() {
   const [isViewTeacherOpen, setIsViewTeacherOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState("all")
+  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [formData, setFormData] = useState({
     firstname: "",
     lastname: "",
@@ -62,14 +64,27 @@ export default function TeachersPage() {
     joining_date: "",
     salary: "",
     status: "Active",
+    school_id: "",
   })
   const [editFormData, setEditFormData] = useState(formData)
+
+  useEffect(() => {
+    const loadSchoolInfo = async () => {
+      const info = await getCurrentSchoolInfo()
+      setSchoolInfo(info)
+      setFormData((prev) => ({ ...prev, school_id: info.school_id }))
+    }
+
+    loadSchoolInfo()
+  }, [])
 
   const fetchTeachers = async () => {
     setIsLoading(true)
     try {
+      if (!schoolInfo.school_id) return
+
       const teachersRef = collection(db, "teachers")
-      const q = query(teachersRef, orderBy("lastname", "asc"))
+      const q = query(teachersRef, where("school_id", "==", schoolInfo.school_id), orderBy("lastname", "asc"))
       const querySnapshot = await getDocs(q)
 
       const teachersList = querySnapshot.docs.map((doc) => ({
@@ -91,8 +106,10 @@ export default function TeachersPage() {
   }
 
   useEffect(() => {
-    fetchTeachers()
-  }, [])
+    if (schoolInfo.school_id) {
+      fetchTeachers()
+    }
+  }, [schoolInfo.school_id])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target
@@ -118,6 +135,7 @@ export default function TeachersPage() {
       const teacherData = {
         ...formData,
         id: teacherId,
+        school_id: schoolInfo.school_id,
         created_at: Timestamp.fromDate(currentDate),
       }
 
@@ -146,6 +164,7 @@ export default function TeachersPage() {
         joining_date: "",
         salary: "",
         status: "Active",
+        school_id: schoolInfo.school_id,
       })
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -172,6 +191,7 @@ export default function TeachersPage() {
     try {
       await setDoc(doc(db, "teachers", selectedTeacher.id), {
         ...editFormData,
+        school_id: schoolInfo.school_id,
         updated_at: Timestamp.fromDate(new Date()),
       })
 

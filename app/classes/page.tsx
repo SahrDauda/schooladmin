@@ -21,9 +21,10 @@ import { Label } from "@/components/ui/label"
 import { BookOpen, Users, GraduationCap, Plus, Search, Edit, Trash2 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, orderBy, Timestamp, deleteDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 const classSchema = z.object({
   name: z.string().min(1, "Class name is required"),
@@ -44,6 +45,7 @@ export default function ClassesPage() {
   const [isViewClassOpen, setIsViewClassOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [selectedLevel, setSelectedLevel] = useState("all")
+  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [formData, setFormData] = useState({
     name: "",
     level: "",
@@ -51,14 +53,27 @@ export default function ClassesPage() {
     capacity: "",
     teacher_id: "",
     description: "",
+    school_id: "",
   })
   const [editFormData, setEditFormData] = useState(formData)
+
+  useEffect(() => {
+    const loadSchoolInfo = async () => {
+      const info = await getCurrentSchoolInfo()
+      setSchoolInfo(info)
+      setFormData((prev) => ({ ...prev, school_id: info.school_id }))
+    }
+
+    loadSchoolInfo()
+  }, [])
 
   const fetchClasses = async () => {
     setIsLoading(true)
     try {
+      if (!schoolInfo.school_id) return
+
       const classesRef = collection(db, "classes")
-      const q = query(classesRef, orderBy("level", "asc"))
+      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id), orderBy("level", "asc"))
       const querySnapshot = await getDocs(q)
 
       const classesList = querySnapshot.docs.map((doc) => ({
@@ -81,8 +96,11 @@ export default function ClassesPage() {
 
   const fetchTeachers = async () => {
     try {
+      if (!schoolInfo.school_id) return
+
       const teachersRef = collection(db, "teachers")
-      const querySnapshot = await getDocs(teachersRef)
+      const q = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
+      const querySnapshot = await getDocs(q)
 
       const teachersList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -96,9 +114,11 @@ export default function ClassesPage() {
   }
 
   useEffect(() => {
-    fetchClasses()
-    fetchTeachers()
-  }, [])
+    if (schoolInfo.school_id) {
+      fetchClasses()
+      fetchTeachers()
+    }
+  }, [schoolInfo.school_id])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target
@@ -106,7 +126,12 @@ export default function ClassesPage() {
   }
 
   const handleSelectChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    // If "none" is selected for teacher_id, set it to an empty string in the database
+    if (field === "teacher_id" && value === "none") {
+      setFormData((prev) => ({ ...prev, [field]: "" }))
+    } else {
+      setFormData((prev) => ({ ...prev, [field]: value }))
+    }
   }
 
   const handleSubmitClass = async (e: React.FormEvent) => {
@@ -124,6 +149,7 @@ export default function ClassesPage() {
       const classData = {
         ...formData,
         id: classId,
+        school_id: schoolInfo.school_id,
         created_at: Timestamp.fromDate(currentDate),
         students_count: 0,
       }
@@ -148,6 +174,7 @@ export default function ClassesPage() {
         capacity: "",
         teacher_id: "",
         description: "",
+        school_id: schoolInfo.school_id,
       })
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -174,6 +201,7 @@ export default function ClassesPage() {
     try {
       await setDoc(doc(db, "classes", selectedClass.id), {
         ...editFormData,
+        school_id: schoolInfo.school_id,
         updated_at: Timestamp.fromDate(new Date()),
       })
 
@@ -313,7 +341,7 @@ export default function ClassesPage() {
                         <SelectValue placeholder="Select teacher" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not Assigned</SelectItem>
+                        <SelectItem value="none">Not Assigned</SelectItem>
                         {teachers.map((teacher) => (
                           <SelectItem key={teacher.id} value={teacher.id}>
                             {teacher.firstname} {teacher.lastname}
@@ -543,12 +571,12 @@ export default function ClassesPage() {
                             <SelectValue placeholder="Select level" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="jss1">JSS 1</SelectItem>
-                            <SelectItem value="jss2">JSS 2</SelectItem>
-                            <SelectItem value="jss3">JSS 3</SelectItem>
-                            <SelectItem value="sss1">SSS 1</SelectItem>
-                            <SelectItem value="sss2">SSS 2</SelectItem>
-                            <SelectItem value="sss3">SSS 3</SelectItem>
+                            <SelectItem value="JSS 1">JSS 1</SelectItem>
+                            <SelectItem value="JSS 2">JSS 2</SelectItem>
+                            <SelectItem value="JSS 3">JSS 3</SelectItem>
+                            <SelectItem value="SSS 1">SSS 1</SelectItem>
+                            <SelectItem value="SSS 2">SSS 2</SelectItem>
+                            <SelectItem value="SSS 3">SSS 3</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -582,11 +610,11 @@ export default function ClassesPage() {
                       <div>
                         <Label htmlFor="edit_teacher_id">Class Teacher</Label>
                         <Select
-                          value={editFormData.teacher_id}
+                          value={editFormData.teacher_id || "none"}
                           onValueChange={(value) =>
                             setEditFormData((prev) => ({
                               ...prev,
-                              teacher_id: value,
+                              teacher_id: value === "none" ? "" : value,
                             }))
                           }
                         >
@@ -594,7 +622,7 @@ export default function ClassesPage() {
                             <SelectValue placeholder="Select teacher" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Not Assigned</SelectItem>
+                            <SelectItem value="none">Not Assigned</SelectItem>
                             {teachers.map((teacher) => (
                               <SelectItem key={teacher.id} value={teacher.id}>
                                 {teacher.firstname} {teacher.lastname}
