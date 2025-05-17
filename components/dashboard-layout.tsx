@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { ConnectionStatus } from "@/components/ui/connection-status"
-import { SkulTekLogoAdvanced } from "@/components/skultek-logo-advanced"
+import { SchoolTechLogo } from "@/components/school-tech-logo"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -167,7 +167,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="flex h-16 items-center border-b border-white/10 px-6">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <SkulTekLogoAdvanced size="sm" textClassName="text-white" />
+            <SchoolTechLogo size="sm" className="py-1" />
           </Link>
         </div>
         <nav className="flex-1 overflow-auto p-4">

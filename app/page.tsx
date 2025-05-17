@@ -12,7 +12,7 @@ import { toast } from "@/hooks/use-toast"
 import { Lock, Mail } from "lucide-react"
 import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 import type { QuerySnapshot } from "firebase/firestore"
-import { SkulTekLogoAdvanced } from "@/components/skultek-logo-advanced"
+import { SchoolTechLogo } from "@/components/school-tech-logo"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -124,7 +124,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center p-4 sm:p-6">
           <div className="flex justify-center mb-4">
-            <SkulTekLogoAdvanced size="lg" />
+            <SchoolTechLogo size="lg" />
           </div>
           <CardDescription className="text-base sm:text-lg">Welcome to the School Admin panel</CardDescription>
         </CardHeader>
