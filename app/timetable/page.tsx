@@ -17,7 +17,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Clock, Plus, Trash2, BookOpen, FileText } from "lucide-react"
+import { Plus, Trash2, BookOpen, FileText } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, where, Timestamp, deleteDoc } from "firebase/firestore"
@@ -101,6 +101,7 @@ export default function TimetablePage() {
   // State for classes and teachers
   const [classes, setClasses] = useState<any[]>([])
   const [teachers, setTeachers] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<any[]>([])
 
   // State for timetable entries
   const [classTimetableEntries, setClassTimetableEntries] = useState<any[]>([])
@@ -162,7 +163,7 @@ export default function TimetablePage() {
     loadSchoolInfo()
   }, [])
 
-  // Fetch classes and teachers
+  // Fetch classes, teachers, and subjects
   useEffect(() => {
     const fetchData = async () => {
       if (!schoolInfo.school_id) return
@@ -192,6 +193,18 @@ export default function TimetablePage() {
         // Sort teachers client-side
         teachersList.sort((a, b) => a.lastname.localeCompare(b.lastname))
         setTeachers(teachersList)
+
+        // Fetch subjects
+        const subjectsRef = collection(db, "subjects")
+        const subjectsQuery = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
+        const subjectsSnapshot = await getDocs(subjectsQuery)
+        const subjectsList = subjectsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        // Sort subjects client-side
+        subjectsList.sort((a, b) => a.name.localeCompare(b.name))
+        setSubjects(subjectsList)
 
         // Set default selected class if available
         if (classesList.length > 0 && !selectedClassId) {
@@ -781,54 +794,6 @@ export default function TimetablePage() {
                       </TableBody>
                     </Table>
                   </div>
-
-                  {examTimetableEntries.length > 0 && (
-                    <div className="mt-6">
-                      <h3 className="text-lg font-medium mb-3">Upcoming Exams</h3>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Time</TableHead>
-                            <TableHead>Subject</TableHead>
-                            <TableHead>Room</TableHead>
-                            <TableHead>Examiner</TableHead>
-                            <TableHead className="w-[100px]">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {examTimetableEntries.map((entry) => (
-                            <TableRow key={entry.id}>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                                  <span>{entry.date}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-muted-foreground" />
-                                  <span>
-                                    {entry.start_time} - {entry.end_time}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell>{entry.subject}</TableCell>
-                              <TableCell>{entry.room || "N/A"}</TableCell>
-                              <TableCell>{entry.examiner || "N/A"}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Button variant="outline" size="icon" onClick={() => handleDeleteEntry(entry.id)}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
                 </div>
               )}
             </TabsContent>
@@ -865,7 +830,21 @@ export default function TimetablePage() {
               </div>
               <div>
                 <Label htmlFor="subject">Subject</Label>
-                <Input id="subject" value={classTimetableFormData.subject} onChange={handleClassTimetableInputChange} />
+                <Select
+                  value={classTimetableFormData.subject}
+                  onValueChange={(value) => handleClassTimetableSelectChange("subject", value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjects.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.name}>
+                        {subject.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="start_time">Start Time</Label>
@@ -938,7 +917,21 @@ export default function TimetablePage() {
               </div>
               <div>
                 <Label htmlFor="subject">Subject</Label>
-                <Input id="subject" value={examTimetableFormData.subject} onChange={handleExamTimetableInputChange} />
+                <Select
+                  value={examTimetableFormData.subject}
+                  onValueChange={(value) => handleExamTimetableSelectChange("subject", value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjects.map((subject) => (
+                      <SelectItem key={subject.id} value={subject.name}>
+                        {subject.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="start_time">Start Time</Label>

@@ -47,7 +47,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Teachers", href: "/teachers", icon: GraduationCap },
     { name: "Attendance", href: "/attendance", icon: ClipboardCheck },
     { name: "Timetable", href: "/timetable", icon: Calendar },
-    // Removed "Exams" item as it's now integrated with Timetable
     { name: "Grades", href: "/grades", icon: FileText },
     { name: "Subjects", href: "/subjects", icon: BookOpen },
     { name: "Reports", href: "/reports", icon: MessageSquare },
@@ -137,7 +136,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex-1" />
+          <div className="flex-1 md:text-center">
+            <h1 className="text-lg font-semibold">School Admin Panel</h1>
+          </div>
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5" />
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
@@ -211,16 +212,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      <main
-        className={cn(
-          "pt-24", // Increased from pt-16 to pt-24 to add more space
-          "md:ml-64",
-          "min-h-screen",
-          "p-6",
-        )}
-      >
-        {children}
-      </main>
+      <main className={cn("pt-24", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
 
       <ConnectionStatus />
     </div>
