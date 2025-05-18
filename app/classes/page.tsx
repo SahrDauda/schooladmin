@@ -72,18 +72,42 @@ export default function ClassesPage() {
     try {
       if (!schoolInfo.school_id) return
 
+      // Fetch classes
       const classesRef = collection(db, "classes")
-      // Modified query to only filter by school_id without ordering
-      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id))
-      const querySnapshot = await getDocs(q)
+      const classesQuery = query(classesRef, where("school_id", "==", schoolInfo.school_id))
+      const classesSnapshot = await getDocs(classesQuery)
 
-      const classesList = querySnapshot.docs.map((doc) => ({
+      const classesList = classesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        students_count: 0, // Initialize with 0
+      }))
+
+      // Fetch students to count by class
+      const studentsRef = collection(db, "students")
+      const studentsQuery = query(studentsRef, where("school_id", "==", schoolInfo.school_id))
+      const studentsSnapshot = await getDocs(studentsQuery)
+
+      // Count students for each class
+      const studentCounts: { [classId: string]: number } = {}
+      studentsSnapshot.docs.forEach((doc) => {
+        const studentData = doc.data()
+        if (studentData.class) {
+          if (!studentCounts[studentData.class]) {
+            studentCounts[studentData.class] = 0
+          }
+          studentCounts[studentData.class]++
+        }
+      })
+
+      // Update class objects with accurate student counts
+      const updatedClasses = classesList.map((cls) => ({
+        ...cls,
+        students_count: studentCounts[cls.id] || 0,
       }))
 
       // Sort the classes by level client-side instead of in the query
-      const sortedClasses = classesList.sort((a, b) => {
+      const sortedClasses = updatedClasses.sort((a, b) => {
         // Extract numeric part for proper sorting (e.g., "JSS 1" -> 1, "SSS 3" -> 3)
         const levelA = a.level.split(" ").pop() || ""
         const levelB = b.level.split(" ").pop() || ""

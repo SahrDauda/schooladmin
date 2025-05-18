@@ -12,9 +12,10 @@ import { toast } from "@/hooks/use-toast"
 interface TeacherAttendanceQRProps {
   schoolId: string
   schoolName: string
+  inModal?: boolean
 }
 
-export function TeacherAttendanceQR({ schoolId, schoolName }: TeacherAttendanceQRProps) {
+export function TeacherAttendanceQR({ schoolId, schoolName, inModal = false }: TeacherAttendanceQRProps) {
   const [qrValue, setQrValue] = useState("")
   const [timeRemaining, setTimeRemaining] = useState(15)
   const [isScanning, setIsScanning] = useState(false)
@@ -109,7 +110,7 @@ export function TeacherAttendanceQR({ schoolId, schoolName }: TeacherAttendanceQ
   }
 
   return (
-    <Card className="w-full">
+    <Card className={inModal ? "w-full border-0 shadow-none" : "w-full"}>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Teacher Attendance QR Code</CardTitle>
         <div className="flex items-center gap-2">
@@ -123,27 +124,38 @@ export function TeacherAttendanceQR({ schoolId, schoolName }: TeacherAttendanceQ
         <div className="relative p-4 bg-white rounded-md shadow-sm">
           <QRCodeSVG
             value={qrValue}
-            size={200}
+            size={250}
             level="H"
             includeMargin={true}
             imageSettings={{
-              src: "/placeholder.svg?height=40&width=40",
+              src: "/placeholder.svg?height=50&width=50",
               x: undefined,
               y: undefined,
-              height: 40,
-              width: 40,
+              height: 50,
+              width: 50,
               excavate: true,
             }}
           />
         </div>
 
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-500 mb-4">
-            Teachers can scan this QR code to mark their attendance for today. The code refreshes every 15 seconds for
-            security.
-          </p>
+        <div className="mt-6 text-center max-w-md mx-auto">
+          <h3 className="text-lg font-medium mb-2">How to Use</h3>
+          <ol className="text-sm text-gray-600 text-left space-y-2 mb-4">
+            <li>
+              <span className="font-medium">Open the camera</span> on your phone or mobile device
+            </li>
+            <li>
+              <span className="font-medium">Scan the QR code</span> displayed above to mark your attendance
+            </li>
+            <li>
+              <span className="font-medium">Verify attendance</span> by checking for a confirmation message
+            </li>
+            <li>
+              <span className="font-medium">Note:</span> The QR code refreshes every 15 seconds for security purposes
+            </li>
+          </ol>
 
-          <div className="flex justify-center gap-2">
+          <div className="flex justify-center gap-2 mt-4">
             <Button
               onClick={() => {
                 setQrValue(generateQRValue())
@@ -153,10 +165,12 @@ export function TeacherAttendanceQR({ schoolId, schoolName }: TeacherAttendanceQ
               <RefreshCw className="h-4 w-4 mr-2" /> Refresh Code
             </Button>
 
-            <Button variant="outline" onClick={() => simulateScan()} disabled={isScanning}>
-              <UserCheck className="h-4 w-4 mr-2" />
-              {isScanning ? "Processing..." : "Simulate Scan"}
-            </Button>
+            {!inModal && (
+              <Button variant="outline" onClick={() => simulateScan()} disabled={isScanning}>
+                <UserCheck className="h-4 w-4 mr-2" />
+                {isScanning ? "Processing..." : "Simulate Scan"}
+              </Button>
+            )}
           </div>
 
           {scannedTeachers.length > 0 && (

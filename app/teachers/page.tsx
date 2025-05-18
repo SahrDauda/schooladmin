@@ -19,7 +19,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2 } from "lucide-react"
+import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2, QrCode } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where } from "firebase/firestore"
@@ -53,6 +53,7 @@ export default function TeachersPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState("all")
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false)
   const [formData, setFormData] = useState({
     firstname: "",
     lastname: "",
@@ -273,110 +274,117 @@ export default function TeachersPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-2xl font-semibold">Teachers</CardTitle>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="w-4 h-4 mr-2" />
-                <span>Add Teacher</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add Teacher</DialogTitle>
-                <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
-              </DialogHeader>
-              <Tabs defaultValue="personal" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                  <TabsTrigger value="professional">Professional Information</TabsTrigger>
-                </TabsList>
-                <TabsContent value="personal" className="space-y-4">
-                  <form className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="firstname">First Name</Label>
-                        <Input id="firstname" value={formData.firstname} onChange={handleInputChange} />
+          <div className="flex gap-2">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  <span>Add Teacher</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Add Teacher</DialogTitle>
+                  <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
+                </DialogHeader>
+                <Tabs defaultValue="personal" className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                    <TabsTrigger value="professional">Professional Information</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="personal" className="space-y-4">
+                    <form className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="firstname">First Name</Label>
+                          <Input id="firstname" value={formData.firstname} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="lastname">Last Name</Label>
+                          <Input id="lastname" value={formData.lastname} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="gender">Gender</Label>
+                          <Select onValueChange={(value) => handleSelectChange("gender", value)}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select gender" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Male">Male</SelectItem>
+                              <SelectItem value="Female">Female</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="email">Email</Label>
+                          <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="phone">Phone</Label>
+                          <Input id="phone" value={formData.phone} onChange={handleInputChange} />
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label htmlFor="address">Address</Label>
+                          <Input id="address" value={formData.address} onChange={handleInputChange} />
+                        </div>
                       </div>
-                      <div>
-                        <Label htmlFor="lastname">Last Name</Label>
-                        <Input id="lastname" value={formData.lastname} onChange={handleInputChange} />
+                    </form>
+                  </TabsContent>
+                  <TabsContent value="professional" className="space-y-4">
+                    <form onSubmit={handleSubmitTeacher} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="qualification">Qualification</Label>
+                          <Input id="qualification" value={formData.qualification} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="subject">Subject</Label>
+                          <Input id="subject" value={formData.subject} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="joining_date">Joining Date</Label>
+                          <Input
+                            id="joining_date"
+                            type="date"
+                            value={formData.joining_date}
+                            onChange={handleInputChange}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="salary">Salary</Label>
+                          <Input id="salary" type="number" value={formData.salary} onChange={handleInputChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="status">Status</Label>
+                          <Select defaultValue="Active" onValueChange={(value) => handleSelectChange("status", value)}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Active">Active</SelectItem>
+                              <SelectItem value="On Leave">On Leave</SelectItem>
+                              <SelectItem value="Inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div>
-                        <Label htmlFor="gender">Gender</Label>
-                        <Select onValueChange={(value) => handleSelectChange("gender", value)}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select gender" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Male">Male</SelectItem>
-                            <SelectItem value="Female">Female</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
-                      </div>
-                      <div>
-                        <Label htmlFor="phone">Phone</Label>
-                        <Input id="phone" value={formData.phone} onChange={handleInputChange} />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="address">Address</Label>
-                        <Input id="address" value={formData.address} onChange={handleInputChange} />
-                      </div>
-                    </div>
-                  </form>
-                </TabsContent>
-                <TabsContent value="professional" className="space-y-4">
-                  <form onSubmit={handleSubmitTeacher} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="qualification">Qualification</Label>
-                        <Input id="qualification" value={formData.qualification} onChange={handleInputChange} />
-                      </div>
-                      <div>
-                        <Label htmlFor="subject">Subject</Label>
-                        <Input id="subject" value={formData.subject} onChange={handleInputChange} />
-                      </div>
-                      <div>
-                        <Label htmlFor="joining_date">Joining Date</Label>
-                        <Input
-                          id="joining_date"
-                          type="date"
-                          value={formData.joining_date}
-                          onChange={handleInputChange}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="salary">Salary</Label>
-                        <Input id="salary" type="number" value={formData.salary} onChange={handleInputChange} />
-                      </div>
-                      <div>
-                        <Label htmlFor="status">Status</Label>
-                        <Select defaultValue="Active" onValueChange={(value) => handleSelectChange("status", value)}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Active">Active</SelectItem>
-                            <SelectItem value="On Leave">On Leave</SelectItem>
-                            <SelectItem value="Inactive">Inactive</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? "Submitting..." : "Add Teacher"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </TabsContent>
-              </Tabs>
-            </DialogContent>
-          </Dialog>
+                      <DialogFooter>
+                        <Button type="submit" disabled={isSubmitting}>
+                          {isSubmitting ? "Submitting..." : "Add Teacher"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </TabsContent>
+                </Tabs>
+              </DialogContent>
+            </Dialog>
+
+            <Button onClick={() => setIsQrModalOpen(true)} variant="outline">
+              <QrCode className="w-4 h-4 mr-2" />
+              <span>Sign In</span>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
@@ -424,9 +432,6 @@ export default function TeachersPage() {
                 <div className="text-2xl font-bold">{femaleTeachers}</div>
               </CardContent>
             </Card>
-          </div>
-          <div className="mt-6">
-            <TeacherAttendanceQR schoolId={schoolInfo.school_id} schoolName={schoolInfo.schoolName} />
           </div>
           <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
             <div className="flex items-center space-x-2">
@@ -752,6 +757,28 @@ export default function TeachersPage() {
               </DialogContent>
             </Dialog>
           )}
+
+          {/* QR Code Modal */}
+          <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
+            <DialogContent className="sm:max-w-[600px] md:max-w-[650px] w-[90%]">
+              <DialogHeader>
+                <DialogTitle>Teacher Attendance QR Code</DialogTitle>
+                <DialogDescription>Scan this QR code using a mobile device to mark attendance</DialogDescription>
+              </DialogHeader>
+              {schoolInfo.school_id && (
+                <TeacherAttendanceQR
+                  schoolId={schoolInfo.school_id}
+                  schoolName={schoolInfo.schoolName}
+                  inModal={true}
+                />
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsQrModalOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </DashboardLayout>
