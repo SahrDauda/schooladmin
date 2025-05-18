@@ -13,6 +13,7 @@ import { doc, setDoc, collection, getDocs, query, where, Timestamp, orderBy } fr
 import { db } from "@/lib/firebase"
 import { format } from "date-fns"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function AttendancePage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -33,6 +34,8 @@ export default function AttendancePage() {
     total: 0,
     percentage: 0,
   })
+  const [teacherAttendanceRecords, setTeacherAttendanceRecords] = useState<any[]>([])
+  const [teacherAttendanceLoading, setTeacherAttendanceLoading] = useState(false)
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -286,6 +289,33 @@ export default function AttendancePage() {
     }
   }
 
+  const fetchTeacherAttendance = async (date: string) => {
+    setTeacherAttendanceLoading(true)
+    try {
+      if (!schoolInfo.school_id) return
+
+      const attendanceRef = collection(db, "teacher_attendance")
+      const q = query(attendanceRef, where("school_id", "==", schoolInfo.school_id), where("date", "==", date))
+      const querySnapshot = await getDocs(q)
+
+      const records = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+
+      setTeacherAttendanceRecords(records)
+    } catch (error) {
+      console.error("Error fetching teacher attendance:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load teacher attendance records",
+        variant: "destructive",
+      })
+    } finally {
+      setTeacherAttendanceLoading(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <Card>
@@ -343,104 +373,167 @@ export default function AttendancePage() {
               </CardContent>
             </Card>
           </div>
-          <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
-            <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-              <div className="w-full md:w-auto">
-                <Select value={selectedClass} onValueChange={setSelectedClass}>
-                  <SelectTrigger className="w-full md:w-[200px]">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name} - {cls.level} {cls.section || ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          <Tabs defaultValue="students">
+            <TabsList className="mb-4">
+              <TabsTrigger value="students">Student Attendance</TabsTrigger>
+              <TabsTrigger value="teachers">Teacher Attendance</TabsTrigger>
+            </TabsList>
+            <TabsContent value="students">
+              <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
+                <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                  <div className="w-full md:w-auto">
+                    <Select value={selectedClass} onValueChange={setSelectedClass}>
+                      <SelectTrigger className="w-full md:w-[200px]">
+                        <SelectValue placeholder="Select class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name} - {cls.level} {cls.section || ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-full md:w-auto flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full md:w-auto"
+                    />
+                  </div>
+                  <div className="w-full md:w-auto relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search students..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full md:w-[250px] pl-8"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="w-full md:w-auto flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full md:w-auto"
-                />
-              </div>
-              <div className="w-full md:w-auto relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search students..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full md:w-[250px] pl-8"
-                />
-              </div>
-            </div>
-          </div>
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : !selectedClass ? (
-            <div className="text-center py-8 text-muted-foreground">Please select a class to view attendance.</div>
-          ) : students.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No students found in this class.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((student, index) => (
-                    <TableRow key={student.id}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell className="font-medium">{`${student.firstname} ${student.lastname}`}</TableCell>
-                      <TableCell>{student.id}</TableCell>
-                      <TableCell>
-                        {isMarkingAttendance ? (
-                          <Select
-                            value={attendanceData[student.id] || "present"}
-                            onValueChange={(value) => handleAttendanceChange(student.id, value)}
-                          >
-                            <SelectTrigger className="w-[120px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="present">Present</SelectItem>
-                              <SelectItem value="absent">Absent</SelectItem>
-                              <SelectItem value="late">Late</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          getStatusBadge(attendanceData[student.id] || "present")
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
 
-              {isMarkingAttendance && (
-                <div className="flex justify-end gap-2 mt-4">
-                  <Button variant="outline" onClick={() => setIsMarkingAttendance(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSubmitAttendance} disabled={isSubmitting}>
-                    {isSubmitting ? "Saving..." : "Save Attendance"}
-                  </Button>
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : !selectedClass ? (
+                <div className="text-center py-8 text-muted-foreground">Please select a class to view attendance.</div>
+              ) : students.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No students found in this class.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>Student Name</TableHead>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStudents.map((student, index) => (
+                        <TableRow key={student.id}>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell className="font-medium">{`${student.firstname} ${student.lastname}`}</TableCell>
+                          <TableCell>{student.id}</TableCell>
+                          <TableCell>
+                            {isMarkingAttendance ? (
+                              <Select
+                                value={attendanceData[student.id] || "present"}
+                                onValueChange={(value) => handleAttendanceChange(student.id, value)}
+                              >
+                                <SelectTrigger className="w-[120px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="present">Present</SelectItem>
+                                  <SelectItem value="absent">Absent</SelectItem>
+                                  <SelectItem value="late">Late</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              getStatusBadge(attendanceData[student.id] || "present")
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {isMarkingAttendance && (
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="outline" onClick={() => setIsMarkingAttendance(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleSubmitAttendance} disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : "Save Attendance"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
+            </TabsContent>
+
+            <TabsContent value="teachers">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full md:w-auto"
+                  />
+                  <Button variant="outline" onClick={() => fetchTeacherAttendance(selectedDate)}>
+                    View Records
+                  </Button>
+                </div>
+
+                {teacherAttendanceLoading ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : teacherAttendanceRecords.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No teacher attendance records found for this date.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Teacher Name</TableHead>
+                          <TableHead>Check-in Time</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {teacherAttendanceRecords.map((record, index) => (
+                          <TableRow key={record.id}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell className="font-medium">{record.teacher_name}</TableCell>
+                            <TableCell>{record.check_in_time || "-"}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 text-green-600">
+                                <CheckCircle className="h-4 w-4" />
+                                <span>Present</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </DashboardLayout>

@@ -167,7 +167,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="flex h-16 items-center border-b border-white/10 px-6">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <SchoolTechLogo size="sm" className="py-1" />
+            <SchoolTechLogo size="xs" className="py-1" />
           </Link>
         </div>
         <nav className="flex-1 overflow-auto p-4">

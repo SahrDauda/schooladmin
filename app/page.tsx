@@ -124,7 +124,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center p-4 sm:p-6">
           <div className="flex justify-center mb-4">
-            <SchoolTechLogo size="lg" />
+            <SchoolTechLogo size="md" />
           </div>
           <CardDescription className="text-base sm:text-lg">Welcome to the School Admin panel</CardDescription>
         </CardHeader>

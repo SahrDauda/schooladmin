@@ -2,13 +2,14 @@ import Image from "next/image"
 import { cn } from "@/lib/utils"
 
 interface SchoolTechLogoProps {
-  size?: "sm" | "md" | "lg"
+  size?: "xs" | "sm" | "md" | "lg"
   className?: string
 }
 
 export function SchoolTechLogo({ size = "md", className }: SchoolTechLogoProps) {
   // Define sizes for different variants
   const sizes = {
+    xs: { width: 60, height: 30 },
     sm: { width: 120, height: 60 },
     md: { width: 180, height: 90 },
     lg: { width: 240, height: 120 },

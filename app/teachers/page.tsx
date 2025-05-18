@@ -27,6 +27,7 @@ import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { TeacherAttendanceQR } from "@/components/teacher-attendance-qr"
 
 const teacherSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -423,6 +424,9 @@ export default function TeachersPage() {
                 <div className="text-2xl font-bold">{femaleTeachers}</div>
               </CardContent>
             </Card>
+          </div>
+          <div className="mt-6">
+            <TeacherAttendanceQR schoolId={schoolInfo.school_id} schoolName={schoolInfo.schoolName} />
           </div>
           <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
             <div className="flex items-center space-x-2">
