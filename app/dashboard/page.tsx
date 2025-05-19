@@ -11,8 +11,6 @@ import {
   ClipboardCheck,
   GraduationCap,
   FileText,
-  Bell,
-  WifiOff,
   Accessibility,
   Activity,
 } from "lucide-react"
@@ -34,9 +32,11 @@ import {
   Legend,
 } from "recharts"
 import Link from "next/link"
+import { useOfflineStorage } from "@/hooks/use-offline-storage"
+import { SyncManager } from "@/components/sync-manager"
 
 export default function Dashboard() {
-  const [schoolName, setSchoolName] = useState("Holy Family Junior Secondary School")
+  const [schoolName, setSchoolName] = useState("Loading school name...")
   const [academicYear, setAcademicYear] = useState("2023-2024")
   const [stats, setStats] = useState([
     { title: "Total Students", value: "0", icon: Users, color: "bg-blue-100 text-blue-700" },
@@ -50,11 +50,11 @@ export default function Dashboard() {
     disabilityTypes: {},
     medicalConditionTypes: {},
   })
-  const [recentActivities, setRecentActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
 
   const { isConnected } = useFirebaseConnection()
+  const { queryDocuments, getAll, downloadAllData } = useOfflineStorage()
 
   const attendanceData = [
     { month: "Jan", attendance: 92 },
@@ -72,42 +72,107 @@ export default function Dashboard() {
         // Get current admin's school ID
         const adminId = localStorage.getItem("adminId")
         let currentSchoolId = ""
+        let studentsList = []
+        let teachersList = []
+        let classesList = []
 
-        // Fetch school admin data
-        const adminSnapshot = await getDocs(collection(db, "schooladmin"))
-        if (adminSnapshot.docs.length > 0) {
-          const schoolData = adminSnapshot.docs[0].data()
-          if (schoolData.schoolName) {
-            setSchoolName(schoolData.schoolName)
+        // Try to get school admin data
+        let schoolAdminData = []
+
+        if (isConnected) {
+          // Online mode - fetch from Firestore
+          const adminSnapshot = await getDocs(collection(db, "schooladmin"))
+          schoolAdminData = adminSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+
+          if (schoolAdminData.length > 0) {
+            const schoolData = schoolAdminData[0]
+
+            // Set school name from database
+            if (schoolData.schoolname) {
+              setSchoolName(schoolData.schoolname)
+            } else if (schoolData.schoolName) {
+              setSchoolName(schoolData.schoolName)
+            }
+
+            if (schoolData.academicYear) {
+              setAcademicYear(schoolData.academicYear)
+            }
+
+            if (schoolData.school_id) {
+              currentSchoolId = schoolData.school_id
+              setSchoolId(currentSchoolId)
+            }
           }
-          if (schoolData.academicYear) {
-            setAcademicYear(schoolData.academicYear)
+
+          // Fetch data with school ID filter
+          if (currentSchoolId) {
+            const studentsQuery = query(collection(db, "students"), where("school_id", "==", currentSchoolId))
+            const teachersQuery = query(collection(db, "teachers"), where("school_id", "==", currentSchoolId))
+            const classesQuery = query(collection(db, "classes"), where("school_id", "==", currentSchoolId))
+
+            const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
+              getDocs(studentsQuery),
+              getDocs(teachersQuery),
+              getDocs(classesQuery),
+            ])
+
+            studentsList = studentsSnapshot.docs.map((doc) => doc.data())
+            teachersList = teachersSnapshot.docs.map((doc) => doc.data())
+            classesList = classesSnapshot.docs.map((doc) => doc.data())
+
+            // Download data for offline use
+            await downloadAllData(currentSchoolId)
           }
-          if (schoolData.school_id) {
-            currentSchoolId = schoolData.school_id
-            setSchoolId(currentSchoolId)
+        } else {
+          // Offline mode - use IndexedDB
+          schoolAdminData = await getAll("schooladmin")
+
+          if (schoolAdminData.length > 0) {
+            const schoolData = schoolAdminData[0]
+
+            // Set school name from local database
+            if (schoolData.schoolname) {
+              setSchoolName(schoolData.schoolname)
+            } else if (schoolData.schoolName) {
+              setSchoolName(schoolData.schoolName)
+            }
+
+            if (schoolData.academicYear) {
+              setAcademicYear(schoolData.academicYear)
+            }
+
+            if (schoolData.school_id) {
+              currentSchoolId = schoolData.school_id
+              setSchoolId(currentSchoolId)
+            }
+          }
+
+          // Get data from IndexedDB with filtering
+          if (currentSchoolId) {
+            const studentsResult = await queryDocuments("students", [
+              { field: "school_id", operator: "==", value: currentSchoolId },
+            ])
+
+            const teachersResult = await queryDocuments("teachers", [
+              { field: "school_id", operator: "==", value: currentSchoolId },
+            ])
+
+            const classesResult = await queryDocuments("classes", [
+              { field: "school_id", operator: "==", value: currentSchoolId },
+            ])
+
+            studentsList = studentsResult.success ? studentsResult.data : []
+            teachersList = teachersResult.success ? teachersResult.data : []
+            classesList = classesResult.success ? classesResult.data : []
+          } else {
+            // If no school ID, get all data
+            studentsList = await getAll("students")
+            teachersList = await getAll("teachers")
+            classesList = await getAll("classes")
           }
         }
 
-        // Fetch counts with school ID filter
-        const studentsQuery = currentSchoolId
-          ? query(collection(db, "students"), where("school_id", "==", currentSchoolId))
-          : collection(db, "students")
-
-        const teachersQuery = currentSchoolId
-          ? query(collection(db, "teachers"), where("school_id", "==", currentSchoolId))
-          : collection(db, "teachers")
-
-        const classesQuery = currentSchoolId
-          ? query(collection(db, "classes"), where("school_id", "==", currentSchoolId))
-          : collection(db, "classes")
-
-        const studentsSnapshot = await getDocs(studentsQuery)
-        const teachersSnapshot = await getDocs(teachersQuery)
-        const classesSnapshot = await getDocs(classesQuery)
-
         // Calculate special needs statistics
-        const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
         const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
         const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
 
@@ -136,31 +201,24 @@ export default function Dashboard() {
         setStats([
           {
             title: "Total Students",
-            value: studentsSnapshot.docs.length.toString(),
+            value: studentsList.length.toString(),
             icon: Users,
             color: "bg-blue-100 text-blue-700",
           },
           {
             title: "Total Teachers",
-            value: teachersSnapshot.docs.length.toString(),
+            value: teachersList.length.toString(),
             icon: GraduationCap,
             color: "bg-green-100 text-green-700",
           },
           {
             title: "Total Classes",
-            value: classesSnapshot.docs.length.toString(),
+            value: classesList.length.toString(),
             icon: BookOpen,
             color: "bg-purple-100 text-purple-700",
           },
           { title: "Attendance Today", value: "96%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
         ])
-
-        if (isConnected) {
-          toast({
-            title: "Dashboard Updated",
-            description: "Latest school data loaded successfully",
-          })
-        }
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
         toast({
@@ -174,7 +232,7 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [isConnected])
+  }, [isConnected, getAll, queryDocuments, downloadAllData])
 
   // Prepare chart data for special needs
   const specialNeedsChartData = [
@@ -208,16 +266,7 @@ export default function Dashboard() {
               <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-              {!isConnected && (
-                <div className="flex items-center gap-2 rounded-md bg-amber-100 px-3 py-1 text-amber-800">
-                  <WifiOff className="h-4 w-4" />
-                  <span className="text-xs font-medium">Offline Mode</span>
-                </div>
-              )}
-              <Button className="flex items-center gap-2">
-                <Bell className="h-4 w-4" />
-                <span>Notifications</span>
-              </Button>
+              {schoolId && <SyncManager schoolId={schoolId} />}
             </div>
           </div>
         )}
