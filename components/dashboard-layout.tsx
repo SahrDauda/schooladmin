@@ -19,16 +19,13 @@ import {
   Settings,
   LogOut,
   UserCog,
-  WifiOff,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { ConnectionStatus } from "@/components/ui/connection-status"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
-import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -41,7 +38,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [adminName, setAdminName] = useState("Admin User")
   const [adminRole, setAdminRole] = useState("Administrator")
   const [isMobile, setIsMobile] = useState(false)
-  const { isConnected } = useFirebaseConnection()
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -72,18 +68,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (adminId) {
       const fetchAdminData = async () => {
         try {
-          if (isConnected) {
-            const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-            if (adminDoc.exists()) {
-              const adminData = adminDoc.data()
-              if (adminData.name) {
-                setAdminName(adminData.name)
-                localStorage.setItem("adminName", adminData.name)
-              }
-              if (adminData.role) {
-                setAdminRole(adminData.role)
-                localStorage.setItem("adminRole", adminData.role)
-              }
+          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
+          if (adminDoc.exists()) {
+            const adminData = adminDoc.data()
+            if (adminData.name) {
+              setAdminName(adminData.name)
+              localStorage.setItem("adminName", adminData.name)
+            }
+            if (adminData.role) {
+              setAdminRole(adminData.role)
+              localStorage.setItem("adminRole", adminData.role)
             }
           }
         } catch (error) {
@@ -93,7 +87,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       fetchAdminData()
     }
-  }, [pathname, router, isConnected])
+  }, [pathname, router])
 
   useEffect(() => {
     const handleResize = () => {
@@ -144,12 +138,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex-1 md:text-center">
             <h1 className="text-lg font-semibold">School Admin Panel</h1>
           </div>
-          {!isConnected && (
-            <div className="flex items-center gap-2 rounded-md bg-amber-100 px-3 py-1 text-amber-800 mr-2">
-              <WifiOff className="h-4 w-4" />
-              <span className="text-xs font-medium">Offline</span>
-            </div>
-          )}
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5" />
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
@@ -224,8 +212,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       <main className={cn("pt-24", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
-
-      <ConnectionStatus />
     </div>
   )
 }

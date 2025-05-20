@@ -17,7 +17,6 @@ import {
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/hooks/use-toast"
-import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 import {
   BarChart,
   Bar,
@@ -32,8 +31,6 @@ import {
   Legend,
 } from "recharts"
 import Link from "next/link"
-import { useOfflineStorage } from "@/hooks/use-offline-storage"
-import { SyncManager } from "@/components/sync-manager"
 
 export default function Dashboard() {
   const [schoolName, setSchoolName] = useState("Loading school name...")
@@ -53,9 +50,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
 
-  const { isConnected } = useFirebaseConnection()
-  const { queryDocuments, getAll, downloadAllData } = useOfflineStorage()
-
+  // Attendance data for chart
   const attendanceData = [
     { month: "Jan", attendance: 92 },
     { month: "Feb", attendance: 95 },
@@ -65,165 +60,104 @@ export default function Dashboard() {
     { month: "Jun", attendance: 89 },
   ]
 
+  // Optimized data loading with skeleton UI
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true)
       try {
         // Get current admin's school ID
         const adminId = localStorage.getItem("adminId")
         let currentSchoolId = ""
-        let studentsList = []
-        let teachersList = []
-        let classesList = []
 
-        // Try to get school admin data
-        let schoolAdminData = []
+        // Fetch school admin data
+        const adminSnapshot = await getDocs(collection(db, "schooladmin"))
+        const schoolAdminData = adminSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
 
-        if (isConnected) {
-          // Online mode - fetch from Firestore
-          const adminSnapshot = await getDocs(collection(db, "schooladmin"))
-          schoolAdminData = adminSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        if (schoolAdminData.length > 0) {
+          const schoolData = schoolAdminData[0]
 
-          if (schoolAdminData.length > 0) {
-            const schoolData = schoolAdminData[0]
-
-            // Set school name from database
-            if (schoolData.schoolname) {
-              setSchoolName(schoolData.schoolname)
-            } else if (schoolData.schoolName) {
-              setSchoolName(schoolData.schoolName)
-            }
-
-            if (schoolData.academicYear) {
-              setAcademicYear(schoolData.academicYear)
-            }
-
-            if (schoolData.school_id) {
-              currentSchoolId = schoolData.school_id
-              setSchoolId(currentSchoolId)
-            }
+          // Set school name from database
+          if (schoolData.schoolname) {
+            setSchoolName(schoolData.schoolname)
+          } else if (schoolData.schoolName) {
+            setSchoolName(schoolData.schoolName)
           }
 
-          // Fetch data with school ID filter
-          if (currentSchoolId) {
-            const studentsQuery = query(collection(db, "students"), where("school_id", "==", currentSchoolId))
-            const teachersQuery = query(collection(db, "teachers"), where("school_id", "==", currentSchoolId))
-            const classesQuery = query(collection(db, "classes"), where("school_id", "==", currentSchoolId))
-
-            const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
-              getDocs(studentsQuery),
-              getDocs(teachersQuery),
-              getDocs(classesQuery),
-            ])
-
-            studentsList = studentsSnapshot.docs.map((doc) => doc.data())
-            teachersList = teachersSnapshot.docs.map((doc) => doc.data())
-            classesList = classesSnapshot.docs.map((doc) => doc.data())
-
-            // Download data for offline use
-            await downloadAllData(currentSchoolId)
-          }
-        } else {
-          // Offline mode - use IndexedDB
-          schoolAdminData = await getAll("schooladmin")
-
-          if (schoolAdminData.length > 0) {
-            const schoolData = schoolAdminData[0]
-
-            // Set school name from local database
-            if (schoolData.schoolname) {
-              setSchoolName(schoolData.schoolname)
-            } else if (schoolData.schoolName) {
-              setSchoolName(schoolData.schoolName)
-            }
-
-            if (schoolData.academicYear) {
-              setAcademicYear(schoolData.academicYear)
-            }
-
-            if (schoolData.school_id) {
-              currentSchoolId = schoolData.school_id
-              setSchoolId(currentSchoolId)
-            }
+          if (schoolData.academicYear) {
+            setAcademicYear(schoolData.academicYear)
           }
 
-          // Get data from IndexedDB with filtering
-          if (currentSchoolId) {
-            const studentsResult = await queryDocuments("students", [
-              { field: "school_id", operator: "==", value: currentSchoolId },
-            ])
-
-            const teachersResult = await queryDocuments("teachers", [
-              { field: "school_id", operator: "==", value: currentSchoolId },
-            ])
-
-            const classesResult = await queryDocuments("classes", [
-              { field: "school_id", operator: "==", value: currentSchoolId },
-            ])
-
-            studentsList = studentsResult.success ? studentsResult.data : []
-            teachersList = teachersResult.success ? teachersResult.data : []
-            classesList = classesResult.success ? classesResult.data : []
-          } else {
-            // If no school ID, get all data
-            studentsList = await getAll("students")
-            teachersList = await getAll("teachers")
-            classesList = await getAll("classes")
+          if (schoolData.school_id) {
+            currentSchoolId = schoolData.school_id
+            setSchoolId(currentSchoolId)
           }
         }
 
-        // Calculate special needs statistics
-        const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
-        const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
+        // Fetch data with school ID filter
+        if (currentSchoolId) {
+          // Use Promise.all to fetch data in parallel
+          const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
+            getDocs(query(collection(db, "students"), where("school_id", "==", currentSchoolId))),
+            getDocs(query(collection(db, "teachers"), where("school_id", "==", currentSchoolId))),
+            getDocs(query(collection(db, "classes"), where("school_id", "==", currentSchoolId))),
+          ])
 
-        // Count disability types
-        const disabilityTypes = {}
-        studentsWithDisabilities.forEach((student) => {
-          const type = student.disability_type || "Unspecified"
-          disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
-        })
+          const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
+          const teachersList = teachersSnapshot.docs.map((doc) => doc.data())
+          const classesList = classesSnapshot.docs.map((doc) => doc.data())
 
-        // Count medical condition types
-        const medicalConditionTypes = {}
-        studentsWithMedicalConditions.forEach((student) => {
-          const type = student.sick_type || "Unspecified"
-          medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
-        })
+          // Calculate special needs statistics
+          const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
+          const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
 
-        setSpecialNeedsStats({
-          totalWithDisabilities: studentsWithDisabilities.length,
-          totalWithMedicalConditions: studentsWithMedicalConditions.length,
-          disabilityTypes,
-          medicalConditionTypes,
-        })
+          // Count disability types
+          const disabilityTypes = {}
+          studentsWithDisabilities.forEach((student) => {
+            const type = student.disability_type || "Unspecified"
+            disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
+          })
 
-        // Update stats
-        setStats([
-          {
-            title: "Total Students",
-            value: studentsList.length.toString(),
-            icon: Users,
-            color: "bg-blue-100 text-blue-700",
-          },
-          {
-            title: "Total Teachers",
-            value: teachersList.length.toString(),
-            icon: GraduationCap,
-            color: "bg-green-100 text-green-700",
-          },
-          {
-            title: "Total Classes",
-            value: classesList.length.toString(),
-            icon: BookOpen,
-            color: "bg-purple-100 text-purple-700",
-          },
-          { title: "Attendance Today", value: "96%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
-        ])
+          // Count medical condition types
+          const medicalConditionTypes = {}
+          studentsWithMedicalConditions.forEach((student) => {
+            const type = student.sick_type || "Unspecified"
+            medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
+          })
+
+          setSpecialNeedsStats({
+            totalWithDisabilities: studentsWithDisabilities.length,
+            totalWithMedicalConditions: studentsWithMedicalConditions.length,
+            disabilityTypes,
+            medicalConditionTypes,
+          })
+
+          // Update stats
+          setStats([
+            {
+              title: "Total Students",
+              value: studentsList.length.toString(),
+              icon: Users,
+              color: "bg-blue-100 text-blue-700",
+            },
+            {
+              title: "Total Teachers",
+              value: teachersList.length.toString(),
+              icon: GraduationCap,
+              color: "bg-green-100 text-green-700",
+            },
+            {
+              title: "Total Classes",
+              value: classesList.length.toString(),
+              icon: BookOpen,
+              color: "bg-purple-100 text-purple-700",
+            },
+            { title: "Attendance Today", value: "96%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
+          ])
+        }
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
         toast({
           title: "Error",
-          description: isConnected ? "Failed to load dashboard data" : "You're offline. Showing cached data.",
+          description: "Failed to load dashboard data",
           variant: "destructive",
         })
       } finally {
@@ -232,7 +166,7 @@ export default function Dashboard() {
     }
 
     fetchData()
-  }, [isConnected, getAll, queryDocuments, downloadAllData])
+  }, [])
 
   // Prepare chart data for special needs
   const specialNeedsChartData = [
@@ -256,17 +190,33 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {loading ? (
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex flex-col space-y-4">
+            {/* Skeleton for school info */}
+            <div className="flex flex-col gap-2">
+              <div className="h-8 w-64 bg-gray-200 animate-pulse rounded-md"></div>
+              <div className="h-4 w-40 bg-gray-200 animate-pulse rounded-md"></div>
+            </div>
+
+            {/* Skeleton for stat cards */}
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i} className="flex flex-col justify-between">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                    <div className="h-4 w-24 bg-gray-200 animate-pulse rounded-md"></div>
+                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded-full"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-6 w-12 bg-gray-200 animate-pulse rounded-md"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{schoolName}</h1>
               <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-              {schoolId && <SyncManager schoolId={schoolId} />}
             </div>
           </div>
         )}
