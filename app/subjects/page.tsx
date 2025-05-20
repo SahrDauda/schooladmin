@@ -44,6 +44,7 @@ export default function SubjectsPage() {
   // State for dialogs
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState<any>(null)
 
   // State for school info
@@ -140,18 +141,26 @@ export default function SubjectsPage() {
     setIsAddDialogOpen(true)
   }
 
-  // Open edit dialog
-  const handleOpenEditDialog = (subject: any) => {
+  // Open details dialog
+  const handleOpenDetailsDialog = (subject: any) => {
     setSelectedSubject(subject)
+    setIsDetailsDialogOpen(true)
+  }
+
+  // Open edit dialog from details modal
+  const handleOpenEditDialog = () => {
+    if (!selectedSubject) return
+
     setFormData({
-      name: subject.name || "",
-      code: subject.code || "",
-      department: subject.department || "",
-      description: subject.description || "",
-      level: subject.level || "",
+      name: selectedSubject.name || "",
+      code: selectedSubject.code || "",
+      department: selectedSubject.department || "",
+      description: selectedSubject.description || "",
+      level: selectedSubject.level || "",
       school_id: schoolInfo.school_id,
       schoolname: schoolInfo.schoolName,
     })
+    setIsDetailsDialogOpen(false)
     setIsEditDialogOpen(true)
   }
 
@@ -235,10 +244,12 @@ export default function SubjectsPage() {
   }
 
   // Delete subject
-  const handleDelete = async (subjectId: string) => {
+  const handleDelete = async () => {
+    if (!selectedSubject) return
+
     if (confirm("Are you sure you want to delete this subject? This action cannot be undone.")) {
       try {
-        await deleteDoc(doc(db, "subjects", subjectId))
+        await deleteDoc(doc(db, "subjects", selectedSubject.id))
 
         toast({
           title: "Success",
@@ -246,7 +257,9 @@ export default function SubjectsPage() {
         })
 
         // Update local state
-        setSubjects(subjects.filter((subject) => subject.id !== subjectId))
+        setSubjects(subjects.filter((subject) => subject.id !== selectedSubject.id))
+        setIsDetailsDialogOpen(false)
+        setSelectedSubject(null)
       } catch (error) {
         console.error("Error deleting subject:", error)
         toast({
@@ -342,26 +355,19 @@ export default function SubjectsPage() {
                       <TableHead>Subject Name</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Level</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSubjects.map((subject) => (
-                      <TableRow key={subject.id}>
+                      <TableRow
+                        key={subject.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleOpenDetailsDialog(subject)}
+                      >
                         <TableCell className="font-medium">{subject.code}</TableCell>
                         <TableCell>{subject.name}</TableCell>
                         <TableCell>{subject.department || "—"}</TableCell>
                         <TableCell>{subject.level || "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(subject)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(subject.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -467,6 +473,63 @@ export default function SubjectsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Subject Details Dialog */}
+      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] w-[90%]">
+          <DialogHeader>
+            <DialogTitle>Subject Details</DialogTitle>
+          </DialogHeader>
+          {selectedSubject && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Subject Code</h3>
+                  <p className="text-base font-medium">{selectedSubject.code}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Subject Name</h3>
+                  <p className="text-base font-medium">{selectedSubject.name}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
+                  <p className="text-base">{selectedSubject.department || "—"}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Level</h3>
+                  <p className="text-base">{selectedSubject.level || "—"}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <h3 className="text-sm font-medium text-muted-foreground">Description</h3>
+                  <p className="text-base">{selectedSubject.description || "No description provided."}</p>
+                </div>
+                {selectedSubject.created_at && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
+                    <p className="text-sm">{selectedSubject.created_at.toDate().toLocaleDateString()}</p>
+                  </div>
+                )}
+                {selectedSubject.updated_at && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Last Updated</h3>
+                    <p className="text-sm">{selectedSubject.updated_at.toDate().toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="flex justify-between sm:justify-end gap-2">
+                <Button variant="destructive" onClick={handleDelete} className="w-full sm:w-auto">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+                <Button onClick={handleOpenEditDialog} className="w-full sm:w-auto">
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

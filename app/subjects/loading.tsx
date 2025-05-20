@@ -36,7 +36,6 @@ export default function SubjectsLoading() {
                     <TableHead>Subject Name</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Level</TableHead>
-                    <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -53,12 +52,6 @@ export default function SubjectsLoading() {
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-5 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Skeleton className="h-8 w-8 rounded-md" />
-                          <Skeleton className="h-8 w-8 rounded-md" />
-                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
