@@ -26,11 +26,12 @@ import {
   CheckCircle,
   FileText,
   FileSpreadsheet,
-  FileDown,
   Accessibility,
   Activity,
   Filter,
   Search,
+  Download,
+  FileIcon as FilePdf,
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
@@ -41,6 +42,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { useSearchParams, useRouter } from "next/navigation"
+import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
 
 export default function StudentsPage() {
   const searchParams = useSearchParams()
@@ -110,6 +112,7 @@ export default function StudentsPage() {
   const [schoolName, setSchoolName] = useState("")
   const [isSearchingNIN, setIsSearchingNIN] = useState(false)
   const [ninSearchQuery, setNinSearchQuery] = useState("")
+  const [isExporting, setIsExporting] = useState(false)
 
   const fetchStudents = async () => {
     setIsLoading(true)
@@ -663,6 +666,149 @@ export default function StudentsPage() {
     }
   }
 
+  // Export functions
+  const handleExportToCSV = () => {
+    try {
+      setIsExporting(true)
+
+      const headers = [
+        { key: "id", label: "Student ID" },
+        { key: "firstname", label: "First Name" },
+        { key: "lastname", label: "Last Name" },
+        { key: "gender", label: "Gender" },
+        { key: "dob", label: "Date of Birth" },
+        { key: "class", label: "Class" },
+        { key: "level", label: "Level" },
+        { key: "homeaddress", label: "Address" },
+        { key: "phonenumber", label: "Phone" },
+        { key: "emailaddress", label: "Email" },
+        { key: "disability", label: "Disability" },
+        { key: "disability_type", label: "Disability Type" },
+        { key: "sick", label: "Medical Condition" },
+        { key: "sick_type", label: "Medical Condition Type" },
+      ]
+
+      // Use the filtered students for export
+      const exportData = prepareDataForExport(filteredStudents, [
+        "created_at", // Exclude raw timestamp objects
+        "updated_at",
+      ])
+
+      exportToCSV(
+        exportData,
+        headers,
+        `${schoolName.replace(/\s+/g, "_")}_Students_${new Date().toISOString().split("T")[0]}`,
+      )
+
+      toast({
+        title: "Success",
+        description: "Students data exported to CSV successfully",
+      })
+    } catch (error) {
+      console.error("Error exporting to CSV:", error)
+      toast({
+        title: "Error",
+        description: "Failed to export students data to CSV",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportToExcel = () => {
+    try {
+      setIsExporting(true)
+
+      const headers = [
+        { key: "id", label: "Student ID" },
+        { key: "firstname", label: "First Name" },
+        { key: "lastname", label: "Last Name" },
+        { key: "gender", label: "Gender" },
+        { key: "dob", label: "Date of Birth" },
+        { key: "class", label: "Class" },
+        { key: "level", label: "Level" },
+        { key: "homeaddress", label: "Address" },
+        { key: "phonenumber", label: "Phone" },
+        { key: "emailaddress", label: "Email" },
+        { key: "disability", label: "Disability" },
+        { key: "disability_type", label: "Disability Type" },
+        { key: "sick", label: "Medical Condition" },
+        { key: "sick_type", label: "Medical Condition Type" },
+      ]
+
+      // Use the filtered students for export
+      const exportData = prepareDataForExport(filteredStudents, [
+        "created_at", // Exclude raw timestamp objects
+        "updated_at",
+      ])
+
+      exportToExcel(
+        exportData,
+        headers,
+        `${schoolName.replace(/\s+/g, "_")}_Students_${new Date().toISOString().split("T")[0]}`,
+      )
+
+      toast({
+        title: "Success",
+        description: "Students data exported to Excel successfully",
+      })
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      toast({
+        title: "Error",
+        description: "Failed to export students data to Excel",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportToPDF = () => {
+    try {
+      setIsExporting(true)
+
+      const headers = [
+        { key: "id", label: "ID" },
+        { key: "firstname", label: "First Name" },
+        { key: "lastname", label: "Last Name" },
+        { key: "gender", label: "Gender" },
+        { key: "class", label: "Class" },
+        { key: "disability", label: "Disability" },
+        { key: "sick", label: "Medical" },
+      ]
+
+      // Use the filtered students for export
+      const exportData = prepareDataForExport(filteredStudents, [
+        "created_at", // Exclude raw timestamp objects
+        "updated_at",
+      ])
+
+      exportToPDF(
+        exportData,
+        headers,
+        `${schoolName.replace(/\s+/g, "_")}_Students_${new Date().toISOString().split("T")[0]}`,
+        "Students Report",
+        schoolName,
+      )
+
+      toast({
+        title: "Success",
+        description: "Students data exported to PDF successfully",
+      })
+    } catch (error) {
+      console.error("Error exporting to PDF:", error)
+      toast({
+        title: "Error",
+        description: "Failed to export students data to PDF",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <Card>
@@ -671,22 +817,31 @@ export default function StudentsPage() {
           <div className="space-x-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="space-x-2">
-                  <FileDown className="h-4 w-4" />
-                  <span>Export</span>
+                <Button variant="outline" className="space-x-2" disabled={isExporting}>
+                  {isExporting ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                      <span>Exporting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      <span>Export</span>
+                    </>
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" forceMount>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportToCSV}>
                   <FileText className="h-4 w-4 mr-2" />
                   <span>Export to CSV</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportToExcel}>
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
                   <span>Export to Excel</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <FileDown className="h-4 w-4 mr-2" />
+                <DropdownMenuItem onClick={handleExportToPDF}>
+                  <FilePdf className="h-4 w-4 mr-2" />
                   <span>Export to PDF</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
