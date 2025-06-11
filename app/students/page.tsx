@@ -113,6 +113,7 @@ export default function StudentsPage() {
   const [isSearchingNIN, setIsSearchingNIN] = useState(false)
   const [ninSearchQuery, setNinSearchQuery] = useState("")
   const [isExporting, setIsExporting] = useState(false)
+  const [isSubmittingParent, setIsSubmittingParent] = useState(false)
 
   const fetchStudents = async () => {
     setIsLoading(true)
@@ -809,6 +810,92 @@ export default function StudentsPage() {
     }
   }
 
+  const handleSubmitParent = async (e: React.FormEvent, studentId: string, studentName: string) => {
+    e.preventDefault()
+    setIsSubmittingParent(true)
+
+    try {
+      // Generate a unique ID for the parent
+      const parentId = `PAR${Date.now().toString().slice(-6)}`
+
+      // Get current admin's school data
+      const adminId = localStorage.getItem("adminId")
+      let schoolData = {
+        school_id: schoolId,
+        schoolname: schoolName,
+      }
+
+      if (adminId && (!schoolId || !schoolName)) {
+        try {
+          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
+          if (adminDoc.exists()) {
+            const adminData = adminDoc.data()
+            schoolData = {
+              school_id: adminData.school_id || adminId,
+              schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching school admin data:", error)
+        }
+      }
+
+      // Prepare parent data
+      const currentDate = new Date()
+      const parentData = {
+        ...parentFormData,
+        id: parentId,
+        student_id: studentId,
+        student_name: studentName,
+        ...schoolData,
+        status: "Active",
+        created_at: Timestamp.fromDate(currentDate),
+        date: currentDate.toLocaleDateString(),
+        month: currentDate.toLocaleString("default", { month: "long" }),
+        year: currentDate.getFullYear().toString(),
+      }
+
+      // Save to Firestore
+      await setDoc(doc(db, "parents", parentId), parentData)
+
+      toast({
+        title: "Success",
+        description: `Parent added successfully for ${studentName}`,
+      })
+
+      // Reset form
+      setParentFormData({
+        student_id: "",
+        firstname: "",
+        lastname: "",
+        gender: "",
+        dob: "",
+        occupation: "",
+        emailaddress: "",
+        phonenumber: "",
+        homeaddress: "",
+        relationship_with_student: "",
+        nin: "",
+        password: "",
+      })
+
+      // Close the dialog
+      const dialogCloseButton = document.querySelector('[role="dialog"] button[aria-label="Close"]')
+      if (dialogCloseButton) {
+        ;(dialogCloseButton as HTMLElement).click()
+      }
+    } catch (error) {
+      console.error("Error adding parent:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add parent. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmittingParent(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <Card>
@@ -1492,10 +1579,9 @@ export default function StudentsPage() {
                               </DialogDescription>
                             </DialogHeader>
                             <form
-                              onSubmit={(e) => {
-                                e.preventDefault()
-                                // Handle parent form submission here
-                              }}
+                              onSubmit={(e) =>
+                                handleSubmitParent(e, student.id, `${student.firstname} ${student.lastname}`)
+                              }
                               className="space-y-4"
                             >
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1591,9 +1677,64 @@ export default function StudentsPage() {
                                     }
                                   />
                                 </div>
+                                <div>
+                                  <Label htmlFor="parent_dob">Date of Birth</Label>
+                                  <Input
+                                    type="date"
+                                    id="parent_dob"
+                                    value={parentFormData.dob}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        dob: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_occupation">Occupation</Label>
+                                  <Input
+                                    id="parent_occupation"
+                                    value={parentFormData.occupation}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        occupation: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_address">Home Address</Label>
+                                  <Input
+                                    id="parent_address"
+                                    value={parentFormData.homeaddress}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        homeaddress: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_nin">NIN</Label>
+                                  <Input
+                                    id="parent_nin"
+                                    value={parentFormData.nin}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        nin: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
                               </div>
                               <DialogFooter>
-                                <Button type="submit">Add Parent</Button>
+                                <Button type="submit" disabled={isSubmittingParent}>
+                                  {isSubmittingParent ? "Adding Parent..." : "Add Parent"}
+                                </Button>
                               </DialogFooter>
                             </form>
                           </DialogContent>

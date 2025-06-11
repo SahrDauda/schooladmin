@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
-import { Plus, Edit, Eye, MessageSquare, Users, GraduationCap, TrendingUp, Download, FileText } from "lucide-react"
+import { Plus, Edit, MessageSquare, Users, GraduationCap, TrendingUp, Download, FileText } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { collection, getDocs, addDoc, updateDoc, doc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -358,6 +358,7 @@ export default function GradesPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Students Overview</CardTitle>
+                <p className="text-sm text-muted-foreground">Click on a row to view detailed student results</p>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -382,7 +383,11 @@ export default function GradesPage() {
                       const styling = getStatusStyling(status)
 
                       return (
-                        <TableRow key={student.id}>
+                        <TableRow
+                          key={student.id}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleViewFullResult(student)}
+                        >
                           <TableCell className="font-medium">
                             {student.firstname} {student.lastname}
                           </TableCell>
@@ -392,15 +397,10 @@ export default function GradesPage() {
                           <TableCell>
                             <div className={`px-2 py-1 rounded text-xs font-medium ${styling}`}>{status}</div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm" onClick={() => handleViewFullResult(student)}>
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => handleExportStudentReport(student)}>
-                                <FileText className="h-4 w-4" />
-                              </Button>
-                            </div>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Button variant="outline" size="sm" onClick={() => handleExportStudentReport(student)}>
+                              <FileText className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       )

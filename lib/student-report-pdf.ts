@@ -1,5 +1,5 @@
-import { jsPDF } from "jspdf"
-import "jspdf-autotable"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import { limitedAcademicSubjects, generateMockGradeData, getPromotionStatus } from "./grade-utils"
 
 interface StudentReportData {
@@ -234,8 +234,8 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
     ]
   })
 
-  // @ts-ignore - jspdf-autotable extends jsPDF prototype
-  doc.autoTable({
+  // Create the academic subjects table
+  const academicTableResult = autoTable(doc, {
     head: [tableHeaders],
     body: tableData,
     startY: yPosition,
@@ -269,10 +269,14 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
     },
     alternateRowStyles: { fillColor: [245, 245, 245] },
     margin: { left: 20, right: 20 },
+    didDrawPage: (data) => {
+      // This ensures we can access the final Y position
+      yPosition = data.cursor?.y || yPosition + 100
+    },
   })
 
-  // @ts-ignore
-  yPosition = doc.lastAutoTable.finalY + 15
+  // Update yPosition after the table
+  yPosition += 15
 
   // Check if we need a new page
   if (yPosition > pageHeight - 80) {
@@ -295,8 +299,8 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
     ["Time Absent", "___________", "___________", "___________"],
   ]
 
-  // @ts-ignore
-  doc.autoTable({
+  // Create the term summary table
+  const summaryTableResult = autoTable(doc, {
     body: termSummaryData,
     startY: yPosition,
     styles: {
@@ -312,10 +316,14 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
       0: { fontStyle: "bold", fillColor: [240, 240, 240] },
     },
     margin: { left: 20, right: 20 },
+    didDrawPage: (data) => {
+      // This ensures we can access the final Y position
+      yPosition = data.cursor?.y || yPosition + 60
+    },
   })
 
-  // @ts-ignore
-  yPosition = doc.lastAutoTable.finalY + 15
+  // Update yPosition after the table
+  yPosition += 15
 
   // Comments Section
   if (yPosition > pageHeight - 60) {
@@ -325,7 +333,7 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
 
   doc.setFont("helvetica", "bold")
   doc.setFontSize(12)
-  doc.text("COMMENTS & SIGNATURES", 20, yPosition)
+  doc.text("COMMENTS", 20, yPosition)
   yPosition += 10
 
   // Class Teacher Comment
@@ -333,12 +341,10 @@ export function exportStudentReportToPDF(data: StudentReportData): void {
   doc.setFontSize(10)
   doc.text("Class Teacher's Comment:", 20, yPosition)
   doc.line(20, yPosition + 15, pageWidth - 20, yPosition + 15) // Line for comment
-  doc.text("Signature: ________________________", 20, yPosition + 25)
 
   // Principal Comment
-  doc.text("Principal's Comment:", 20, yPosition + 40)
-  doc.line(20, yPosition + 55, pageWidth - 20, yPosition + 55) // Line for comment
-  doc.text("Signature: ________________________", 20, yPosition + 65)
+  doc.text("Principal's Comment:", 20, yPosition + 30)
+  doc.line(20, yPosition + 45, pageWidth - 20, yPosition + 45) // Line for comment
 
   // Footer
   yPosition = pageHeight - 20
