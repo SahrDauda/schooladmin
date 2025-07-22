@@ -3,13 +3,13 @@ import { getFirestore } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  apiKey: "AIzaSyCVjMvf9duP0z-q1voq3fMz7Ie9DVfz5qY",
+  authDomain: "skultek-547c6.firebaseapp.com",
+  projectId: "skultek-547c6",
+  storageBucket: "skultek-547c6.firebasestorage.app",
+  messagingSenderId: "551170589387",
+  appId: "1:551170589387:web:500955979a83258c7f514e",
+  measurementId: "G-D2TZHQBBGG"
 }
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp()

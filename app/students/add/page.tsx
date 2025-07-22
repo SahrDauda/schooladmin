@@ -151,7 +151,7 @@ export default function AddStudentPage() {
       // Prepare data for validation, conditionally removing 'faculty' if not applicable
       const dataToValidate = { ...formData }
       if (schoolStage === "primary" || schoolStage === "junior secondary") {
-        delete dataToValidate.faculty // Remove faculty if not needed for validation
+        delete (dataToValidate as { faculty?: string }).faculty
       }
 
       // Validate form data

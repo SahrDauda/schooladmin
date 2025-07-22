@@ -28,6 +28,9 @@ import { z } from "zod"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { TeacherAttendanceQR } from "@/components/teacher-attendance-qr"
+import { createUserWithEmailAndPassword } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+import { sendEmail } from "@/lib/index"
 
 const teacherSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -39,9 +42,18 @@ const teacherSchema = z.object({
   qualification: z.string().min(1, "Qualification is required"),
   subject: z.string().min(1, "Subject is required"),
   joining_date: z.string().min(1, "Joining date is required"),
-  salary: z.string().transform((val) => Number.parseInt(val) || 0),
-  status: z.string().min(1, "Status is required"),
 })
+
+// Function to generate a random password
+const generateRandomPassword = () => {
+  const length = 12
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  let password = ""
+  for (let i = 0; i < length; i++) {
+    password += characters.charAt(Math.floor(Math.random() * characters.length))
+  }
+  return password
+}
 
 export default function TeachersPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -64,11 +76,10 @@ export default function TeachersPage() {
     qualification: "",
     subject: "",
     joining_date: "",
-    salary: "",
-    status: "Active",
     school_id: "",
   })
   const [editFormData, setEditFormData] = useState(formData)
+  const [subjects, setSubjects] = useState<any[]>([])
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -79,6 +90,32 @@ export default function TeachersPage() {
 
     loadSchoolInfo()
   }, [])
+
+  // Fetch subjects for the current school
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      if (!schoolInfo.school_id) return
+      try {
+        const subjectsRef = collection(db, "subjects")
+        const q = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
+        const querySnapshot = await getDocs(q)
+        const subjectsList = querySnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
+        // Sort by name
+        subjectsList.sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+        setSubjects(subjectsList)
+      } catch (error) {
+        console.error("Error fetching subjects:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load subjects",
+          variant: "destructive",
+        })
+      }
+    }
+    if (schoolInfo.school_id) {
+      fetchSubjects()
+    }
+  }, [schoolInfo.school_id])
 
   const fetchTeachers = async () => {
     setIsLoading(true)
@@ -92,7 +129,7 @@ export default function TeachersPage() {
 
       const teachersList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
+        ...(doc.data() as any), // or as Teacher if you have a Teacher type
       }))
 
       // Sort teachers by lastname client-side instead
@@ -136,6 +173,31 @@ export default function TeachersPage() {
       // Generate a unique ID
       const teacherId = `TCH${Date.now().toString().slice(-6)}`
 
+      // Generate a random password for the teacher
+      const password = generateRandomPassword()
+
+      // Create Firebase Auth user
+      let userCredential
+      try {
+        userCredential = await createUserWithEmailAndPassword(auth, formData.email, password)
+      } catch (authError: any) {
+        let errorMsg = "Failed to create teacher account."
+        if (authError.code === "auth/email-already-in-use") {
+          errorMsg = "Email is already in use."
+        } else if (authError.code === "auth/invalid-email") {
+          errorMsg = "Invalid email address."
+        } else if (authError.code === "auth/weak-password") {
+          errorMsg = "Password is too weak."
+        }
+        toast({
+          title: "Authentication Error",
+          description: errorMsg,
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
       // Add timestamp and metadata
       const currentDate = new Date()
       const teacherData = {
@@ -144,15 +206,32 @@ export default function TeachersPage() {
         school_id: schoolInfo.school_id,
         schoolName: schoolInfo.schoolName, // Include school name
         created_at: Timestamp.fromDate(currentDate),
+        status: "Active", // Always set to Active
+        // Do NOT store password in Firestore
+        // Optionally, you can store the auth UID if needed:
+        auth_uid: userCredential.user.uid,
       }
 
       // Save to Firestore
       await setDoc(doc(db, "teachers", teacherId), teacherData)
 
-      // Show success message
+      // Send email with login credentials
+      // NOTE: The sendEmail function is a mock. Replace with a real email service (e.g., SendGrid, Mailgun, SES) for production use.
+      const emailSubject = "Your Teacher Account Credentials"
+      const emailBody = `Dear ${formData.firstname} ${formData.lastname},\n\nYour teacher account has been created.\n\nLogin Email: ${formData.email}\nTemporary Password: ${password}\n\nPlease log in and change your password as soon as possible.\n\nBest regards,\nSchool Admin Team`
+      const emailResult = await sendEmail(formData.email, emailSubject, emailBody)
+      if (!emailResult.success) {
+        toast({
+          title: "Warning",
+          description: "Teacher added, but failed to send email with credentials.",
+          variant: "destructive",
+        })
+      }
+
+      // Show success message (password removed)
       toast({
         title: "Success",
-        description: "Teacher added successfully",
+        description: `Teacher added successfully.`,
       })
 
       // Refresh the teachers list
@@ -169,8 +248,6 @@ export default function TeachersPage() {
         qualification: "",
         subject: "",
         joining_date: "",
-        salary: "",
-        status: "Active",
         school_id: schoolInfo.school_id,
       })
     } catch (error) {
@@ -340,7 +417,23 @@ export default function TeachersPage() {
                         </div>
                         <div>
                           <Label htmlFor="subject">Subject</Label>
-                          <Input id="subject" value={formData.subject} onChange={handleInputChange} />
+                          <Select
+                            value={formData.subject}
+                            onValueChange={(value) => handleSelectChange("subject", value)}
+                            disabled={subjects.length === 0}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select subject" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {subjects.map((subject: any) => (
+                                <SelectItem key={subject.id} value={subject.name}>{subject.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {subjects.length === 0 && (
+                            <div className="text-sm text-muted-foreground mt-1">No subjects available. Please add subjects first.</div>
+                          )}
                         </div>
                         <div>
                           <Label htmlFor="joining_date">Joining Date</Label>
@@ -350,23 +443,6 @@ export default function TeachersPage() {
                             value={formData.joining_date}
                             onChange={handleInputChange}
                           />
-                        </div>
-                        <div>
-                          <Label htmlFor="salary">Salary</Label>
-                          <Input id="salary" type="number" value={formData.salary} onChange={handleInputChange} />
-                        </div>
-                        <div>
-                          <Label htmlFor="status">Status</Label>
-                          <Select defaultValue="Active" onValueChange={(value) => handleSelectChange("status", value)}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Active">Active</SelectItem>
-                              <SelectItem value="On Leave">On Leave</SelectItem>
-                              <SelectItem value="Inactive">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
                         </div>
                       </div>
                       <DialogFooter>
@@ -657,27 +733,6 @@ export default function TeachersPage() {
                             }))
                           }
                         />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_status">Status</Label>
-                        <Select
-                          value={editFormData.status}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              status: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Active">Active</SelectItem>
-                            <SelectItem value="On Leave">On Leave</SelectItem>
-                            <SelectItem value="Inactive">Inactive</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
                     <DialogFooter>

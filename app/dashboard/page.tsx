@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, getDocs, query, where } from "firebase/firestore"
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -31,6 +31,15 @@ import {
   Legend,
 } from "recharts"
 import Link from "next/link"
+
+type SchoolAdmin = {
+  id: string
+  schoolname?: string
+  schoolName?: string
+  academicYear?: string
+  school_id?: string
+  // add any other fields you use
+}
 
 export default function Dashboard() {
   const [schoolName, setSchoolName] = useState("Loading school name...")
@@ -64,41 +73,32 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get current admin's school ID
-        const adminId = localStorage.getItem("adminId")
-        let currentSchoolId = ""
+        const adminId = localStorage.getItem("adminId");
+        if (!adminId) return;
 
-        // Fetch school admin data
-        const adminSnapshot = await getDocs(collection(db, "schooladmin"))
-        const schoolAdminData = adminSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        // Fetch the admin document
+        const adminDoc = await getDoc(doc(db, "schooladmin", adminId));
+        if (!adminDoc.exists()) return;
 
-        if (schoolAdminData.length > 0) {
-          const schoolData = schoolAdminData[0]
+        const adminData = adminDoc.data();
+        const schoolId = adminData.school_id;
 
-          // Set school name from database
-          if (schoolData.schoolname) {
-            setSchoolName(schoolData.schoolname)
-          } else if (schoolData.schoolName) {
-            setSchoolName(schoolData.schoolName)
-          }
-
-          if (schoolData.academicYear) {
-            setAcademicYear(schoolData.academicYear)
-          }
-
-          if (schoolData.school_id) {
-            currentSchoolId = schoolData.school_id
-            setSchoolId(currentSchoolId)
+        // Fetch the school document using school_id
+        if (schoolId) {
+          const schoolDoc = await getDoc(doc(db, "schools", schoolId));
+          if (schoolDoc.exists()) {
+            const schoolData = schoolDoc.data();
+            setSchoolName(schoolData.school_name); // Use the correct field from your Firestore
           }
         }
 
         // Fetch data with school ID filter
-        if (currentSchoolId) {
+        if (schoolId) {
           // Use Promise.all to fetch data in parallel
           const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
-            getDocs(query(collection(db, "students"), where("school_id", "==", currentSchoolId))),
-            getDocs(query(collection(db, "teachers"), where("school_id", "==", currentSchoolId))),
-            getDocs(query(collection(db, "classes"), where("school_id", "==", currentSchoolId))),
+            getDocs(query(collection(db, "students"), where("school_id", "==", schoolId))),
+            getDocs(query(collection(db, "teachers"), where("school_id", "==", schoolId))),
+            getDocs(query(collection(db, "classes"), where("school_id", "==", schoolId))),
           ])
 
           const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
@@ -110,14 +110,14 @@ export default function Dashboard() {
           const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
 
           // Count disability types
-          const disabilityTypes = {}
+          const disabilityTypes: Record<string, number> = {}
           studentsWithDisabilities.forEach((student) => {
             const type = student.disability_type || "Unspecified"
             disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
           })
 
           // Count medical condition types
-          const medicalConditionTypes = {}
+          const medicalConditionTypes: Record<string, number> = {}
           studentsWithMedicalConditions.forEach((student) => {
             const type = student.sick_type || "Unspecified"
             medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
@@ -287,7 +287,7 @@ export default function Dashboard() {
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                     >
                       {specialNeedsChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
