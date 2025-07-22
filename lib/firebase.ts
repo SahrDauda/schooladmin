@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from "firebase/app"
+import { initializeApp, getApps, getApp } from "firebase/app"
 import { getFirestore } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 
@@ -12,17 +12,8 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 }
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-
-// Initialize Firestore without persistence
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp()
 const db = getFirestore(app)
-
-// Initialize Auth
 const auth = getAuth(app)
 
-// Export the db instance
 export { db, auth }
-
-// Add console log to confirm initialization
-console.log("Firebase initialized with project:", firebaseConfig.projectId)

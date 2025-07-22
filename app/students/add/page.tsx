@@ -5,7 +5,6 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { doc, setDoc, Timestamp, getDoc, collection, getDocs } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard-layout"
 import { z } from "zod"
+import { Button } from "@/components/ui/button" // Ensure Button is imported
 
 const studentSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -29,8 +29,8 @@ const studentSchema = z.object({
   // Optional fields
   nin: z.string().optional(),
   bgroup: z.string().optional(),
-  faculty: z.string().optional(),
-  level: z.string().optional(),
+  faculty: z.string().optional(), // Made optional
+  level: z.string().min(1, "Level is required"), // Level is always required
   phonenumber: z.string().optional(),
   emailaddress: z.string().email().optional().or(z.literal("")),
   religion: z.string().optional(),
@@ -70,13 +70,92 @@ export default function AddStudentPage() {
     sick_type: "",
   })
 
+  const [classes, setClasses] = useState<any[]>([])
+  const [schoolStage, setSchoolStage] = useState<string | null>(null)
+  const [levelOptions, setLevelOptions] = useState<string[]>([])
+
+  useEffect(() => {
+    // Fetch classes for the dropdown
+    const fetchClasses = async () => {
+      try {
+        const classesRef = collection(db, "classes")
+        const classesSnapshot = await getDocs(classesRef)
+        const classesList = classesSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        setClasses(classesList)
+      } catch (error) {
+        console.error("Error fetching classes:", error)
+      }
+    }
+
+    // Fetch school admin data to auto-populate fields and get school stage
+    const fetchSchoolAdminAndStage = async () => {
+      try {
+        const adminId = localStorage.getItem("adminId")
+        if (adminId) {
+          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
+          if (adminDoc.exists()) {
+            const adminData = adminDoc.data()
+            const currentSchoolId = adminData.school_id || adminId
+            const currentSchoolName = adminData.schoolName || "Holy Family Junior Secondary School"
+
+            setFormData((prev) => ({
+              ...prev,
+              school_id: currentSchoolId,
+              schoolname: currentSchoolName,
+            }))
+
+            // Now fetch the stage from the 'schools' collection using currentSchoolId
+            const schoolDoc = await getDoc(doc(db, "schools", currentSchoolId))
+            if (schoolDoc.exists()) {
+              setSchoolStage(schoolDoc.data().stage || "senior secondary")
+            } else {
+              setSchoolStage("senior secondary") // Default if school doc doesn't exist
+            }
+          } else {
+            setSchoolStage("senior secondary") // Default if admin doc doesn't exist
+          }
+        } else {
+          setSchoolStage("senior secondary") // Default if no adminId
+        }
+      } catch (error) {
+        console.error("Error fetching school admin data or stage:", error)
+        setSchoolStage("senior secondary") // Default on error
+      }
+    }
+
+    fetchClasses()
+    fetchSchoolAdminAndStage()
+  }, [])
+
+  // Effect to update level options based on schoolStage
+  useEffect(() => {
+    if (schoolStage === "primary") {
+      setLevelOptions(["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6"])
+    } else if (schoolStage === "junior secondary") {
+      setLevelOptions(["JSS 1", "JSS 2", "JSS 3"])
+    } else if (schoolStage === "senior secondary") {
+      setLevelOptions(["SSS 1", "SSS 2", "SSS 3"])
+    } else {
+      setLevelOptions([]) // Default or empty if stage is unknown
+    }
+  }, [schoolStage])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
+      // Prepare data for validation, conditionally removing 'faculty' if not applicable
+      const dataToValidate = { ...formData }
+      if (schoolStage === "primary" || schoolStage === "junior secondary") {
+        delete dataToValidate.faculty // Remove faculty if not needed for validation
+      }
+
       // Validate form data
-      const validatedData = studentSchema.parse(formData)
+      const validatedData = studentSchema.parse(dataToValidate)
 
       // Generate a unique ID if admission number is not provided
       const studentId = formData.adm_no || `ST${Date.now().toString().slice(-6)}`
@@ -121,49 +200,6 @@ export default function AddStudentPage() {
       setLoading(false)
     }
   }
-
-  // Add this to the component, before the return statement
-  const [classes, setClasses] = useState<any[]>([])
-
-  useEffect(() => {
-    // Fetch classes for the dropdown
-    const fetchClasses = async () => {
-      try {
-        const classesRef = collection(db, "classes")
-        const classesSnapshot = await getDocs(classesRef)
-        const classesList = classesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setClasses(classesList)
-      } catch (error) {
-        console.error("Error fetching classes:", error)
-      }
-    }
-
-    // Fetch school admin data to auto-populate fields
-    const fetchSchoolAdmin = async () => {
-      try {
-        const adminId = localStorage.getItem("adminId")
-        if (adminId) {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
-            setFormData((prev) => ({
-              ...prev,
-              school_id: adminData.school_id || adminId,
-              schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
-            }))
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching school admin data:", error)
-      }
-    }
-
-    fetchClasses()
-    fetchSchoolAdmin()
-  }, [])
 
   return (
     <DashboardLayout>
@@ -285,19 +321,22 @@ export default function AddStudentPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="faculty">Faculty</Label>
-                  <Select onValueChange={(value) => setFormData({ ...formData, faculty: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select faculty" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Science">Science</SelectItem>
-                      <SelectItem value="Commercial">Commercial</SelectItem>
-                      <SelectItem value="Arts">Arts</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Conditionally render Faculty field */}
+                {schoolStage !== "primary" && schoolStage !== "junior secondary" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="faculty">Faculty</Label>
+                    <Select onValueChange={(value) => setFormData({ ...formData, faculty: value })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select faculty" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Science">Science</SelectItem>
+                        <SelectItem value="Commercial">Commercial</SelectItem>
+                        <SelectItem value="Arts">Arts</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="level">Level</Label>
                   <Select onValueChange={(value) => setFormData({ ...formData, level: value })}>
@@ -305,12 +344,11 @@ export default function AddStudentPage() {
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="JSS 1">JSS 1</SelectItem>
-                      <SelectItem value="JSS 2">JSS 2</SelectItem>
-                      <SelectItem value="JSS 3">JSS 3</SelectItem>
-                      <SelectItem value="SSS 1">SSS 1</SelectItem>
-                      <SelectItem value="SSS 2">SSS 2</SelectItem>
-                      <SelectItem value="SSS 3">SSS 3</SelectItem>
+                      {levelOptions.map((level, index) => (
+                        <SelectItem key={index} value={level}>
+                          {level}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
