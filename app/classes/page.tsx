@@ -26,6 +26,18 @@ import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
+interface Class {
+  id: string
+  name: string
+  level: string
+  section?: string
+  capacity: number
+  teacher_id?: string
+  description?: string
+  students_count?: number
+  school_id?: string
+}
+
 const classSchema = z.object({
   name: z.string().min(1, "Class name is required"),
   level: z.string().min(1, "Level is required"),
@@ -37,7 +49,7 @@ const classSchema = z.object({
 
 export default function ClassesPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [classes, setClasses] = useState<any[]>([])
+  const [classes, setClasses] = useState<Class[]>([])
   const [teachers, setTeachers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -77,11 +89,10 @@ export default function ClassesPage() {
       const classesQuery = query(classesRef, where("school_id", "==", schoolInfo.school_id))
       const classesSnapshot = await getDocs(classesQuery)
 
-      const classesList = classesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        students_count: 0, // Initialize with 0
-      }))
+      // When mapping Firestore docs to Class[]
+      const classesList: Class[] = classesSnapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as Class)
+      );
 
       // Fetch students to count by class
       const studentsRef = collection(db, "students")
@@ -304,7 +315,7 @@ export default function ClassesPage() {
   // Calculate dashboard metrics
   const totalClasses = classes.length
   const totalStudentsInClasses = classes.reduce((sum, cls) => sum + (cls.students_count || 0), 0)
-  const totalCapacity = classes.reduce((sum, cls) => sum + (Number.parseInt(cls.capacity) || 0), 0)
+  const totalCapacity = classes.reduce((sum, cls) => sum + (cls.capacity || 0), 0)
   const occupancyRate = totalCapacity > 0 ? Math.round((totalStudentsInClasses / totalCapacity) * 100) : 0
 
   // Get unique level options from classes data
@@ -318,419 +329,437 @@ export default function ClassesPage() {
 
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Classes</CardTitle>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                <span>Add Class</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add Class</DialogTitle>
-                <DialogDescription>Fill out the form below to add a new class.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmitClass} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Class Name</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      placeholder="e.g. Mathematics"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="level">Level</Label>
-                    <Select onValueChange={(value) => handleSelectChange("level", value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="JSS 1">JSS 1</SelectItem>
-                        <SelectItem value="JSS 2">JSS 2</SelectItem>
-                        <SelectItem value="JSS 3">JSS 3</SelectItem>
-                        <SelectItem value="SSS 1">SSS 1</SelectItem>
-                        <SelectItem value="SSS 2">SSS 2</SelectItem>
-                        <SelectItem value="SSS 3">SSS 3</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="section">Section</Label>
-                    <Input
-                      id="section"
-                      value={formData.section}
-                      onChange={handleInputChange}
-                      placeholder="e.g. A, B, C"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="capacity">Capacity</Label>
-                    <Input
-                      id="capacity"
-                      type="number"
-                      value={formData.capacity}
-                      onChange={handleInputChange}
-                      placeholder="e.g. 30"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="teacher_id">Class Teacher</Label>
-                    <Select onValueChange={(value) => handleSelectChange("teacher_id", value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select teacher" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Not Assigned</SelectItem>
-                        {teachers.map((teacher) => (
-                          <SelectItem key={teacher.id} value={teacher.id}>
-                            {teacher.firstname} {teacher.lastname}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Input
-                      id="description"
-                      value={formData.description}
-                      onChange={handleInputChange}
-                      placeholder="Brief description of the class"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Submitting..." : "Add Class"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <BookOpen className="h-4 w-4 text-gray-500" />
-                  <span>Total Classes</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalClasses}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-blue-500" />
-                  <span>Total Students</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalStudentsInClasses}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <GraduationCap className="h-4 w-4 text-green-500" />
-                  <span>Total Capacity</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalCapacity}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-amber-500" />
-                  <span>Occupancy Rate</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{occupancyRate}%</div>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="relative w-full md:w-auto">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search classes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full md:w-[250px] pl-8"
-                />
-              </div>
-              <Select onValueChange={(value) => setSelectedLevel(value)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select a level" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Levels</SelectItem>
-                  {levelOptions.map((level, index) => (
-                    <SelectItem key={index} value={level}>
-                      {level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : filteredClasses.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No classes found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Class Name</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Section</TableHead>
-                    <TableHead>Students</TableHead>
-                    <TableHead>Capacity</TableHead>
-                    <TableHead>Class Teacher</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredClasses.map((cls) => (
-                    <TableRow
-                      key={cls.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={(e) => {
-                        if (!(e.target as HTMLElement).closest("button")) {
-                          setSelectedClass(cls)
-                          setEditFormData(cls)
-                          setIsViewClassOpen(true)
-                        }
-                      }}
-                    >
-                      <TableCell className="font-medium">{cls.name}</TableCell>
-                      <TableCell>{cls.level}</TableCell>
-                      <TableCell>{cls.section || "-"}</TableCell>
-                      <TableCell>{cls.students_count || 0}</TableCell>
-                      <TableCell>{cls.capacity || "-"}</TableCell>
-                      <TableCell>{cls.teacher_id ? getTeacherName(cls.teacher_id) : "Not Assigned"}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} className="space-x-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedClass(cls)
-                            setEditFormData(cls)
-                            setIsViewClassOpen(true)
-                            setIsEditing(true)
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-red-500"
-                          onClick={() => handleDeleteClass(cls.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {selectedClass && (
-            <Dialog
-              open={isViewClassOpen}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setIsViewClassOpen(false)
-                  setIsEditing(false)
-                }
-              }}
-              modal
-            >
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-2xl font-semibold">Classes</CardTitle>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  <span>Add Class</span>
+                </Button>
+              </DialogTrigger>
               <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-                <DialogHeader className="flex flex-row items-center justify-between">
-                  <DialogTitle>Class Information</DialogTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
-                      {isEditing ? "Cancel Edit" : "Edit"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsViewClassOpen(false)
-                        setIsEditing(false)
-                      }}
-                    >
-                      Close
-                    </Button>
-                  </div>
+                <DialogHeader>
+                  <DialogTitle>Add Class</DialogTitle>
+                  <DialogDescription>Fill out the form below to add a new class.</DialogDescription>
                 </DialogHeader>
-
-                {isEditing ? (
-                  <form onSubmit={handleUpdateClass} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="edit_name">Class Name</Label>
-                        <Input
-                          id="edit_name"
-                          value={editFormData.name}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              name: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_level">Level</Label>
-                        <Select
-                          value={editFormData.level}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              level: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select level" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="JSS 1">JSS 1</SelectItem>
-                            <SelectItem value="JSS 2">JSS 2</SelectItem>
-                            <SelectItem value="JSS 3">JSS 3</SelectItem>
-                            <SelectItem value="SSS 1">SSS 1</SelectItem>
-                            <SelectItem value="SSS 2">SSS 2</SelectItem>
-                            <SelectItem value="SSS 3">SSS 3</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_section">Section</Label>
-                        <Input
-                          id="edit_section"
-                          value={editFormData.section}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              section: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_capacity">Capacity</Label>
-                        <Input
-                          id="edit_capacity"
-                          type="number"
-                          value={editFormData.capacity}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              capacity: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_teacher_id">Class Teacher</Label>
-                        <Select
-                          value={editFormData.teacher_id || "none"}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              teacher_id: value === "none" ? "" : value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select teacher" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Not Assigned</SelectItem>
-                            {teachers.map((teacher) => (
-                              <SelectItem key={teacher.id} value={teacher.id}>
-                                {teacher.firstname} {teacher.lastname}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="edit_description">Description</Label>
-                        <Input
-                          id="edit_description"
-                          value={editFormData.description}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              description: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit">Save Changes</Button>
-                    </DialogFooter>
-                  </form>
-                ) : (
+                <form onSubmit={handleSubmitClass} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="font-bold">Class Name</Label>
-                      <p>{selectedClass.name}</p>
+                      <Label htmlFor="name">Class Name</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Mathematics"
+                      />
                     </div>
                     <div>
-                      <Label className="font-bold">Level</Label>
-                      <p>{selectedClass.level}</p>
+                      <Label htmlFor="level">Level</Label>
+                      <Select onValueChange={(value) => handleSelectChange("level", value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select level" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="JSS 1">JSS 1</SelectItem>
+                          <SelectItem value="JSS 2">JSS 2</SelectItem>
+                          <SelectItem value="JSS 3">JSS 3</SelectItem>
+                          <SelectItem value="SSS 1">SSS 1</SelectItem>
+                          <SelectItem value="SSS 2">SSS 2</SelectItem>
+                          <SelectItem value="SSS 3">SSS 3</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
-                      <Label className="font-bold">Section</Label>
-                      <p>{selectedClass.section || "N/A"}</p>
+                      <Label htmlFor="section">Section</Label>
+                      <Input
+                        id="section"
+                        value={formData.section}
+                        onChange={handleInputChange}
+                        placeholder="e.g. A, B, C"
+                      />
                     </div>
                     <div>
-                      <Label className="font-bold">Capacity</Label>
-                      <p>{selectedClass.capacity || "N/A"}</p>
+                      <Label htmlFor="capacity">Capacity</Label>
+                      <Input
+                        id="capacity"
+                        type="number"
+                        value={formData.capacity?.toString() || ""}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 30"
+                      />
                     </div>
                     <div>
-                      <Label className="font-bold">Students</Label>
-                      <p>{selectedClass.students_count || 0}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Class Teacher</Label>
-                      <p>{selectedClass.teacher_id ? getTeacherName(selectedClass.teacher_id) : "Not Assigned"}</p>
+                      <Label htmlFor="teacher_id">Class Teacher</Label>
+                      <Select onValueChange={(value) => handleSelectChange("teacher_id", value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select teacher" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not Assigned</SelectItem>
+                          {teachers.map((teacher) => (
+                            <SelectItem key={teacher.id} value={teacher.id}>
+                              {teacher.firstname} {teacher.lastname}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="font-bold">Description</Label>
-                      <p>{selectedClass.description || "N/A"}</p>
+                      <Label htmlFor="description">Description</Label>
+                      <Input
+                        id="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        placeholder="Brief description of the class"
+                      />
                     </div>
                   </div>
-                )}
+                  <DialogFooter>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? "Submitting..." : "Add Class"}
+                    </Button>
+                  </DialogFooter>
+                </form>
               </DialogContent>
             </Dialog>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <BookOpen className="h-4 w-4 text-gray-500" />
+                    <span>Total Classes</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalClasses}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Users className="h-4 w-4 text-blue-500" />
+                    <span>Total Students</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalStudentsInClasses}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <GraduationCap className="h-4 w-4 text-green-500" />
+                    <span>Total Capacity</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalCapacity}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Users className="h-4 w-4 text-amber-500" />
+                    <span>Occupancy Rate</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{occupancyRate}%</div>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
+              <div className="flex items-center space-x-2">
+                <div className="relative w-full md:w-auto">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search classes..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full md:w-[250px] pl-8"
+                  />
+                </div>
+                <Select onValueChange={(value) => setSelectedLevel(value)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select a level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Levels</SelectItem>
+                    {levelOptions.map((level, index) => (
+                      <SelectItem key={index} value={level}>
+                        {level}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : filteredClasses.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No classes found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Class Name</TableHead>
+                      <TableHead>Level</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Students</TableHead>
+                      <TableHead>Capacity</TableHead>
+                      <TableHead>Class Teacher</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredClasses.map((cls) => (
+                      <TableRow
+                        key={cls.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={(e) => {
+                          if (!(e.target as HTMLElement).closest("button")) {
+                            setSelectedClass(cls)
+                            setEditFormData({
+                              name: cls.name || "",
+                              level: cls.level || "",
+                              section: cls.section || "",
+                              capacity: cls.capacity?.toString() || "",
+                              teacher_id: cls.teacher_id || "",
+                              description: cls.description || "",
+                              school_id: cls.school_id || "",
+                            })
+                            setIsViewClassOpen(true)
+                          }
+                        }}
+                      >
+                        <TableCell className="font-medium">{cls.name}</TableCell>
+                        <TableCell>{cls.level}</TableCell>
+                        <TableCell>{cls.section || "-"}</TableCell>
+                        <TableCell>{cls.students_count || 0}</TableCell>
+                        <TableCell>{cls.capacity || "-"}</TableCell>
+                        <TableCell>{cls.teacher_id ? getTeacherName(cls.teacher_id) : "Not Assigned"}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()} className="space-x-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedClass(cls)
+                              setEditFormData({
+                                name: cls.name || "",
+                                level: cls.level || "",
+                                section: cls.section || "",
+                                capacity: cls.capacity?.toString() || "",
+                                teacher_id: cls.teacher_id || "",
+                                description: cls.description || "",
+                                school_id: cls.school_id || "",
+                              })
+                              setIsViewClassOpen(true)
+                              setIsEditing(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="text-red-500"
+                            onClick={() => handleDeleteClass(cls.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            {selectedClass && (
+              <Dialog
+                open={isViewClassOpen}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setIsViewClassOpen(false)
+                    setIsEditing(false)
+                  }
+                }}
+                modal
+              >
+                <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+                  <DialogHeader className="flex flex-row items-center justify-between">
+                    <DialogTitle>Class Information</DialogTitle>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
+                        {isEditing ? "Cancel Edit" : "Edit"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsViewClassOpen(false)
+                          setIsEditing(false)
+                        }}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </DialogHeader>
+
+                  {isEditing ? (
+                    <form onSubmit={handleUpdateClass} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="edit_name">Class Name</Label>
+                          <Input
+                            id="edit_name"
+                            value={editFormData.name}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                name: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_level">Level</Label>
+                          <Select
+                            value={editFormData.level}
+                            onValueChange={(value) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                level: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select level" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="JSS 1">JSS 1</SelectItem>
+                              <SelectItem value="JSS 2">JSS 2</SelectItem>
+                              <SelectItem value="JSS 3">JSS 3</SelectItem>
+                              <SelectItem value="SSS 1">SSS 1</SelectItem>
+                              <SelectItem value="SSS 2">SSS 2</SelectItem>
+                              <SelectItem value="SSS 3">SSS 3</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_section">Section</Label>
+                          <Input
+                            id="edit_section"
+                            value={editFormData.section}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                section: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_capacity">Capacity</Label>
+                          <Input
+                            id="edit_capacity"
+                            type="number"
+                            value={editFormData.capacity}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                capacity: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_teacher_id">Class Teacher</Label>
+                          <Select
+                            value={editFormData.teacher_id || "none"}
+                            onValueChange={(value) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                teacher_id: value === "none" ? "" : value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select teacher" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Not Assigned</SelectItem>
+                              {teachers.map((teacher) => (
+                                <SelectItem key={teacher.id} value={teacher.id}>
+                                  {teacher.firstname} {teacher.lastname}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label htmlFor="edit_description">Description</Label>
+                          <Input
+                            id="edit_description"
+                            value={editFormData.description}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                description: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit">Save Changes</Button>
+                      </DialogFooter>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="font-bold">Class Name</Label>
+                        <p>{selectedClass.name}</p>
+                      </div>
+                      <div>
+                        <Label className="font-bold">Level</Label>
+                        <p>{selectedClass.level}</p>
+                      </div>
+                      <div>
+                        <Label className="font-bold">Section</Label>
+                        <p>{selectedClass.section || "N/A"}</p>
+                      </div>
+                      <div>
+                        <Label className="font-bold">Capacity</Label>
+                        <p>{selectedClass.capacity || "N/A"}</p>
+                      </div>
+                      <div>
+                        <Label className="font-bold">Students</Label>
+                        <p>{selectedClass.students_count || 0}</p>
+                      </div>
+                      <div>
+                        <Label className="font-bold">Class Teacher</Label>
+                        <p>{selectedClass.teacher_id ? getTeacherName(selectedClass.teacher_id) : "Not Assigned"}</p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label className="font-bold">Description</Label>
+                        <p>{selectedClass.description || "N/A"}</p>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   )
 }

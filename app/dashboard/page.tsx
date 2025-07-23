@@ -31,6 +31,7 @@ import {
   Legend,
 } from "recharts"
 import Link from "next/link"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 type SchoolAdmin = {
   id: string
@@ -73,27 +74,11 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const adminId = localStorage.getItem("adminId");
-        if (!adminId) return;
+        const schoolInfo = await getCurrentSchoolInfo()
+        setSchoolName(schoolInfo.schoolName)
+        const schoolId = schoolInfo.school_id
 
-        // Fetch the admin document
-        const adminDoc = await getDoc(doc(db, "schooladmin", adminId));
-        if (!adminDoc.exists()) return;
-
-        const adminData = adminDoc.data();
-        const schoolId = adminData.school_id;
-
-        // Fetch the school document using school_id
-        if (schoolId) {
-          const schoolDoc = await getDoc(doc(db, "schools", schoolId));
-          if (schoolDoc.exists()) {
-            const schoolData = schoolDoc.data();
-            setSchoolName(schoolData.school_name); // Use the correct field from your Firestore
-          }
-        }
-
-        // Fetch data with school ID filter
-        if (schoolId) {
+        if (schoolId && schoolId !== "unknown" && schoolId !== "error") {
           // Use Promise.all to fetch data in parallel
           const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
             getDocs(query(collection(db, "students"), where("school_id", "==", schoolId))),
@@ -177,8 +162,8 @@ export default function Dashboard() {
       value: Math.max(
         0,
         Number.parseInt(stats[0].value) -
-          specialNeedsStats.totalWithDisabilities -
-          specialNeedsStats.totalWithMedicalConditions,
+        specialNeedsStats.totalWithDisabilities -
+        specialNeedsStats.totalWithMedicalConditions,
       ),
     },
   ]
@@ -213,7 +198,7 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{schoolName}</h1>
               <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>

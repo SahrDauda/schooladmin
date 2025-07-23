@@ -25,6 +25,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+interface Subject {
+  id: string
+  name: string
+  code: string
+  department?: string
+  description?: string
+  level?: string
+  created_at?: Timestamp
+  updated_at?: Timestamp
+}
+
 // Validation schema
 const subjectSchema = z.object({
   name: z.string().min(1, "Subject name is required"),
@@ -36,7 +47,7 @@ const subjectSchema = z.object({
 
 export default function SubjectsPage() {
   // State for subjects
-  const [subjects, setSubjects] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
 
   // State for loading
   const [isLoading, setIsLoading] = useState(true)
@@ -45,7 +56,7 @@ export default function SubjectsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
-  const [selectedSubject, setSelectedSubject] = useState<any>(null)
+  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
 
   // State for school info
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
@@ -92,10 +103,13 @@ export default function SubjectsPage() {
         const subjectsRef = collection(db, "subjects")
         const subjectsQuery = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
         const subjectsSnapshot = await getDocs(subjectsQuery)
-        const subjectsList = subjectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
+        const subjectsList: Subject[] = subjectsSnapshot.docs.map(
+          (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          } as Subject),
+        )
 
         // Sort subjects by name
         subjectsList.sort((a, b) => a.name.localeCompare(b.name))
@@ -142,7 +156,7 @@ export default function SubjectsPage() {
   }
 
   // Open details dialog
-  const handleOpenDetailsDialog = (subject: any) => {
+  const handleOpenDetailsDialog = (subject: Subject) => {
     setSelectedSubject(subject)
     setIsDetailsDialogOpen(true)
   }
@@ -284,254 +298,256 @@ export default function SubjectsPage() {
   })
 
   // Get unique departments and levels for filters
-  const departments = ["all", ...new Set(subjects.map((subject) => subject.department).filter(Boolean))]
-  const levels = ["all", ...new Set(subjects.map((subject) => subject.level).filter(Boolean))]
+  const departments = ["all", ...[...new Set(subjects.map((s) => s.department))].filter(Boolean)]
+  const levels = ["all", ...[...new Set(subjects.map((s) => s.level))].filter(Boolean)]
 
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Subjects</CardTitle>
-          <Button onClick={handleOpenAddDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Subject
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <Input
-                  placeholder="Search subjects..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept} value={dept}>
-                        {dept === "all" ? "All Departments" : dept}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={levelFilter} onValueChange={setLevelFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {levels.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {level === "all" ? "All Levels" : level}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : filteredSubjects.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {subjects.length === 0
-                  ? "No subjects found. Add your first subject to get started."
-                  : "No subjects match your search criteria."}
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject Code</TableHead>
-                      <TableHead>Subject Name</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Level</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredSubjects.map((subject) => (
-                      <TableRow
-                        key={subject.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleOpenDetailsDialog(subject)}
-                      >
-                        <TableCell className="font-medium">{subject.code}</TableCell>
-                        <TableCell>{subject.name}</TableCell>
-                        <TableCell>{subject.department || "—"}</TableCell>
-                        <TableCell>{subject.level || "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Add Subject Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Subject</DialogTitle>
-            <DialogDescription>Add a new subject to the system.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Subject Name *</Label>
-                <Input id="name" value={formData.name} onChange={handleInputChange} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="code">Subject Code *</Label>
-                <Input id="code" value={formData.code} onChange={handleInputChange} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
-                <Input id="department" value={formData.department} onChange={handleInputChange} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="level">Level</Label>
-                <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NotSpecified">Not Specified</SelectItem>
-                    <SelectItem value="Primary">Primary</SelectItem>
-                    <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
-                    <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="description">Description</Label>
-                <Input id="description" value={formData.description} onChange={handleInputChange} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Subject"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Subject Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Subject</DialogTitle>
-            <DialogDescription>Update subject information.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Subject Name *</Label>
-                <Input id="name" value={formData.name} onChange={handleInputChange} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="code">Subject Code *</Label>
-                <Input id="code" value={formData.code} onChange={handleInputChange} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
-                <Input id="department" value={formData.department} onChange={handleInputChange} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="level">Level</Label>
-                <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NotSpecified">Not Specified</SelectItem>
-                    <SelectItem value="Primary">Primary</SelectItem>
-                    <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
-                    <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="description">Description</Label>
-                <Input id="description" value={formData.description} onChange={handleInputChange} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Updating..." : "Update Subject"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Subject Details Dialog */}
-      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] w-[90%]">
-          <DialogHeader>
-            <DialogTitle>Subject Details</DialogTitle>
-          </DialogHeader>
-          {selectedSubject && (
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-2xl font-semibold">Subjects</CardTitle>
+            <Button onClick={handleOpenAddDialog}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Subject
+            </Button>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Subject Code</h3>
-                  <p className="text-base font-medium">{selectedSubject.code}</p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Search subjects..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
                 </div>
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Subject Name</h3>
-                  <p className="text-base font-medium">{selectedSubject.name}</p>
+                <div className="flex gap-2">
+                  <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.filter((c): c is string => !!c).map((dept) => (
+                        <SelectItem key={dept} value={dept}>
+                          {dept === "all" ? "All Departments" : dept}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={levelFilter} onValueChange={setLevelFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {levels.filter((c): c is string => !!c).map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {level === "all" ? "All Levels" : level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
-                  <p className="text-base">{selectedSubject.department || "—"}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Level</h3>
-                  <p className="text-base">{selectedSubject.level || "—"}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <h3 className="text-sm font-medium text-muted-foreground">Description</h3>
-                  <p className="text-base">{selectedSubject.description || "No description provided."}</p>
-                </div>
-                {selectedSubject.created_at && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
-                    <p className="text-sm">{selectedSubject.created_at.toDate().toLocaleDateString()}</p>
-                  </div>
-                )}
-                {selectedSubject.updated_at && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Last Updated</h3>
-                    <p className="text-sm">{selectedSubject.updated_at.toDate().toLocaleDateString()}</p>
-                  </div>
-                )}
               </div>
-              <DialogFooter className="flex justify-between sm:justify-end gap-2">
-                <Button variant="destructive" onClick={handleDelete} className="w-full sm:w-auto">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-                <Button onClick={handleOpenEditDialog} className="w-full sm:w-auto">
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit
+
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : filteredSubjects.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  {subjects.length === 0
+                    ? "No subjects found. Add your first subject to get started."
+                    : "No subjects match your search criteria."}
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Subject Code</TableHead>
+                        <TableHead>Subject Name</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Level</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredSubjects.map((subject) => (
+                        <TableRow
+                          key={subject.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleOpenDetailsDialog(subject)}
+                        >
+                          <TableCell className="font-medium">{subject.code}</TableCell>
+                          <TableCell>{subject.name}</TableCell>
+                          <TableCell>{subject.department || "—"}</TableCell>
+                          <TableCell>{subject.level || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Add Subject Dialog */}
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add Subject</DialogTitle>
+              <DialogDescription>Add a new subject to the system.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Subject Name *</Label>
+                  <Input id="name" value={formData.name} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="code">Subject Code *</Label>
+                  <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="department">Department</Label>
+                  <Input id="department" value={formData.department} onChange={handleInputChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="level">Level</Label>
+                  <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NotSpecified">Not Specified</SelectItem>
+                      <SelectItem value="Primary">Primary</SelectItem>
+                      <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
+                      <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input id="description" value={formData.description} onChange={handleInputChange} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Subject"}
                 </Button>
               </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Subject Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Subject</DialogTitle>
+              <DialogDescription>Update subject information.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Subject Name *</Label>
+                  <Input id="name" value={formData.name} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="code">Subject Code *</Label>
+                  <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="department">Department</Label>
+                  <Input id="department" value={formData.department} onChange={handleInputChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="level">Level</Label>
+                  <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NotSpecified">Not Specified</SelectItem>
+                      <SelectItem value="Primary">Primary</SelectItem>
+                      <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
+                      <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input id="description" value={formData.description} onChange={handleInputChange} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Updating..." : "Update Subject"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Subject Details Dialog */}
+        <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%]">
+            <DialogHeader>
+              <DialogTitle>Subject Details</DialogTitle>
+            </DialogHeader>
+            {selectedSubject && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Subject Code</h3>
+                    <p className="text-base font-medium">{selectedSubject.code}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Subject Name</h3>
+                    <p className="text-base font-medium">{selectedSubject.name}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
+                    <p className="text-base">{selectedSubject.department || "—"}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Level</h3>
+                    <p className="text-base">{selectedSubject.level || "—"}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <h3 className="text-sm font-medium text-muted-foreground">Description</h3>
+                    <p className="text-base">{selectedSubject.description || "No description provided."}</p>
+                  </div>
+                  {selectedSubject.created_at && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
+                      <p className="text-sm">{selectedSubject.created_at.toDate().toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {selectedSubject.updated_at && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Last Updated</h3>
+                      <p className="text-sm">{selectedSubject.updated_at.toDate().toLocaleDateString()}</p>
+                    </div>
+                  )}
+                </div>
+                <DialogFooter className="flex justify-between sm:justify-end gap-2">
+                  <Button variant="destructive" onClick={handleDelete} className="w-full sm:w-auto">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                  <Button onClick={handleOpenEditDialog} className="w-full sm:w-auto">
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </DashboardLayout>
   )
 }

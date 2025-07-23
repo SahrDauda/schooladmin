@@ -216,9 +216,8 @@ export default function TeachersPage() {
       await setDoc(doc(db, "teachers", teacherId), teacherData)
 
       // Send email with login credentials
-      // NOTE: The sendEmail function is a mock. Replace with a real email service (e.g., SendGrid, Mailgun, SES) for production use.
-      const emailSubject = "Your Teacher Account Credentials"
-      const emailBody = `Dear ${formData.firstname} ${formData.lastname},\n\nYour teacher account has been created.\n\nLogin Email: ${formData.email}\nTemporary Password: ${password}\n\nPlease log in and change your password as soon as possible.\n\nBest regards,\nSchool Admin Team`
+      const emailSubject = "Welcome to SchoolTech – Your Account Credentials"
+      const emailBody = `Dear ${formData.firstname} ${formData.lastname},\n\nWelcome to SchoolTech! We are excited to have you join us.\n\nYour account has been created. Please find your login credentials below:\n\nUsername: ${formData.email}\nPassword: ${password}\n\nFor security, we recommend logging in and changing your password as soon as possible.\n\nIf you have any questions or need assistance, feel free to reach out to the admin team.\n\nBest regards,\nSchoolTech Administration`
       const emailResult = await sendEmail(formData.email, emailSubject, emailBody)
       if (!emailResult.success) {
         toast({
@@ -348,494 +347,494 @@ export default function TeachersPage() {
 
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Teachers</CardTitle>
-          <div className="flex gap-2">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  <span>Add Teacher</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add Teacher</DialogTitle>
-                  <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
-                </DialogHeader>
-                <Tabs defaultValue="personal" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                    <TabsTrigger value="professional">Professional Information</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="personal" className="space-y-4">
-                    <form className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="firstname">First Name</Label>
-                          <Input id="firstname" value={formData.firstname} onChange={handleInputChange} />
-                        </div>
-                        <div>
-                          <Label htmlFor="lastname">Last Name</Label>
-                          <Input id="lastname" value={formData.lastname} onChange={handleInputChange} />
-                        </div>
-                        <div>
-                          <Label htmlFor="gender">Gender</Label>
-                          <Select onValueChange={(value) => handleSelectChange("gender", value)}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select gender" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Male">Male</SelectItem>
-                              <SelectItem value="Female">Female</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label htmlFor="email">Email</Label>
-                          <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
-                        </div>
-                        <div>
-                          <Label htmlFor="phone">Phone</Label>
-                          <Input id="phone" value={formData.phone} onChange={handleInputChange} />
-                        </div>
-                        <div className="md:col-span-2">
-                          <Label htmlFor="address">Address</Label>
-                          <Input id="address" value={formData.address} onChange={handleInputChange} />
-                        </div>
-                      </div>
-                    </form>
-                  </TabsContent>
-                  <TabsContent value="professional" className="space-y-4">
-                    <form onSubmit={handleSubmitTeacher} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="qualification">Qualification</Label>
-                          <Input id="qualification" value={formData.qualification} onChange={handleInputChange} />
-                        </div>
-                        <div>
-                          <Label htmlFor="subject">Subject</Label>
-                          <Select
-                            value={formData.subject}
-                            onValueChange={(value) => handleSelectChange("subject", value)}
-                            disabled={subjects.length === 0}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select subject" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {subjects.map((subject: any) => (
-                                <SelectItem key={subject.id} value={subject.name}>{subject.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {subjects.length === 0 && (
-                            <div className="text-sm text-muted-foreground mt-1">No subjects available. Please add subjects first.</div>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="joining_date">Joining Date</Label>
-                          <Input
-                            id="joining_date"
-                            type="date"
-                            value={formData.joining_date}
-                            onChange={handleInputChange}
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button type="submit" disabled={isSubmitting}>
-                          {isSubmitting ? "Submitting..." : "Add Teacher"}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </TabsContent>
-                </Tabs>
-              </DialogContent>
-            </Dialog>
-
-            <Button onClick={() => setIsQrModalOpen(true)} variant="outline">
-              <QrCode className="w-4 h-4 mr-2" />
-              <span>Sign In</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <GraduationCap className="h-4 w-4 text-gray-500" />
-                  <span>Total Teachers</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalTeachers}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <GraduationCap className="h-4 w-4 text-green-500" />
-                  <span>Active Teachers</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeTeachers}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <GraduationCap className="h-4 w-4 text-blue-500" />
-                  <span>Male Teachers</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{maleTeachers}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <GraduationCap className="h-4 w-4 text-pink-500" />
-                  <span>Female Teachers</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{femaleTeachers}</div>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="relative w-full md:w-auto">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search teachers..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full md:w-[250px] pl-8"
-                />
-              </div>
-              {subjectOptions.length > 0 && (
-                <Select onValueChange={(value) => setSelectedSubject(value)}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Filter by subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Subjects</SelectItem>
-                    {subjectOptions.map((subject, index) => (
-                      <SelectItem key={index} value={subject}>
-                        {subject}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : filteredTeachers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No teachers found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTeachers.map((teacher) => (
-                    <TableRow
-                      key={teacher.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={(e) => {
-                        if (!(e.target as HTMLElement).closest("button")) {
-                          setSelectedTeacher(teacher)
-                          setEditFormData(teacher)
-                          setIsViewTeacherOpen(true)
-                        }
-                      }}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarFallback>{getInitials(teacher.firstname, teacher.lastname)}</AvatarFallback>
-                          </Avatar>
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-2xl font-semibold">Teachers</CardTitle>
+            <div className="flex gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    <span>Add Teacher</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Add Teacher</DialogTitle>
+                    <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
+                  </DialogHeader>
+                  <Tabs defaultValue="personal" className="space-y-4">
+                    <TabsList>
+                      <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                      <TabsTrigger value="professional">Professional Information</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="personal" className="space-y-4">
+                      <form className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <div className="font-medium">{`${teacher.firstname} ${teacher.lastname}`}</div>
-                            <div className="text-xs text-muted-foreground">{teacher.qualification}</div>
+                            <Label htmlFor="firstname">First Name</Label>
+                            <Input id="firstname" value={formData.firstname} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="lastname">Last Name</Label>
+                            <Input id="lastname" value={formData.lastname} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="gender">Gender</Label>
+                            <Select onValueChange={(value) => handleSelectChange("gender", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="phone">Phone</Label>
+                            <Input id="phone" value={formData.phone} onChange={handleInputChange} />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label htmlFor="address">Address</Label>
+                            <Input id="address" value={formData.address} onChange={handleInputChange} />
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>{teacher.subject || "-"}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span>{teacher.email}</span>
+                      </form>
+                    </TabsContent>
+                    <TabsContent value="professional" className="space-y-4">
+                      <form onSubmit={handleSubmitTeacher} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="qualification">Qualification</Label>
+                            <Input id="qualification" value={formData.qualification} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="subject">Subject</Label>
+                            <Select
+                              value={formData.subject}
+                              onValueChange={(value) => handleSelectChange("subject", value)}
+                              disabled={subjects.length === 0}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select subject" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {subjects.map((subject: any) => (
+                                  <SelectItem key={subject.id} value={subject.name}>{subject.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {subjects.length === 0 && (
+                              <div className="text-sm text-muted-foreground mt-1">No subjects available. Please add subjects first.</div>
+                            )}
+                          </div>
+                          <div>
+                            <Label htmlFor="joining_date">Joining Date</Label>
+                            <Input
+                              id="joining_date"
+                              type="date"
+                              value={formData.joining_date}
+                              onChange={handleInputChange}
+                            />
+                          </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span>{teacher.phone}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            teacher.status === "Active"
+                        <DialogFooter>
+                          <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? "Submitting..." : "Add Teacher"}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </TabsContent>
+                  </Tabs>
+                </DialogContent>
+              </Dialog>
+
+              <Button onClick={() => setIsQrModalOpen(true)} variant="outline">
+                <QrCode className="w-4 h-4 mr-2" />
+                <span>Sign In</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <GraduationCap className="h-4 w-4 text-gray-500" />
+                    <span>Total Teachers</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalTeachers}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <GraduationCap className="h-4 w-4 text-green-500" />
+                    <span>Active Teachers</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{activeTeachers}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <GraduationCap className="h-4 w-4 text-blue-500" />
+                    <span>Male Teachers</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{maleTeachers}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <GraduationCap className="h-4 w-4 text-pink-500" />
+                    <span>Female Teachers</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{femaleTeachers}</div>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
+              <div className="flex items-center space-x-2">
+                <div className="relative w-full md:w-auto">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search teachers..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full md:w-[250px] pl-8"
+                  />
+                </div>
+                {subjectOptions.length > 0 && (
+                  <Select onValueChange={(value) => setSelectedSubject(value)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter by subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Subjects</SelectItem>
+                      {subjectOptions.map((subject, index) => (
+                        <SelectItem key={index} value={subject}>
+                          {subject}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : filteredTeachers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No teachers found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTeachers.map((teacher) => (
+                      <TableRow
+                        key={teacher.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={(e) => {
+                          if (!(e.target as HTMLElement).closest("button")) {
+                            setSelectedTeacher(teacher)
+                            setEditFormData(teacher)
+                            setIsViewTeacherOpen(true)
+                          }
+                        }}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarFallback>{getInitials(teacher.firstname, teacher.lastname)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium">{`${teacher.firstname} ${teacher.lastname}`}</div>
+                              <div className="text-xs text-muted-foreground">{teacher.qualification}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{teacher.subject || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span>{teacher.email}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span>{teacher.phone}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${teacher.status === "Active"
                               ? "bg-green-100 text-green-800"
                               : teacher.status === "On Leave"
                                 ? "bg-yellow-100 text-yellow-800"
                                 : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {teacher.status}
-                        </div>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} className="space-x-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setSelectedTeacher(teacher)
-                            setEditFormData(teacher)
-                            setIsViewTeacherOpen(true)
-                            setIsEditing(true)
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="text-red-500"
-                          onClick={() => handleDeleteTeacher(teacher.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {selectedTeacher && (
-            <Dialog
-              open={isViewTeacherOpen}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setIsViewTeacherOpen(false)
-                  setIsEditing(false)
-                }
-              }}
-              modal
-            >
-              <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-                <DialogHeader className="flex flex-row items-center justify-between">
-                  <DialogTitle>Teacher Information</DialogTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
-                      {isEditing ? "Cancel Edit" : "Edit"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsViewTeacherOpen(false)
-                        setIsEditing(false)
-                      }}
-                    >
-                      Close
-                    </Button>
-                  </div>
-                </DialogHeader>
+                              }`}
+                          >
+                            {teacher.status}
+                          </div>
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()} className="space-x-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedTeacher(teacher)
+                              setEditFormData(teacher)
+                              setIsViewTeacherOpen(true)
+                              setIsEditing(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="text-red-500"
+                            onClick={() => handleDeleteTeacher(teacher.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            {selectedTeacher && (
+              <Dialog
+                open={isViewTeacherOpen}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setIsViewTeacherOpen(false)
+                    setIsEditing(false)
+                  }
+                }}
+                modal
+              >
+                <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+                  <DialogHeader className="flex flex-row items-center justify-between">
+                    <DialogTitle>Teacher Information</DialogTitle>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
+                        {isEditing ? "Cancel Edit" : "Edit"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsViewTeacherOpen(false)
+                          setIsEditing(false)
+                        }}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </DialogHeader>
 
-                {isEditing ? (
-                  <form onSubmit={handleUpdateTeacher} className="space-y-4">
+                  {isEditing ? (
+                    <form onSubmit={handleUpdateTeacher} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="edit_firstname">First Name</Label>
+                          <Input
+                            id="edit_firstname"
+                            value={editFormData.firstname}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                firstname: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_lastname">Last Name</Label>
+                          <Input
+                            id="edit_lastname"
+                            value={editFormData.lastname}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                lastname: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_email">Email</Label>
+                          <Input
+                            id="edit_email"
+                            type="email"
+                            value={editFormData.email}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                email: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_phone">Phone</Label>
+                          <Input
+                            id="edit_phone"
+                            value={editFormData.phone}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                phone: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit_subject">Subject</Label>
+                          <Input
+                            id="edit_subject"
+                            value={editFormData.subject}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                subject: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit">Save Changes</Button>
+                      </DialogFooter>
+                    </form>
+                  ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="edit_firstname">First Name</Label>
-                        <Input
-                          id="edit_firstname"
-                          value={editFormData.firstname}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              firstname: e.target.value,
-                            }))
-                          }
-                        />
+                      <div className="md:col-span-2 flex items-center gap-4">
+                        <Avatar className="h-16 w-16">
+                          <AvatarFallback className="text-lg">
+                            {getInitials(selectedTeacher.firstname, selectedTeacher.lastname)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="text-xl font-bold">{`${selectedTeacher.firstname} ${selectedTeacher.lastname}`}</h3>
+                          <p className="text-muted-foreground">{selectedTeacher.subject} Teacher</p>
+                        </div>
                       </div>
                       <div>
-                        <Label htmlFor="edit_lastname">Last Name</Label>
-                        <Input
-                          id="edit_lastname"
-                          value={editFormData.lastname}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              lastname: e.target.value,
-                            }))
-                          }
-                        />
+                        <Label className="font-bold">Email</Label>
+                        <p className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          {selectedTeacher.email}
+                        </p>
                       </div>
                       <div>
-                        <Label htmlFor="edit_email">Email</Label>
-                        <Input
-                          id="edit_email"
-                          type="email"
-                          value={editFormData.email}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              email: e.target.value,
-                            }))
-                          }
-                        />
+                        <Label className="font-bold">Phone</Label>
+                        <p className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          {selectedTeacher.phone}
+                        </p>
                       </div>
                       <div>
-                        <Label htmlFor="edit_phone">Phone</Label>
-                        <Input
-                          id="edit_phone"
-                          value={editFormData.phone}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              phone: e.target.value,
-                            }))
-                          }
-                        />
+                        <Label className="font-bold">Qualification</Label>
+                        <p className="flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                          {selectedTeacher.qualification}
+                        </p>
                       </div>
                       <div>
-                        <Label htmlFor="edit_subject">Subject</Label>
-                        <Input
-                          id="edit_subject"
-                          value={editFormData.subject}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              subject: e.target.value,
-                            }))
-                          }
-                        />
+                        <Label className="font-bold">Subject</Label>
+                        <p className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-muted-foreground" />
+                          {selectedTeacher.subject}
+                        </p>
                       </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit">Save Changes</Button>
-                    </DialogFooter>
-                  </form>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2 flex items-center gap-4">
-                      <Avatar className="h-16 w-16">
-                        <AvatarFallback className="text-lg">
-                          {getInitials(selectedTeacher.firstname, selectedTeacher.lastname)}
-                        </AvatarFallback>
-                      </Avatar>
                       <div>
-                        <h3 className="text-xl font-bold">{`${selectedTeacher.firstname} ${selectedTeacher.lastname}`}</h3>
-                        <p className="text-muted-foreground">{selectedTeacher.subject} Teacher</p>
+                        <Label className="font-bold">Joining Date</Label>
+                        <p className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          {selectedTeacher.joining_date}
+                        </p>
                       </div>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Email</Label>
-                      <p className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        {selectedTeacher.email}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Phone</Label>
-                      <p className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
-                        {selectedTeacher.phone}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Qualification</Label>
-                      <p className="flex items-center gap-2">
-                        <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                        {selectedTeacher.qualification}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Subject</Label>
-                      <p className="flex items-center gap-2">
-                        <BookOpen className="h-4 w-4 text-muted-foreground" />
-                        {selectedTeacher.subject}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Joining Date</Label>
-                      <p className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {selectedTeacher.joining_date}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Status</Label>
-                      <p>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            selectedTeacher.status === "Active"
+                      <div>
+                        <Label className="font-bold">Status</Label>
+                        <p>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedTeacher.status === "Active"
                               ? "bg-green-100 text-green-800"
                               : selectedTeacher.status === "On Leave"
                                 ? "bg-yellow-100 text-yellow-800"
                                 : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {selectedTeacher.status}
-                        </span>
-                      </p>
+                              }`}
+                          >
+                            {selectedTeacher.status}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label className="font-bold">Address</Label>
+                        <p>{selectedTeacher.address}</p>
+                      </div>
                     </div>
-                    <div className="md:col-span-2">
-                      <Label className="font-bold">Address</Label>
-                      <p>{selectedTeacher.address}</p>
-                    </div>
-                  </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {/* QR Code Modal */}
+            <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
+              <DialogContent className="sm:max-w-[600px] md:max-w-[650px] w-[90%]">
+                <DialogHeader>
+                  <DialogTitle>Teacher Attendance QR Code</DialogTitle>
+                  <DialogDescription>Scan this QR code using a mobile device to mark attendance</DialogDescription>
+                </DialogHeader>
+                {schoolInfo.school_id && (
+                  <TeacherAttendanceQR
+                    schoolId={schoolInfo.school_id}
+                    schoolName={schoolInfo.schoolName}
+                    inModal={true}
+                  />
                 )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsQrModalOpen(false)}>
+                    Close
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
-          )}
-
-          {/* QR Code Modal */}
-          <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-            <DialogContent className="sm:max-w-[600px] md:max-w-[650px] w-[90%]">
-              <DialogHeader>
-                <DialogTitle>Teacher Attendance QR Code</DialogTitle>
-                <DialogDescription>Scan this QR code using a mobile device to mark attendance</DialogDescription>
-              </DialogHeader>
-              {schoolInfo.school_id && (
-                <TeacherAttendanceQR
-                  schoolId={schoolInfo.school_id}
-                  schoolName={schoolInfo.schoolName}
-                  inModal={true}
-                />
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsQrModalOpen(false)}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   )
 }

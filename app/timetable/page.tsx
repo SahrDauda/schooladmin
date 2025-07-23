@@ -26,6 +26,37 @@ import { z } from "zod"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
+interface TimetableEntry {
+  id: string
+  day: string
+  start_time: string
+  end_time: string
+  subject: string
+  type: "class" | "exam"
+  date?: string
+  teacher_id?: string
+  room?: string
+  examiner?: string
+}
+
+interface Teacher {
+  id: string
+  firstname: string
+  lastname: string
+}
+
+interface Subject {
+  id: string
+  name: string
+}
+
+interface Class {
+  id: string
+  name: string
+  level?: string
+  section?: string
+}
+
 // Validation schemas
 const timetableEntrySchema = z.object({
   class_id: z.string().min(1, "Class is required"),
@@ -99,13 +130,12 @@ export default function TimetablePage() {
   const [activeTab, setActiveTab] = useState("class")
 
   // State for classes and teachers
-  const [classes, setClasses] = useState<any[]>([])
-  const [teachers, setTeachers] = useState<any[]>([])
-  const [subjects, setSubjects] = useState<any[]>([])
+  const [classes, setClasses] = useState<Class[]>([])
+  const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
 
   // State for timetable entries
-  const [classTimetableEntries, setClassTimetableEntries] = useState<any[]>([])
-  const [examTimetableEntries, setExamTimetableEntries] = useState<any[]>([])
+  const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([])
 
   // State for selected class
   const [selectedClassId, setSelectedClassId] = useState("")
@@ -174,10 +204,13 @@ export default function TimetablePage() {
         const classesRef = collection(db, "classes")
         const classesQuery = query(classesRef, where("school_id", "==", schoolInfo.school_id))
         const classesSnapshot = await getDocs(classesQuery)
-        const classesList = classesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
+        const classesList: Class[] = classesSnapshot.docs.map(
+          (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          } as Class),
+        )
         // Sort classes client-side
         classesList.sort((a, b) => a.name.localeCompare(b.name))
         setClasses(classesList)
@@ -186,10 +219,13 @@ export default function TimetablePage() {
         const teachersRef = collection(db, "teachers")
         const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
         const teachersSnapshot = await getDocs(teachersQuery)
-        const teachersList = teachersSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
+        const teachersList: Teacher[] = teachersSnapshot.docs.map(
+          (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          } as Teacher),
+        )
         // Sort teachers client-side
         teachersList.sort((a, b) => a.lastname.localeCompare(b.lastname))
         setTeachers(teachersList)
@@ -198,11 +234,13 @@ export default function TimetablePage() {
         const subjectsRef = collection(db, "subjects")
         const subjectsQuery = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
         const subjectsSnapshot = await getDocs(subjectsQuery)
-        const subjectsList = subjectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        // Sort subjects client-side
+        const subjectsList: Subject[] = subjectsSnapshot.docs.map(
+          (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          } as Subject),
+        )
         subjectsList.sort((a, b) => a.name.localeCompare(b.name))
         setSubjects(subjectsList)
 
@@ -252,21 +290,13 @@ export default function TimetablePage() {
         where("type", "==", "class"),
       )
       const classTimetableSnapshot = await getDocs(classTimetableQuery)
-      const classTimetableList = classTimetableSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
-      // Sort class timetable entries client-side
-      classTimetableList.sort((a, b) => {
-        // First sort by day of week
-        const dayOrder = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 }
-        const dayDiff = dayOrder[a.day] - dayOrder[b.day]
-        if (dayDiff !== 0) return dayDiff
-
-        // Then sort by start time
-        return a.start_time.localeCompare(b.start_time)
-      })
-      setClassTimetableEntries(classTimetableList)
+      const classTimetableList = classTimetableSnapshot.docs.map(
+        (doc) =>
+        ({
+          id: doc.id,
+          ...doc.data(),
+        } as TimetableEntry),
+      )
 
       // Fetch exam timetable entries
       const examTimetableRef = collection(db, "timetable")
@@ -277,20 +307,15 @@ export default function TimetablePage() {
         where("type", "==", "exam"),
       )
       const examTimetableSnapshot = await getDocs(examTimetableQuery)
-      const examTimetableList = examTimetableSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
-      // Sort exam timetable entries client-side
-      examTimetableList.sort((a, b) => {
-        // First sort by date
-        const dateDiff = a.date.localeCompare(b.date)
-        if (dateDiff !== 0) return dateDiff
+      const examTimetableList = examTimetableSnapshot.docs.map(
+        (doc) =>
+        ({
+          id: doc.id,
+          ...doc.data(),
+        } as TimetableEntry),
+      )
 
-        // Then sort by start time
-        return a.start_time.localeCompare(b.start_time)
-      })
-      setExamTimetableEntries(examTimetableList)
+      setTimetableEntries([...classTimetableList, ...examTimetableList])
     } catch (error) {
       console.error("Error fetching timetable entries:", error)
       toast({
@@ -498,7 +523,7 @@ export default function TimetablePage() {
   }
 
   // Group class timetable entries by day
-  const groupedByDay = classTimetableEntries.reduce(
+  const groupedByDay = timetableEntries.reduce(
     (acc, entry) => {
       if (!acc[entry.day]) {
         acc[entry.day] = []
@@ -506,7 +531,7 @@ export default function TimetablePage() {
       acc[entry.day].push(entry)
       return acc
     },
-    {} as Record<string, any[]>,
+    {} as Record<string, TimetableEntry[]>,
   )
 
   // Days of the week in order
@@ -542,432 +567,475 @@ export default function TimetablePage() {
     setIsAddExamEntryOpen(true)
   }
 
+  const getDayOrder = (day: string) => {
+    const order = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 }
+    return order[day as keyof typeof order] || 8
+  }
+
+  const sortedClassTimetable = timetableEntries
+    .filter((entry) => entry.type === "class")
+    .sort((a, b) => {
+      const dayOrderA = getDayOrder(a.day)
+      const dayOrderB = getDayOrder(b.day)
+      if (dayOrderA !== dayOrderB) {
+        return dayOrderA - dayOrderB
+      }
+      return a.start_time.localeCompare(b.start_time)
+    })
+
+  const sortedExamTimetable = timetableEntries
+    .filter((entry) => entry.type === "exam")
+    .sort((a, b) => {
+      if (a.date && b.date) {
+        const dateA = new Date(a.date)
+        const dateB = new Date(b.date)
+        if (dateA.getTime() !== dateB.getTime()) {
+          return dateA.getTime() - dateB.getTime()
+        }
+      }
+      return a.start_time.localeCompare(b.start_time)
+    })
+
+  // Group timetable by day
+  const groupedTimetable = sortedClassTimetable.reduce(
+    (acc, entry) => {
+      if (!acc[entry.day]) {
+        acc[entry.day] = []
+      }
+      acc[entry.day].push(entry)
+      return acc
+    },
+    {} as Record<string, TimetableEntry[]>,
+  )
+
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Timetable</CardTitle>
-          <div className="flex items-center gap-2">
-            <Select value={selectedClassId} onValueChange={handleClassChange}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select class" />
-              </SelectTrigger>
-              <SelectContent>
-                {classes.map((cls) => (
-                  <SelectItem key={cls.id} value={cls.id}>
-                    {cls.name} - {cls.level} {cls.section}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="class" onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="class" className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
-                <span>Class Timetable</span>
-              </TabsTrigger>
-              <TabsTrigger value="exam" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                <span>Exam Timetable</span>
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="class">
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : !selectedClassId ? (
-                <div className="text-center py-8 text-muted-foreground">Please select a class to view timetable.</div>
-              ) : classTimetableEntries.length === 0 ? (
-                <div className="space-y-4">
-                  <div className="text-center py-2 text-muted-foreground">
-                    No timetable entries found for this class. Use the draft timetable below to add subjects.
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-2xl font-semibold">Timetable</CardTitle>
+            <div className="flex items-center gap-2">
+              <Select value={selectedClassId} onValueChange={handleClassChange}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name} - {cls.level} {cls.section}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="class" onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="class" className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Class Timetable</span>
+                </TabsTrigger>
+                <TabsTrigger value="exam" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span>Exam Timetable</span>
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="class">
+                {isLoading ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <Table className="border">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[100px]">Time</TableHead>
-                          {daysOfWeek.slice(0, 5).map((day) => (
-                            <TableHead key={day}>{day}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {DEFAULT_TIME_PERIODS.map((period) => (
-                          <TableRow key={`${period.start}-${period.end}`}>
-                            <TableCell className="font-medium">
-                              {formatTime(period.start)} - {formatTime(period.end)}
-                            </TableCell>
+                ) : !selectedClassId ? (
+                  <div className="text-center py-8 text-muted-foreground">Please select a class to view timetable.</div>
+                ) : sortedClassTimetable.length === 0 ? (
+                  <div className="space-y-4">
+                    <div className="text-center py-2 text-muted-foreground">
+                      No timetable entries found for this class. Use the draft timetable below to add subjects.
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table className="border">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[100px]">Time</TableHead>
                             {daysOfWeek.slice(0, 5).map((day) => (
-                              <TableCell key={day} className="h-16 align-middle">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="w-full h-full flex items-center justify-center"
-                                  onClick={() => handleAddFromDraft(day, period)}
-                                >
-                                  <Plus className="h-5 w-5 text-muted-foreground" />
-                                  <span className="sr-only">
-                                    Add {day} {period.start} class
-                                  </span>
-                                </Button>
-                              </TableCell>
+                              <TableHead key={day}>{day}</TableHead>
                             ))}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="overflow-x-auto">
-                    <Table className="border">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[100px]">Time</TableHead>
-                          {daysOfWeek.slice(0, 5).map((day) => (
-                            <TableHead key={day}>{day}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {DEFAULT_TIME_PERIODS.map((period) => (
-                          <TableRow key={`${period.start}-${period.end}`}>
-                            <TableCell className="font-medium">
-                              {formatTime(period.start)} - {formatTime(period.end)}
-                            </TableCell>
-                            {daysOfWeek.slice(0, 5).map((day) => {
-                              // Find if there's an entry for this day and time period
-                              const entry = classTimetableEntries.find(
-                                (e) => e.day === day && e.start_time === period.start && e.end_time === period.end,
-                              )
-
-                              return (
-                                <TableCell
-                                  key={day}
-                                  className={`h-16 align-middle ${isCurrentTimePeriod(day, period) ? "bg-yellow-50" : ""}`}
-                                >
-                                  {entry ? (
-                                    <div className="p-1 bg-blue-50 rounded-md border border-blue-100">
-                                      <div className="font-medium text-sm">{entry.subject}</div>
-                                      <div className="text-xs text-muted-foreground flex justify-between">
-                                        <span>
-                                          {entry.teacher_id ? getTeacherName(entry.teacher_id) : "Not Assigned"}
-                                        </span>
-                                        <span>{entry.room || "N/A"}</span>
-                                      </div>
-                                      <div className="mt-1 flex justify-end">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-5 w-5"
-                                          onClick={() => handleDeleteEntry(entry.id)}
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="w-full h-full flex items-center justify-center"
-                                      onClick={() => handleAddFromDraft(day, period)}
-                                    >
-                                      <Plus className="h-5 w-5 text-muted-foreground" />
-                                      <span className="sr-only">
-                                        Add {day} {period.start} class
-                                      </span>
-                                    </Button>
-                                  )}
-                                </TableCell>
-                              )
-                            })}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="exam">
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : !selectedClassId ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Please select a class to view exam timetable.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {examTimetableEntries.length === 0 ? (
-                    <div className="text-center py-2 text-muted-foreground">
-                      No exam timetable entries found for this class. Use the draft timetable below to add exams.
-                    </div>
-                  ) : null}
-                  <div className="overflow-x-auto">
-                    <Table className="border">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[100px]">Time</TableHead>
-                          {daysOfWeek.slice(0, 5).map((day) => (
-                            <TableHead key={day}>{day}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {DEFAULT_TIME_PERIODS.map((period) => (
-                          <TableRow key={`${period.start}-${period.end}`}>
-                            <TableCell className="font-medium">
-                              {formatTime(period.start)} - {formatTime(period.end)}
-                            </TableCell>
-                            {daysOfWeek.slice(0, 5).map((day) => {
-                              // Find if there's an exam entry for this day and time period
-                              // For exams, we need to check if there's an entry with the same time period
-                              // but we don't have a direct day field for exams, so we'll need to check
-                              // if there's an exam scheduled for the current day
-                              const today = new Date()
-                              const dayIndex = daysOfWeek.indexOf(day)
-
-                              // Calculate the date for this day of the week
-                              const targetDate = new Date(today)
-                              const currentDayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1 // Convert Sunday (0) to 6
-                              const daysToAdd = (dayIndex - currentDayIndex + 7) % 7
-                              targetDate.setDate(today.getDate() + daysToAdd)
-
-                              // Format date as YYYY-MM-DD
-                              const formattedDate = targetDate.toISOString().split("T")[0]
-
-                              // Find exam entry for this date and time period
-                              const entry = examTimetableEntries.find(
-                                (e) =>
-                                  e.date === formattedDate &&
-                                  e.start_time === period.start &&
-                                  e.end_time === period.end,
-                              )
-
-                              return (
+                        </TableHeader>
+                        <TableBody>
+                          {DEFAULT_TIME_PERIODS.map((period) => (
+                            <TableRow key={`${period.start}-${period.end}`}>
+                              <TableCell className="font-medium">
+                                {formatTime(period.start)} - {formatTime(period.end)}
+                              </TableCell>
+                              {daysOfWeek.slice(0, 5).map((day) => (
                                 <TableCell key={day} className="h-16 align-middle">
-                                  {entry ? (
-                                    <div className="p-1 bg-amber-50 rounded-md border border-amber-100">
-                                      <div className="font-medium text-sm">{entry.subject}</div>
-                                      <div className="text-xs text-muted-foreground flex justify-between">
-                                        <span>{entry.examiner || "Not Assigned"}</span>
-                                        <span>{entry.room || "N/A"}</span>
-                                      </div>
-                                      <div className="mt-1 flex justify-end">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-5 w-5"
-                                          onClick={() => handleDeleteEntry(entry.id)}
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="w-full h-full flex items-center justify-center"
-                                      onClick={() => handleAddExamFromDraft(day, period)}
-                                    >
-                                      <Plus className="h-5 w-5 text-muted-foreground" />
-                                      <span className="sr-only">
-                                        Add {day} {period.start} exam
-                                      </span>
-                                    </Button>
-                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full h-full flex items-center justify-center"
+                                    onClick={() => handleAddFromDraft(day, period)}
+                                  >
+                                    <Plus className="h-5 w-5 text-muted-foreground" />
+                                    <span className="sr-only">
+                                      Add {day} {period.start} class
+                                    </span>
+                                  </Button>
                                 </TableCell>
-                              )
-                            })}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="overflow-x-auto">
+                      <Table className="border">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[100px]">Time</TableHead>
+                            {daysOfWeek.slice(0, 5).map((day) => (
+                              <TableHead key={day}>{day}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {DEFAULT_TIME_PERIODS.map((period) => (
+                            <TableRow key={`${period.start}-${period.end}`}>
+                              <TableCell className="font-medium">
+                                {formatTime(period.start)} - {formatTime(period.end)}
+                              </TableCell>
+                              {daysOfWeek.slice(0, 5).map((day) => {
+                                // Find if there's an entry for this day and time period
+                                const entry = sortedClassTimetable.find(
+                                  (e) => e.day === day && e.start_time === period.start && e.end_time === period.end,
+                                )
+
+                                return (
+                                  <TableCell
+                                    key={day}
+                                    className={`h-16 align-middle ${isCurrentTimePeriod(day, period) ? "bg-yellow-50" : ""}`}
+                                  >
+                                    {entry ? (
+                                      <div className="p-1 bg-blue-50 rounded-md border border-blue-100">
+                                        <div className="font-medium text-sm">{entry.subject}</div>
+                                        <div className="text-xs text-muted-foreground flex justify-between">
+                                          <span>
+                                            {entry.teacher_id ? getTeacherName(entry.teacher_id) : "Not Assigned"}
+                                          </span>
+                                          <span>{entry.room || "N/A"}</span>
+                                        </div>
+                                        <div className="mt-1 flex justify-end">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-5 w-5"
+                                            onClick={() => handleDeleteEntry(entry.id)}
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="w-full h-full flex items-center justify-center"
+                                        onClick={() => handleAddFromDraft(day, period)}
+                                      >
+                                        <Plus className="h-5 w-5 text-muted-foreground" />
+                                        <span className="sr-only">
+                                          Add {day} {period.start} class
+                                        </span>
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                )
+                              })}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="exam">
+                {isLoading ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : !selectedClassId ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Please select a class to view exam timetable.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {sortedExamTimetable.length === 0 ? (
+                      <div className="text-center py-2 text-muted-foreground">
+                        No exam timetable entries found for this class. Use the draft timetable below to add exams.
+                      </div>
+                    ) : null}
+                    <div className="overflow-x-auto">
+                      <Table className="border">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[100px]">Time</TableHead>
+                            {daysOfWeek.slice(0, 5).map((day) => (
+                              <TableHead key={day}>{day}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {DEFAULT_TIME_PERIODS.map((period) => (
+                            <TableRow key={`${period.start}-${period.end}`}>
+                              <TableCell className="font-medium">
+                                {formatTime(period.start)} - {formatTime(period.end)}
+                              </TableCell>
+                              {daysOfWeek.slice(0, 5).map((day) => {
+                                // Find if there's an exam entry for this day and time period
+                                // For exams, we need to check if there's an entry with the same time period
+                                // but we don't have a direct day field for exams, so we'll need to check
+                                // if there's an exam scheduled for the current day
+                                const today = new Date()
+                                const dayIndex = daysOfWeek.indexOf(day)
+
+                                // Calculate the date for this day of the week
+                                const targetDate = new Date(today)
+                                const currentDayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1 // Convert Sunday (0) to 6
+                                const daysToAdd = (dayIndex - currentDayIndex + 7) % 7
+                                targetDate.setDate(today.getDate() + daysToAdd)
+
+                                // Format date as YYYY-MM-DD
+                                const formattedDate = targetDate.toISOString().split("T")[0]
+
+                                // Find exam entry for this date and time period
+                                const entry = sortedExamTimetable.find(
+                                  (e) =>
+                                    e.date === formattedDate &&
+                                    e.start_time === period.start &&
+                                    e.end_time === period.end,
+                                )
+
+                                return (
+                                  <TableCell key={day} className="h-16 align-middle">
+                                    {entry ? (
+                                      <div className="p-1 bg-amber-50 rounded-md border border-amber-100">
+                                        <div className="font-medium text-sm">{entry.subject}</div>
+                                        <div className="text-xs text-muted-foreground flex justify-between">
+                                          <span>{entry.examiner || "Not Assigned"}</span>
+                                          <span>{entry.room || "N/A"}</span>
+                                        </div>
+                                        <div className="mt-1 flex justify-end">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-5 w-5"
+                                            onClick={() => handleDeleteEntry(entry.id)}
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="w-full h-full flex items-center justify-center"
+                                        onClick={() => handleAddExamFromDraft(day, period)}
+                                      >
+                                        <Plus className="h-5 w-5 text-muted-foreground" />
+                                        <span className="sr-only">
+                                          Add {day} {period.start} exam
+                                        </span>
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                )
+                              })}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* Class Timetable Dialog */}
+        <Dialog open={isAddClassEntryOpen} onOpenChange={setIsAddClassEntryOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add Class Timetable Entry</DialogTitle>
+              <DialogDescription>Add a new entry to the class timetable for {selectedClassName}.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmitClassTimetable} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="day">Day</Label>
+                  <Select
+                    value={classTimetableFormData.day}
+                    onValueChange={(value) => handleClassTimetableSelectChange("day", value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {daysOfWeek.map((day) => (
+                        <SelectItem key={day} value={day}>
+                          {day}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+                <div>
+                  <Label htmlFor="subject">Subject</Label>
+                  <Select
+                    value={classTimetableFormData.subject}
+                    onValueChange={(value) => handleClassTimetableSelectChange("subject", value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.name}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="start_time">Start Time</Label>
+                  <Input
+                    id="start_time"
+                    type="time"
+                    value={classTimetableFormData.start_time}
+                    onChange={handleClassTimetableInputChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="end_time">End Time</Label>
+                  <Input
+                    id="end_time"
+                    type="time"
+                    value={classTimetableFormData.end_time}
+                    onChange={handleClassTimetableInputChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="teacher_id">Teacher</Label>
+                  <Select
+                    value={classTimetableFormData.teacher_id}
+                    onValueChange={(value) => handleClassTimetableSelectChange("teacher_id", value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select teacher" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not Assigned</SelectItem>
+                      {teachers.map((teacher) => (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {teacher.firstname} {teacher.lastname}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="room">Room</Label>
+                  <Input id="room" value={classTimetableFormData.room} onChange={handleClassTimetableInputChange} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Submitting..." : "Add Entry"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-      {/* Class Timetable Dialog */}
-      <Dialog open={isAddClassEntryOpen} onOpenChange={setIsAddClassEntryOpen}>
-        <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Class Timetable Entry</DialogTitle>
-            <DialogDescription>Add a new entry to the class timetable for {selectedClassName}.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmitClassTimetable} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="day">Day</Label>
-                <Select
-                  value={classTimetableFormData.day}
-                  onValueChange={(value) => handleClassTimetableSelectChange("day", value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select day" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {daysOfWeek.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Exam Timetable Dialog */}
+        <Dialog open={isAddExamEntryOpen} onOpenChange={setIsAddExamEntryOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add Exam Timetable Entry</DialogTitle>
+              <DialogDescription>Add a new entry to the exam timetable for {selectedClassName}.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmitExamTimetable} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="date">Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={examTimetableFormData.date}
+                    onChange={handleExamTimetableInputChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="subject">Subject</Label>
+                  <Select
+                    value={examTimetableFormData.subject}
+                    onValueChange={(value) => handleExamTimetableSelectChange("subject", value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.name}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="start_time">Start Time</Label>
+                  <Input
+                    id="start_time"
+                    type="time"
+                    value={examTimetableFormData.start_time}
+                    onChange={handleExamTimetableInputChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="end_time">End Time</Label>
+                  <Input
+                    id="end_time"
+                    type="time"
+                    value={examTimetableFormData.end_time}
+                    onChange={handleExamTimetableInputChange}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="examiner">Examiner</Label>
+                  <Input id="examiner" value={examTimetableFormData.examiner} onChange={handleExamTimetableInputChange} />
+                </div>
+                <div>
+                  <Label htmlFor="room">Room</Label>
+                  <Input id="room" value={examTimetableFormData.room} onChange={handleExamTimetableInputChange} />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="subject">Subject</Label>
-                <Select
-                  value={classTimetableFormData.subject}
-                  onValueChange={(value) => handleClassTimetableSelectChange("subject", value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.name}>
-                        {subject.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="start_time">Start Time</Label>
-                <Input
-                  id="start_time"
-                  type="time"
-                  value={classTimetableFormData.start_time}
-                  onChange={handleClassTimetableInputChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="end_time">End Time</Label>
-                <Input
-                  id="end_time"
-                  type="time"
-                  value={classTimetableFormData.end_time}
-                  onChange={handleClassTimetableInputChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="teacher_id">Teacher</Label>
-                <Select
-                  value={classTimetableFormData.teacher_id}
-                  onValueChange={(value) => handleClassTimetableSelectChange("teacher_id", value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select teacher" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Not Assigned</SelectItem>
-                    {teachers.map((teacher) => (
-                      <SelectItem key={teacher.id} value={teacher.id}>
-                        {teacher.firstname} {teacher.lastname}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="room">Room</Label>
-                <Input id="room" value={classTimetableFormData.room} onChange={handleClassTimetableInputChange} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Add Entry"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Exam Timetable Dialog */}
-      <Dialog open={isAddExamEntryOpen} onOpenChange={setIsAddExamEntryOpen}>
-        <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Exam Timetable Entry</DialogTitle>
-            <DialogDescription>Add a new entry to the exam timetable for {selectedClassName}.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmitExamTimetable} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={examTimetableFormData.date}
-                  onChange={handleExamTimetableInputChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="subject">Subject</Label>
-                <Select
-                  value={examTimetableFormData.subject}
-                  onValueChange={(value) => handleExamTimetableSelectChange("subject", value)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.name}>
-                        {subject.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="start_time">Start Time</Label>
-                <Input
-                  id="start_time"
-                  type="time"
-                  value={examTimetableFormData.start_time}
-                  onChange={handleExamTimetableInputChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="end_time">End Time</Label>
-                <Input
-                  id="end_time"
-                  type="time"
-                  value={examTimetableFormData.end_time}
-                  onChange={handleExamTimetableInputChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="examiner">Examiner</Label>
-                <Input id="examiner" value={examTimetableFormData.examiner} onChange={handleExamTimetableInputChange} />
-              </div>
-              <div>
-                <Label htmlFor="room">Room</Label>
-                <Input id="room" value={examTimetableFormData.room} onChange={handleExamTimetableInputChange} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Add Entry"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Submitting..." : "Add Entry"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
     </DashboardLayout>
   )
 }

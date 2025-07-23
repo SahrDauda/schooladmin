@@ -255,7 +255,7 @@ export default function GradesPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>

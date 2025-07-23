@@ -35,7 +35,19 @@ import {
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, Timestamp, getDoc, where } from "firebase/firestore"
+import {
+  doc,
+  setDoc,
+  collection,
+  getDocs,
+  query,
+  Timestamp,
+  getDoc,
+  where,
+  Query,
+  DocumentData,
+  CollectionReference,
+} from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -44,10 +56,39 @@ import { Badge } from "@/components/ui/badge"
 import { useSearchParams, useRouter } from "next/navigation"
 import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
 
+interface Student {
+  id: string
+  created_at?: Timestamp
+  firstname?: string
+  lastname?: string
+  class?: string
+  gender?: string
+  status?: string
+  disability?: string
+  disability_type?: string
+  sick?: string
+  sick_type?: string
+  nin?: string
+  batch?: string
+  school_id?: string
+  adm_no?: string
+  schoolname?: string
+  dob?: string
+  bgroup?: string
+  faculty?: string
+  level?: string
+  homeaddress?: string
+  phonenumber?: string
+  emailaddress?: string
+  religion?: string
+  nationality?: string
+  [key: string]: any
+}
+
 export default function StudentsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const initialFilter = searchParams.get("filter")
+  const initialFilter = searchParams?.get("filter")
 
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false)
@@ -56,6 +97,7 @@ export default function StudentsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
+    id: "",
     batch: "",
     school_id: "",
     adm_no: "",
@@ -80,7 +122,7 @@ export default function StudentsPage() {
     sick_type: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [students, setStudents] = useState<any[]>([])
+  const [students, setStudents] = useState<Student[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [parentFormData, setParentFormData] = useState({
     student_id: "",
@@ -100,10 +142,10 @@ export default function StudentsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState("")
   const [selectedStudentName, setSelectedStudentName] = useState("")
   const [selectedClass, setSelectedClass] = useState("all")
-  const [selectedStudent, setSelectedStudent] = useState<any>(null)
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isViewStudentOpen, setIsViewStudentOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [editFormData, setEditFormData] = useState(formData)
+  const [editFormData, setEditFormData] = useState<Student>(formData)
   const [classes, setClasses] = useState<any[]>([])
   const [specialNeedsFilter, setSpecialNeedsFilter] = useState(
     initialFilter === "special-needs" ? "all-special" : "all",
@@ -135,18 +177,16 @@ export default function StudentsPage() {
       }
 
       // Create query with school ID filter only (no ordering)
-      let studentsQuery = collection(db, "students")
+      let studentsQuery: Query<DocumentData> = query(collection(db, "students"))
 
       if (currentSchoolId) {
         studentsQuery = query(collection(db, "students"), where("school_id", "==", currentSchoolId))
-      } else {
-        studentsQuery = query(collection(db, "students"))
       }
 
       const querySnapshot = await getDocs(studentsQuery)
 
       // Sort students by created_at client-side
-      const studentsList = querySnapshot.docs.map((doc) => ({
+      const studentsList: Student[] = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
@@ -190,7 +230,7 @@ export default function StudentsPage() {
         }
 
         // Create query with school ID filter
-        let classesQuery = collection(db, "classes")
+        let classesQuery: Query<DocumentData> | CollectionReference<DocumentData> = collection(db, "classes")
 
         if (currentSchoolId) {
           classesQuery = query(collection(db, "classes"), where("school_id", "==", currentSchoolId))
@@ -234,19 +274,16 @@ export default function StudentsPage() {
   // Refresh students list after adding a new student
   const refreshStudents = async () => {
     try {
-      const studentsRef = collection(db, "students")
-
-      // Apply school ID filter if available (without ordering)
-      let q = query(studentsRef)
+      let q: Query<DocumentData> = query(collection(db, "students"))
 
       if (schoolId) {
-        q = query(studentsRef, where("school_id", "==", schoolId))
+        q = query(collection(db, "students"), where("school_id", "==", schoolId))
       }
 
       const querySnapshot = await getDocs(q)
 
       // Sort students by created_at client-side
-      const studentsList = querySnapshot.docs.map((doc) => ({
+      const studentsList: Student[] = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }))
@@ -410,6 +447,7 @@ export default function StudentsPage() {
 
       // Reset form and close dialog
       setFormData({
+        id: "",
         batch: "",
         school_id: "",
         adm_no: "",
@@ -559,14 +597,14 @@ export default function StudentsPage() {
     e.preventDefault()
     try {
       // Ensure school ID is preserved
-      const updatedData = {
+      const updatedData: Student = {
         ...editFormData,
         school_id: editFormData.school_id || schoolId,
         schoolname: editFormData.schoolname || schoolName,
         updated_at: Timestamp.fromDate(new Date()),
       }
 
-      await setDoc(doc(db, "students", selectedStudent.id), updatedData)
+      await setDoc(doc(db, "students", selectedStudent!.id), updatedData)
 
       toast({
         title: "Success",
@@ -882,7 +920,7 @@ export default function StudentsPage() {
       // Close the dialog
       const dialogCloseButton = document.querySelector('[role="dialog"] button[aria-label="Close"]')
       if (dialogCloseButton) {
-        ;(dialogCloseButton as HTMLElement).click()
+        ; (dialogCloseButton as HTMLElement).click()
       }
     } catch (error) {
       console.error("Error adding parent:", error)
@@ -898,10 +936,10 @@ export default function StudentsPage() {
 
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Students</CardTitle>
-          <div className="space-x-2">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0">
+          <h1 className="text-2xl font-bold tracking-tight">Manage Students</h1>
+          <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="space-x-2" disabled={isExporting}>
@@ -1376,623 +1414,621 @@ export default function StudentsPage() {
               </DialogContent>
             </Dialog>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-gray-500" />
-                  <span>Total Students</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalStudents}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Active Students</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeStudents}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Accessibility className="h-4 w-4 text-purple-500" />
-                  <span>With Disabilities</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{studentsWithDisabilities}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-red-500" />
-                  <span>With Medical Conditions</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{studentsWithMedicalConditions}</div>
-              </CardContent>
-            </Card>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Users className="h-4 w-4 text-gray-500" />
+                <span>Total Students</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalStudents}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span>Active Students</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeStudents}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Accessibility className="h-4 w-4 text-purple-500" />
+                <span>With Disabilities</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{studentsWithDisabilities}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Activity className="h-4 w-4 text-red-500" />
+                <span>With Medical Conditions</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{studentsWithMedicalConditions}</div>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full md:w-auto">
+              <Input
+                type="text"
+                placeholder="Search students..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full md:w-[250px]"
+              />
+            </div>
+            <Select onValueChange={(value) => setSelectedClass(value)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select a class" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Classes</SelectItem>
+                {classOptions.filter((c): c is string => !!c).map((classOption, index) => (
+                  <SelectItem key={index} value={classOption}>
+                    {classOption}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select onValueChange={handleSpecialNeedsFilterChange} value={specialNeedsFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Special needs filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Students</SelectItem>
+                <SelectItem value="all-special">All Special Needs</SelectItem>
+                <SelectItem value="disability">With Disabilities</SelectItem>
+                <SelectItem value="medical">With Medical Conditions</SelectItem>
+              </SelectContent>
+            </Select>
+            {specialNeedsFilter !== "all" && (
+              <Badge
+                variant="outline"
+                className="bg-purple-50 text-purple-800 border-purple-200 flex items-center gap-1"
+              >
+                <Filter className="h-3 w-3" />
+                <span>Special Needs Filter Active</span>
+              </Badge>
+            )}
           </div>
-          <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative w-full md:w-auto">
-                <Input
-                  type="text"
-                  placeholder="Search students..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full md:w-[250px]"
-                />
-              </div>
-              <Select onValueChange={(value) => setSelectedClass(value)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select a class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Classes</SelectItem>
-                  {classOptions.map((classOption, index) => (
-                    <SelectItem key={index} value={classOption}>
-                      {classOption}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select onValueChange={handleSpecialNeedsFilterChange} value={specialNeedsFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Special needs filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Students</SelectItem>
-                  <SelectItem value="all-special">All Special Needs</SelectItem>
-                  <SelectItem value="disability">With Disabilities</SelectItem>
-                  <SelectItem value="medical">With Medical Conditions</SelectItem>
-                </SelectContent>
-              </Select>
-              {specialNeedsFilter !== "all" && (
-                <Badge
-                  variant="outline"
-                  className="bg-purple-50 text-purple-800 border-purple-200 flex items-center gap-1"
+          <Accordion type="single" collapsible>
+            <AccordionItem value="item-1">
+              <AccordionTrigger>Upload CSV</AccordionTrigger>
+              <AccordionContent>
+                <div
+                  className="border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center cursor-pointer"
+                  onDrop={handleFileDrop}
+                  onDragOver={handleDragOver}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <Filter className="h-3 w-3" />
-                  <span>Special Needs Filter Active</span>
-                </Badge>
-              )}
-            </div>
-            <Accordion type="single" collapsible>
-              <AccordionItem value="item-1">
-                <AccordionTrigger>Upload CSV</AccordionTrigger>
-                <AccordionContent>
-                  <div
-                    className="border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center cursor-pointer"
-                    onDrop={handleFileDrop}
-                    onDragOver={handleDragOver}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="w-6 h-6 text-gray-500 mb-2" />
-                    <p className="text-gray-500">Drag and drop your CSV file here or click to select</p>
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      ref={fileInputRef}
-                    />
-                  </div>
-                  {uploadError && (
-                    <Badge variant="destructive" className="mt-2">
-                      {uploadError}
-                    </Badge>
-                  )}
-                  {csvFile && (
-                    <div className="mt-2">
-                      <p>Selected file: {csvFile.name}</p>
-                      <Button variant="secondary" onClick={handleUploadCSV} disabled={isUploading}>
-                        {isUploading ? "Uploading..." : "Upload"}
-                      </Button>
-                    </div>
-                  )}
-                  <Button variant="link" onClick={downloadTemplateCSV}>
-                    Download CSV Template
-                  </Button>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </div>
-          {isLoading ? (
-            <p>Loading students...</p>
-          ) : filteredStudents.length === 0 ? (
-            <p>No students found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Gender</TableHead>
-                    <TableHead>Special Needs</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((student) => (
-                    <TableRow
-                      key={student.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={(e) => {
-                        if (!(e.target as HTMLElement).closest("button")) {
-                          setSelectedStudent(student)
-                          setEditFormData(student)
-                          setIsViewStudentOpen(true)
-                        }
-                      }}
-                    >
-                      <TableCell>{student.id}</TableCell>
-                      <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
-                      <TableCell>{student.class}</TableCell>
-                      <TableCell>{student.gender}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {student.disability === "Yes" && (
-                            <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200">
-                              <Accessibility className="h-3 w-3 mr-1" />
-                              {student.disability_type || "Disability"}
-                            </Badge>
-                          )}
-                          {student.sick === "Yes" && (
-                            <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200">
-                              <Activity className="h-3 w-3 mr-1" />
-                              {student.sick_type || "Medical"}
-                            </Badge>
-                          )}
-                          {student.disability !== "Yes" && student.sick !== "Yes" && (
-                            <span className="text-gray-500 text-sm">None</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              Add Parent
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-[500px] md:max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>
-                                Add Parent for {student.firstname} {student.lastname}
-                              </DialogTitle>
-                              <DialogDescription>
-                                Fill out the form below to add a parent for this student.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <form
-                              onSubmit={(e) =>
-                                handleSubmitParent(e, student.id, `${student.firstname} ${student.lastname}`)
-                              }
-                              className="space-y-4"
-                            >
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <Label htmlFor="parent_firstname">First Name</Label>
-                                  <Input
-                                    id="parent_firstname"
-                                    value={parentFormData.firstname}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        firstname: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_lastname">Last Name</Label>
-                                  <Input
-                                    id="parent_lastname"
-                                    value={parentFormData.lastname}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        lastname: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_gender">Gender</Label>
-                                  <Select
-                                    onValueChange={(value) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        gender: value,
-                                      }))
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue placeholder="Select gender" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Male">Male</SelectItem>
-                                      <SelectItem value="Female">Female</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_relationship">Relationship</Label>
-                                  <Select
-                                    onValueChange={(value) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        relationship_with_student: value,
-                                      }))
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue placeholder="Select relationship" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Father">Father</SelectItem>
-                                      <SelectItem value="Mother">Mother</SelectItem>
-                                      <SelectItem value="Guardian">Guardian</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_phone">Phone Number</Label>
-                                  <Input
-                                    id="parent_phone"
-                                    value={parentFormData.phonenumber}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        phonenumber: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_email">Email</Label>
-                                  <Input
-                                    type="email"
-                                    id="parent_email"
-                                    value={parentFormData.emailaddress}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        emailaddress: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_dob">Date of Birth</Label>
-                                  <Input
-                                    type="date"
-                                    id="parent_dob"
-                                    value={parentFormData.dob}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        dob: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_occupation">Occupation</Label>
-                                  <Input
-                                    id="parent_occupation"
-                                    value={parentFormData.occupation}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        occupation: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_address">Home Address</Label>
-                                  <Input
-                                    id="parent_address"
-                                    value={parentFormData.homeaddress}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        homeaddress: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="parent_nin">NIN</Label>
-                                  <Input
-                                    id="parent_nin"
-                                    value={parentFormData.nin}
-                                    onChange={(e) =>
-                                      setParentFormData((prev) => ({
-                                        ...prev,
-                                        nin: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button type="submit" disabled={isSubmittingParent}>
-                                  {isSubmittingParent ? "Adding Parent..." : "Add Parent"}
-                                </Button>
-                              </DialogFooter>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {selectedStudent && (
-            <Dialog
-              open={isViewStudentOpen}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setIsViewStudentOpen(false)
-                  setIsEditing(false)
-                }
-              }}
-              modal
-            >
-              <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
-                <DialogHeader className="flex flex-row items-center justify-between">
-                  <DialogTitle>Student Information</DialogTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
-                      {isEditing ? "Cancel Edit" : "Edit"}
+                  <Upload className="w-6 h-6 text-gray-500 mb-2" />
+                  <p className="text-gray-500">Drag and drop your CSV file here or click to select</p>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    ref={fileInputRef}
+                  />
+                </div>
+                {uploadError && (
+                  <Badge variant="destructive" className="mt-2">
+                    {uploadError}
+                  </Badge>
+                )}
+                {csvFile && (
+                  <div className="mt-2">
+                    <p>Selected file: {csvFile.name}</p>
+                    <Button variant="secondary" onClick={handleUploadCSV} disabled={isUploading}>
+                      {isUploading ? "Uploading..." : "Upload"}
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsViewStudentOpen(false)
-                        setIsEditing(false)
-                      }}
-                    >
-                      Close
-                    </Button>
-                  </div>
-                </DialogHeader>
-
-                {isEditing ? (
-                  <form onSubmit={handleUpdateStudent} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="edit_firstname">First Name</Label>
-                        <Input
-                          id="edit_firstname"
-                          value={editFormData.firstname}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              firstname: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_lastname">Last Name</Label>
-                        <Input
-                          id="edit_lastname"
-                          value={editFormData.lastname}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              lastname: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_class">Class</Label>
-                        <Input
-                          id="edit_class"
-                          value={editFormData.class}
-                          onChange={(e) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              class: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_gender">Gender</Label>
-                        <Select
-                          value={editFormData.gender}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              gender: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select gender" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Male">Male</SelectItem>
-                            <SelectItem value="Female">Female</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="edit_disability">Disability</Label>
-                        <Select
-                          value={editFormData.disability}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              disability: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Yes">Yes</SelectItem>
-                            <SelectItem value="No">No</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {editFormData.disability === "Yes" && (
-                        <div>
-                          <Label htmlFor="edit_disability_type">Disability Type</Label>
-                          <Input
-                            id="edit_disability_type"
-                            value={editFormData.disability_type}
-                            onChange={(e) =>
-                              setEditFormData((prev) => ({
-                                ...prev,
-                                disability_type: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      )}
-                      <div>
-                        <Label htmlFor="edit_sick">Medical Condition</Label>
-                        <Select
-                          value={editFormData.sick}
-                          onValueChange={(value) =>
-                            setEditFormData((prev) => ({
-                              ...prev,
-                              sick: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Yes">Yes</SelectItem>
-                            <SelectItem value="No">No</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {editFormData.sick === "Yes" && (
-                        <div>
-                          <Label htmlFor="edit_sick_type">Medical Condition Type</Label>
-                          <Input
-                            id="edit_sick_type"
-                            value={editFormData.sick_type}
-                            onChange={(e) =>
-                              setEditFormData((prev) => ({
-                                ...prev,
-                                sick_type: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit">Save Changes</Button>
-                    </DialogFooter>
-                  </form>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="font-bold">Student ID</Label>
-                      <p>{selectedStudent.id}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Name</Label>
-                      <p>{`${selectedStudent.firstname} ${selectedStudent.lastname}`}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Class</Label>
-                      <p>{selectedStudent.class}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Gender</Label>
-                      <p>{selectedStudent.gender}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Date of Birth</Label>
-                      <p>{selectedStudent.dob}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Blood Group</Label>
-                      <p>{selectedStudent.bgroup || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Address</Label>
-                      <p>{selectedStudent.homeaddress}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Phone</Label>
-                      <p>{selectedStudent.phonenumber || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Email</Label>
-                      <p>{selectedStudent.emailaddress || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">NIN</Label>
-                      <p>{selectedStudent.nin || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Disability</Label>
-                      <p className="flex items-center gap-2">
-                        {selectedStudent.disability === "Yes" ? (
-                          <>
-                            <Accessibility className="h-4 w-4 text-purple-600" />
-                            <span>Yes - {selectedStudent.disability_type || "Not specified"}</span>
-                          </>
-                        ) : (
-                          "No"
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">Medical Condition</Label>
-                      <p className="flex items-center gap-2">
-                        {selectedStudent.sick === "Yes" ? (
-                          <>
-                            <Activity className="h-4 w-4 text-red-600" />
-                            <span>Yes - {selectedStudent.sick_type || "Not specified"}</span>
-                          </>
-                        ) : (
-                          "No"
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-bold">School</Label>
-                      <p>{selectedStudent.schoolname || "N/A"}</p>
-                    </div>
                   </div>
                 )}
-              </DialogContent>
-            </Dialog>
-          )}
-        </CardContent>
-      </Card>
+                <Button variant="link" onClick={downloadTemplateCSV}>
+                  Download CSV Template
+                </Button>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+        {isLoading ? (
+          <p>Loading students...</p>
+        ) : filteredStudents.length === 0 ? (
+          <p>No students found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Class</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>Special Needs</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredStudents.map((student) => (
+                  <TableRow
+                    key={student.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={(e) => {
+                      if (!(e.target as HTMLElement).closest("button")) {
+                        setSelectedStudent(student)
+                        setEditFormData(student)
+                        setIsViewStudentOpen(true)
+                      }
+                    }}
+                  >
+                    <TableCell>{student.id}</TableCell>
+                    <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
+                    <TableCell>{student.class}</TableCell>
+                    <TableCell>{student.gender}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {student.disability === "Yes" && (
+                          <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200">
+                            <Accessibility className="h-3 w-3 mr-1" />
+                            {student.disability_type || "Disability"}
+                          </Badge>
+                        )}
+                        {student.sick === "Yes" && (
+                          <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200">
+                            <Activity className="h-3 w-3 mr-1" />
+                            {student.sick_type || "Medical"}
+                          </Badge>
+                        )}
+                        {student.disability !== "Yes" && student.sick !== "Yes" && (
+                          <span className="text-gray-500 text-sm">None</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            Add Parent
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[500px] md:max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>
+                              Add Parent for {student.firstname} {student.lastname}
+                            </DialogTitle>
+                            <DialogDescription>
+                              Fill out the form below to add a parent for this student.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form
+                            onSubmit={(e) =>
+                              handleSubmitParent(e, student.id, `${student.firstname} ${student.lastname}`)
+                            }
+                            className="space-y-4"
+                          >
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="parent_firstname">First Name</Label>
+                                <Input
+                                  id="parent_firstname"
+                                  value={parentFormData.firstname}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      firstname: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_lastname">Last Name</Label>
+                                <Input
+                                  id="parent_lastname"
+                                  value={parentFormData.lastname}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      lastname: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_gender">Gender</Label>
+                                <Select
+                                  onValueChange={(value) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      gender: value,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select gender" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Male">Male</SelectItem>
+                                    <SelectItem value="Female">Female</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_relationship">Relationship</Label>
+                                <Select
+                                  onValueChange={(value) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      relationship_with_student: value,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select relationship" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Father">Father</SelectItem>
+                                    <SelectItem value="Mother">Mother</SelectItem>
+                                    <SelectItem value="Guardian">Guardian</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_phone">Phone Number</Label>
+                                <Input
+                                  id="parent_phone"
+                                  value={parentFormData.phonenumber}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      phonenumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_email">Email</Label>
+                                <Input
+                                  type="email"
+                                  id="parent_email"
+                                  value={parentFormData.emailaddress}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      emailaddress: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_dob">Date of Birth</Label>
+                                <Input
+                                  type="date"
+                                  id="parent_dob"
+                                  value={parentFormData.dob}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      dob: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_occupation">Occupation</Label>
+                                <Input
+                                  id="parent_occupation"
+                                  value={parentFormData.occupation}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      occupation: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_address">Home Address</Label>
+                                <Input
+                                  id="parent_address"
+                                  value={parentFormData.homeaddress}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      homeaddress: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="parent_nin">NIN</Label>
+                                <Input
+                                  id="parent_nin"
+                                  value={parentFormData.nin}
+                                  onChange={(e) =>
+                                    setParentFormData((prev) => ({
+                                      ...prev,
+                                      nin: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button type="submit" disabled={isSubmittingParent}>
+                                {isSubmittingParent ? "Adding Parent..." : "Add Parent"}
+                              </Button>
+                            </DialogFooter>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        {selectedStudent && (
+          <Dialog
+            open={isViewStudentOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setIsViewStudentOpen(false)
+                setIsEditing(false)
+              }
+            }}
+            modal
+          >
+            <DialogContent className="sm:max-w-[600px] md:max-w-[800px] lg:max-w-[1000px] w-[90%] max-h-[85vh] overflow-y-auto">
+              <DialogHeader className="flex flex-row items-center justify-between">
+                <DialogTitle>Student Information</DialogTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
+                    {isEditing ? "Cancel Edit" : "Edit"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsViewStudentOpen(false)
+                      setIsEditing(false)
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </DialogHeader>
+
+              {isEditing ? (
+                <form onSubmit={handleUpdateStudent} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="edit_firstname">First Name</Label>
+                      <Input
+                        id="edit_firstname"
+                        value={editFormData.firstname}
+                        onChange={(e) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            firstname: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit_lastname">Last Name</Label>
+                      <Input
+                        id="edit_lastname"
+                        value={editFormData.lastname}
+                        onChange={(e) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            lastname: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit_class">Class</Label>
+                      <Input
+                        id="edit_class"
+                        value={editFormData.class}
+                        onChange={(e) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            class: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit_gender">Gender</Label>
+                      <Select
+                        value={editFormData.gender}
+                        onValueChange={(value) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            gender: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="edit_disability">Disability</Label>
+                      <Select
+                        value={editFormData.disability}
+                        onValueChange={(value) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            disability: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Yes">Yes</SelectItem>
+                          <SelectItem value="No">No</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {editFormData.disability === "Yes" && (
+                      <div>
+                        <Label htmlFor="edit_disability_type">Disability Type</Label>
+                        <Input
+                          id="edit_disability_type"
+                          value={editFormData.disability_type}
+                          onChange={(e) =>
+                            setEditFormData((prev) => ({
+                              ...prev,
+                              disability_type: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <Label htmlFor="edit_sick">Medical Condition</Label>
+                      <Select
+                        value={editFormData.sick}
+                        onValueChange={(value) =>
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            sick: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Yes">Yes</SelectItem>
+                          <SelectItem value="No">No</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {editFormData.sick === "Yes" && (
+                      <div>
+                        <Label htmlFor="edit_sick_type">Medical Condition Type</Label>
+                        <Input
+                          id="edit_sick_type"
+                          value={editFormData.sick_type}
+                          onChange={(e) =>
+                            setEditFormData((prev) => ({
+                              ...prev,
+                              sick_type: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit">Save Changes</Button>
+                  </DialogFooter>
+                </form>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="font-bold">Student ID</Label>
+                    <p>{selectedStudent.id}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Name</Label>
+                    <p>{`${selectedStudent.firstname} ${selectedStudent.lastname}`}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Class</Label>
+                    <p>{selectedStudent.class}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Gender</Label>
+                    <p>{selectedStudent.gender}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Date of Birth</Label>
+                    <p>{selectedStudent.dob}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Blood Group</Label>
+                    <p>{selectedStudent.bgroup || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Address</Label>
+                    <p>{selectedStudent.homeaddress}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Phone</Label>
+                    <p>{selectedStudent.phonenumber || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Email</Label>
+                    <p>{selectedStudent.emailaddress || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">NIN</Label>
+                    <p>{selectedStudent.nin || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Disability</Label>
+                    <p className="flex items-center gap-2">
+                      {selectedStudent.disability === "Yes" ? (
+                        <>
+                          <Accessibility className="h-4 w-4 text-purple-600" />
+                          <span>Yes - {selectedStudent.disability_type || "Not specified"}</span>
+                        </>
+                      ) : (
+                        "No"
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Medical Condition</Label>
+                    <p className="flex items-center gap-2">
+                      {selectedStudent.sick === "Yes" ? (
+                        <>
+                          <Activity className="h-4 w-4 text-red-600" />
+                          <span>Yes - {selectedStudent.sick_type || "Not specified"}</span>
+                        </>
+                      ) : (
+                        "No"
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">School</Label>
+                    <p>{selectedStudent.schoolname || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
     </DashboardLayout>
   )
 }

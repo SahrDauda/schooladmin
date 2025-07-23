@@ -318,224 +318,226 @@ export default function AttendancePage() {
 
   return (
     <DashboardLayout>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-semibold">Attendance</CardTitle>
-          <Button onClick={() => setIsMarkingAttendance(true)} disabled={!selectedClass || students.length === 0}>
-            <ClipboardCheck className="w-4 h-4 mr-2" />
-            <span>Mark Attendance</span>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-4 w-4 text-gray-500" />
-                  <span>Total Students</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{attendanceSummary.total}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Present</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{attendanceSummary.present}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span>Absent</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{attendanceSummary.absent}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <AlertCircle className="h-4 w-4 text-amber-500" />
-                  <span>Late</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{attendanceSummary.late}</div>
-              </CardContent>
-            </Card>
-          </div>
-          <Tabs defaultValue="students">
-            <TabsList className="mb-4">
-              <TabsTrigger value="students">Student Attendance</TabsTrigger>
-              <TabsTrigger value="teachers">Teacher Attendance</TabsTrigger>
-            </TabsList>
-            <TabsContent value="students">
-              <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
-                <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-                  <div className="w-full md:w-auto">
-                    <Select value={selectedClass} onValueChange={setSelectedClass}>
-                      <SelectTrigger className="w-full md:w-[200px]">
-                        <SelectValue placeholder="Select class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {classes.map((cls) => (
-                          <SelectItem key={cls.id} value={cls.id}>
-                            {cls.name} - {cls.level} {cls.section || ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-full md:w-auto flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full md:w-auto"
-                    />
-                  </div>
-                  <div className="w-full md:w-auto relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      placeholder="Search students..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full md:w-[250px] pl-8"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : !selectedClass ? (
-                <div className="text-center py-8 text-muted-foreground">Please select a class to view attendance.</div>
-              ) : students.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">No students found in this class.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Student Name</TableHead>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredStudents.map((student, index) => (
-                        <TableRow key={student.id}>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell className="font-medium">{`${student.firstname} ${student.lastname}`}</TableCell>
-                          <TableCell>{student.id}</TableCell>
-                          <TableCell>
-                            {isMarkingAttendance ? (
-                              <Select
-                                value={attendanceData[student.id] || "present"}
-                                onValueChange={(value) => handleAttendanceChange(student.id, value)}
-                              >
-                                <SelectTrigger className="w-[120px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="present">Present</SelectItem>
-                                  <SelectItem value="absent">Absent</SelectItem>
-                                  <SelectItem value="late">Late</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              getStatusBadge(attendanceData[student.id] || "present")
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-
-                  {isMarkingAttendance && (
-                    <div className="flex justify-end gap-2 mt-4">
-                      <Button variant="outline" onClick={() => setIsMarkingAttendance(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleSubmitAttendance} disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : "Save Attendance"}
-                      </Button>
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-2xl font-semibold">Attendance</CardTitle>
+            <Button onClick={() => setIsMarkingAttendance(true)} disabled={!selectedClass || students.length === 0}>
+              <ClipboardCheck className="w-4 h-4 mr-2" />
+              <span>Mark Attendance</span>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Users className="h-4 w-4 text-gray-500" />
+                    <span>Total Students</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{attendanceSummary.total}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Present</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{attendanceSummary.present}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span>Absent</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{attendanceSummary.absent}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    <span>Late</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{attendanceSummary.late}</div>
+                </CardContent>
+              </Card>
+            </div>
+            <Tabs defaultValue="students">
+              <TabsList className="mb-4">
+                <TabsTrigger value="students">Student Attendance</TabsTrigger>
+                <TabsTrigger value="teachers">Teacher Attendance</TabsTrigger>
+              </TabsList>
+              <TabsContent value="students">
+                <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0 mb-4">
+                  <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                    <div className="w-full md:w-auto">
+                      <Select value={selectedClass} onValueChange={setSelectedClass}>
+                        <SelectTrigger className="w-full md:w-[200px]">
+                          <SelectValue placeholder="Select class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {classes.map((cls) => (
+                            <SelectItem key={cls.id} value={cls.id}>
+                              {cls.name} - {cls.level} {cls.section || ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
+                    <div className="w-full md:w-auto flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="w-full md:w-auto"
+                      />
+                    </div>
+                    <div className="w-full md:w-auto relative">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Search students..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full md:w-[250px] pl-8"
+                      />
+                    </div>
+                  </div>
                 </div>
-              )}
-            </TabsContent>
 
-            <TabsContent value="teachers">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full md:w-auto"
-                  />
-                  <Button variant="outline" onClick={() => fetchTeacherAttendance(selectedDate)}>
-                    View Records
-                  </Button>
-                </div>
-
-                {teacherAttendanceLoading ? (
+                {isLoading ? (
                   <div className="flex justify-center items-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                ) : teacherAttendanceRecords.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No teacher attendance records found for this date.
-                  </div>
+                ) : !selectedClass ? (
+                  <div className="text-center py-8 text-muted-foreground">Please select a class to view attendance.</div>
+                ) : students.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No students found in this class.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-12">#</TableHead>
-                          <TableHead>Teacher Name</TableHead>
-                          <TableHead>Check-in Time</TableHead>
+                          <TableHead>Student Name</TableHead>
+                          <TableHead>ID</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {teacherAttendanceRecords.map((record, index) => (
-                          <TableRow key={record.id}>
+                        {filteredStudents.map((student, index) => (
+                          <TableRow key={student.id}>
                             <TableCell>{index + 1}</TableCell>
-                            <TableCell className="font-medium">{record.teacher_name}</TableCell>
-                            <TableCell>{record.check_in_time || "-"}</TableCell>
+                            <TableCell className="font-medium">{`${student.firstname} ${student.lastname}`}</TableCell>
+                            <TableCell>{student.id}</TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                <span>Present</span>
-                              </div>
+                              {isMarkingAttendance ? (
+                                <Select
+                                  value={attendanceData[student.id] || "present"}
+                                  onValueChange={(value) => handleAttendanceChange(student.id, value)}
+                                >
+                                  <SelectTrigger className="w-[120px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="present">Present</SelectItem>
+                                    <SelectItem value="absent">Absent</SelectItem>
+                                    <SelectItem value="late">Late</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                getStatusBadge(attendanceData[student.id] || "present")
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+
+                    {isMarkingAttendance && (
+                      <div className="flex justify-end gap-2 mt-4">
+                        <Button variant="outline" onClick={() => setIsMarkingAttendance(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleSubmitAttendance} disabled={isSubmitting}>
+                          {isSubmitting ? "Saving..." : "Save Attendance"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+              </TabsContent>
+
+              <TabsContent value="teachers">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full md:w-auto"
+                    />
+                    <Button variant="outline" onClick={() => fetchTeacherAttendance(selectedDate)}>
+                      View Records
+                    </Button>
+                  </div>
+
+                  {teacherAttendanceLoading ? (
+                    <div className="flex justify-center items-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : teacherAttendanceRecords.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No teacher attendance records found for this date.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">#</TableHead>
+                            <TableHead>Teacher Name</TableHead>
+                            <TableHead>Check-in Time</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {teacherAttendanceRecords.map((record, index) => (
+                            <TableRow key={record.id}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell className="font-medium">{record.teacher_name}</TableCell>
+                              <TableCell>{record.check_in_time || "-"}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1 text-green-600">
+                                  <CheckCircle className="h-4 w-4" />
+                                  <span>Present</span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
     </DashboardLayout>
   )
 }
