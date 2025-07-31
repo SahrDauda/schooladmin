@@ -55,6 +55,237 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { useSearchParams, useRouter } from "next/navigation"
 import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
+import Papa from "papaparse"
+import XLSX from "xlsx"
+
+// Stage-specific level options
+const getLevelOptions = (stage: string) => {
+  switch (stage) {
+    case "Primary":
+      return [
+        "Prep 1",
+        "Prep 2", 
+        "Prep 3",
+        "Prep 4",
+        "Prep 5",
+        "Prep 6"
+      ]
+    case "Junior Secondary":
+      return [
+        "JSS 1",
+        "JSS 2",
+        "JSS 3"
+      ]
+    case "Senior Secondary":
+      return [
+        "SSS 1",
+        "SSS 2", 
+        "SSS 3"
+      ]
+    default:
+      return [
+        "Not Specified"
+      ]
+  }
+}
+
+// Nationality options with unique keys
+const nationalityOptions = [
+  { key: "sierra-leone", value: "Sierra Leone" },
+  { key: "afghanistan", value: "Afghanistan" },
+  { key: "albania", value: "Albania" },
+  { key: "algeria", value: "Algeria" },
+  { key: "andorra", value: "Andorra" },
+  { key: "angola", value: "Angola" },
+  { key: "antigua-barbuda", value: "Antigua and Barbuda" },
+  { key: "argentina", value: "Argentina" },
+  { key: "armenia", value: "Armenia" },
+  { key: "australia", value: "Australia" },
+  { key: "austria", value: "Austria" },
+  { key: "azerbaijan", value: "Azerbaijan" },
+  { key: "bahamas", value: "Bahamas" },
+  { key: "bahrain", value: "Bahrain" },
+  { key: "bangladesh", value: "Bangladesh" },
+  { key: "barbados", value: "Barbados" },
+  { key: "belarus", value: "Belarus" },
+  { key: "belgium", value: "Belgium" },
+  { key: "belize", value: "Belize" },
+  { key: "benin", value: "Benin" },
+  { key: "bhutan", value: "Bhutan" },
+  { key: "bolivia", value: "Bolivia" },
+  { key: "bosnia-herzegovina", value: "Bosnia and Herzegovina" },
+  { key: "botswana", value: "Botswana" },
+  { key: "brazil", value: "Brazil" },
+  { key: "brunei", value: "Brunei" },
+  { key: "bulgaria", value: "Bulgaria" },
+  { key: "burkina-faso", value: "Burkina Faso" },
+  { key: "burundi", value: "Burundi" },
+  { key: "cabo-verde", value: "Cabo Verde" },
+  { key: "cambodia", value: "Cambodia" },
+  { key: "cameroon", value: "Cameroon" },
+  { key: "canada", value: "Canada" },
+  { key: "central-african-republic", value: "Central African Republic" },
+  { key: "chad", value: "Chad" },
+  { key: "chile", value: "Chile" },
+  { key: "china", value: "China" },
+  { key: "colombia", value: "Colombia" },
+  { key: "comoros", value: "Comoros" },
+  { key: "congo", value: "Congo" },
+  { key: "costa-rica", value: "Costa Rica" },
+  { key: "croatia", value: "Croatia" },
+  { key: "cuba", value: "Cuba" },
+  { key: "cyprus", value: "Cyprus" },
+  { key: "czech-republic", value: "Czech Republic" },
+  { key: "denmark", value: "Denmark" },
+  { key: "djibouti", value: "Djibouti" },
+  { key: "dominica", value: "Dominica" },
+  { key: "dominican-republic", value: "Dominican Republic" },
+  { key: "ecuador", value: "Ecuador" },
+  { key: "egypt", value: "Egypt" },
+  { key: "el-salvador", value: "El Salvador" },
+  { key: "equatorial-guinea", value: "Equatorial Guinea" },
+  { key: "eritrea", value: "Eritrea" },
+  { key: "estonia", value: "Estonia" },
+  { key: "eswatini", value: "Eswatini" },
+  { key: "ethiopia", value: "Ethiopia" },
+  { key: "fiji", value: "Fiji" },
+  { key: "finland", value: "Finland" },
+  { key: "france", value: "France" },
+  { key: "gabon", value: "Gabon" },
+  { key: "gambia", value: "Gambia" },
+  { key: "georgia", value: "Georgia" },
+  { key: "germany", value: "Germany" },
+  { key: "ghana", value: "Ghana" },
+  { key: "greece", value: "Greece" },
+  { key: "grenada", value: "Grenada" },
+  { key: "guatemala", value: "Guatemala" },
+  { key: "guinea", value: "Guinea" },
+  { key: "guinea-bissau", value: "Guinea-Bissau" },
+  { key: "guyana", value: "Guyana" },
+  { key: "haiti", value: "Haiti" },
+  { key: "honduras", value: "Honduras" },
+  { key: "hungary", value: "Hungary" },
+  { key: "iceland", value: "Iceland" },
+  { key: "india", value: "India" },
+  { key: "indonesia", value: "Indonesia" },
+  { key: "iran", value: "Iran" },
+  { key: "iraq", value: "Iraq" },
+  { key: "ireland", value: "Ireland" },
+  { key: "israel", value: "Israel" },
+  { key: "italy", value: "Italy" },
+  { key: "jamaica", value: "Jamaica" },
+  { key: "japan", value: "Japan" },
+  { key: "jordan", value: "Jordan" },
+  { key: "kazakhstan", value: "Kazakhstan" },
+  { key: "kenya", value: "Kenya" },
+  { key: "kiribati", value: "Kiribati" },
+  { key: "korea-north", value: "Korea, North" },
+  { key: "korea-south", value: "Korea, South" },
+  { key: "kosovo", value: "Kosovo" },
+  { key: "kuwait", value: "Kuwait" },
+  { key: "kyrgyzstan", value: "Kyrgyzstan" },
+  { key: "laos", value: "Laos" },
+  { key: "latvia", value: "Latvia" },
+  { key: "lebanon", value: "Lebanon" },
+  { key: "lesotho", value: "Lesotho" },
+  { key: "liberia", value: "Liberia" },
+  { key: "libya", value: "Libya" },
+  { key: "liechtenstein", value: "Liechtenstein" },
+  { key: "lithuania", value: "Lithuania" },
+  { key: "luxembourg", value: "Luxembourg" },
+  { key: "madagascar", value: "Madagascar" },
+  { key: "malawi", value: "Malawi" },
+  { key: "malaysia", value: "Malaysia" },
+  { key: "maldives", value: "Maldives" },
+  { key: "mali", value: "Mali" },
+  { key: "malta", value: "Malta" },
+  { key: "marshall-islands", value: "Marshall Islands" },
+  { key: "mauritania", value: "Mauritania" },
+  { key: "mauritius", value: "Mauritius" },
+  { key: "mexico", value: "Mexico" },
+  { key: "micronesia", value: "Micronesia" },
+  { key: "moldova", value: "Moldova" },
+  { key: "monaco", value: "Monaco" },
+  { key: "mongolia", value: "Mongolia" },
+  { key: "montenegro", value: "Montenegro" },
+  { key: "morocco", value: "Morocco" },
+  { key: "mozambique", value: "Mozambique" },
+  { key: "myanmar", value: "Myanmar" },
+  { key: "namibia", value: "Namibia" },
+  { key: "nauru", value: "Nauru" },
+  { key: "nepal", value: "Nepal" },
+  { key: "netherlands", value: "Netherlands" },
+  { key: "new-zealand", value: "New Zealand" },
+  { key: "nicaragua", value: "Nicaragua" },
+  { key: "niger", value: "Niger" },
+  { key: "nigeria", value: "Nigeria" },
+  { key: "north-macedonia", value: "North Macedonia" },
+  { key: "norway", value: "Norway" },
+  { key: "oman", value: "Oman" },
+  { key: "pakistan", value: "Pakistan" },
+  { key: "palau", value: "Palau" },
+  { key: "panama", value: "Panama" },
+  { key: "papua-new-guinea", value: "Papua New Guinea" },
+  { key: "paraguay", value: "Paraguay" },
+  { key: "peru", value: "Peru" },
+  { key: "philippines", value: "Philippines" },
+  { key: "poland", value: "Poland" },
+  { key: "portugal", value: "Portugal" },
+  { key: "qatar", value: "Qatar" },
+  { key: "romania", value: "Romania" },
+  { key: "russia", value: "Russia" },
+  { key: "rwanda", value: "Rwanda" },
+  { key: "saint-kitts-nevis", value: "Saint Kitts and Nevis" },
+  { key: "saint-lucia", value: "Saint Lucia" },
+  { key: "saint-vincent-grenadines", value: "Saint Vincent and the Grenadines" },
+  { key: "samoa", value: "Samoa" },
+  { key: "san-marino", value: "San Marino" },
+  { key: "sao-tome-principe", value: "Sao Tome and Principe" },
+  { key: "saudi-arabia", value: "Saudi Arabia" },
+  { key: "senegal", value: "Senegal" },
+  { key: "serbia", value: "Serbia" },
+  { key: "seychelles", value: "Seychelles" },
+  { key: "singapore", value: "Singapore" },
+  { key: "slovakia", value: "Slovakia" },
+  { key: "slovenia", value: "Slovenia" },
+  { key: "solomon-islands", value: "Solomon Islands" },
+  { key: "somalia", value: "Somalia" },
+  { key: "south-africa", value: "South Africa" },
+  { key: "south-sudan", value: "South Sudan" },
+  { key: "spain", value: "Spain" },
+  { key: "sri-lanka", value: "Sri Lanka" },
+  { key: "sudan", value: "Sudan" },
+  { key: "suriname", value: "Suriname" },
+  { key: "sweden", value: "Sweden" },
+  { key: "switzerland", value: "Switzerland" },
+  { key: "syria", value: "Syria" },
+  { key: "taiwan", value: "Taiwan" },
+  { key: "tajikistan", value: "Tajikistan" },
+  { key: "tanzania", value: "Tanzania" },
+  { key: "thailand", value: "Thailand" },
+  { key: "timor-leste", value: "Timor-Leste" },
+  { key: "togo", value: "Togo" },
+  { key: "tonga", value: "Tonga" },
+  { key: "trinidad-tobago", value: "Trinidad and Tobago" },
+  { key: "tunisia", value: "Tunisia" },
+  { key: "turkey", value: "Turkey" },
+  { key: "turkmenistan", value: "Turkmenistan" },
+  { key: "tuvalu", value: "Tuvalu" },
+  { key: "uganda", value: "Uganda" },
+  { key: "ukraine", value: "Ukraine" },
+  { key: "united-arab-emirates", value: "United Arab Emirates" },
+  { key: "united-kingdom", value: "United Kingdom" },
+  { key: "united-states", value: "United States" },
+  { key: "uruguay", value: "Uruguay" },
+  { key: "uzbekistan", value: "Uzbekistan" },
+  { key: "vanuatu", value: "Vanuatu" },
+  { key: "vatican-city", value: "Vatican City" },
+  { key: "venezuela", value: "Venezuela" },
+  { key: "vietnam", value: "Vietnam" },
+  { key: "yemen", value: "Yemen" },
+  { key: "zambia", value: "Zambia" },
+  { key: "zimbabwe", value: "Zimbabwe" }
+]
 
 interface Student {
   id: string
@@ -152,10 +383,87 @@ export default function StudentsPage() {
   )
   const [schoolId, setSchoolId] = useState("")
   const [schoolName, setSchoolName] = useState("")
+  const [schoolStage, setSchoolStage] = useState("")
   const [isSearchingNIN, setIsSearchingNIN] = useState(false)
   const [ninSearchQuery, setNinSearchQuery] = useState("")
   const [isExporting, setIsExporting] = useState(false)
   const [isSubmittingParent, setIsSubmittingParent] = useState(false)
+
+  // NIN API integration
+  const searchNINFromAPI = async (nin: string) => {
+    setIsSearchingNIN(true)
+    try {
+      console.log('Searching for NIN:', nin)
+          const response = await fetch('/api/nin-verification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ nin: nin })
+    })
+    
+    console.log('Response status:', response.status)
+    console.log('Response ok:', response.ok)
+    console.log('Response headers:', response.headers)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: NIN not found`)
+      }
+      
+      const data = await response.json()
+      console.log('API response data:', data)
+      
+      // Check if the API returned valid data
+      if (!data || !data.firstName || !data.lastName) {
+        console.log('Invalid data structure:', data)
+        throw new Error('Invalid NIN data received')
+      }
+      
+      // Auto-populate form with NIN data
+      setFormData((prev) => ({
+        ...prev,
+        firstname: data.firstName || prev.firstname,
+        lastname: data.lastName || prev.lastname,
+        dob: data.dateOfBirth || prev.dob,
+        gender: data.gender || prev.gender,
+        nationality: data.nationality || prev.nationality,
+        homeaddress: data.address || prev.homeaddress,
+        phonenumber: data.phoneNumber || prev.phonenumber,
+        emailaddress: data.emailaddress || prev.emailaddress,
+        level: data.level || prev.level,
+        faculty: data.faculty || prev.faculty
+      }))
+      
+      console.log('Form updated with NIN data')
+      
+      toast({
+        title: "Success",
+        description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
+      })
+    } catch (error) {
+      console.error('NIN search failed:', error)
+      
+      // Show specific error message based on the error
+      let errorMessage = "NIN verification failed"
+      if (error instanceof Error) {
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          errorMessage = `NIN "${nin}" not found in the database`
+        } else if (error.message.includes('Invalid NIN data')) {
+          errorMessage = "Invalid data received from NIN database"
+        } else if (error.message.includes('fetch')) {
+          errorMessage = "Network error - please check your connection"
+        }
+      }
+      
+      toast({
+        title: "NIN Not Found",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingNIN(false)
+    }
+  }
 
   const fetchStudents = async () => {
     setIsLoading(true)
@@ -255,9 +563,26 @@ export default function StudentsPage() {
           const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
           if (adminDoc.exists()) {
             const adminData = adminDoc.data()
+            const schoolId = adminData.school_id || adminId
+            
+            // Get school stage from schools collection
+            let schoolStage = ""
+            if (schoolId) {
+              const schoolsRef = collection(db, "schools")
+              const schoolsQuery = query(schoolsRef, where("school_id", "==", schoolId))
+              const schoolsSnapshot = await getDocs(schoolsQuery)
+              
+              if (!schoolsSnapshot.empty) {
+                const schoolDoc = schoolsSnapshot.docs[0]
+                const schoolData = schoolDoc.data()
+                schoolStage = schoolData.stage || ""
+              }
+            }
+            
+            setSchoolStage(schoolStage)
             setFormData((prev) => ({
               ...prev,
-              school_id: adminData.school_id || adminId,
+              school_id: schoolId,
               schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
             }))
           }
@@ -538,21 +863,68 @@ export default function StudentsPage() {
     setUploadError(null)
 
     try {
-      // Here you would implement the actual CSV processing logic
-      // For example, reading the file and sending it to your backend
-
-      // Simulating upload delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Success message
+      let rows: any[] = []
+      if (
+        csvFile.type === "text/csv" ||
+        csvFile.name.endsWith(".csv")
+      ) {
+        // Parse CSV file
+        const text = await csvFile.text()
+        const parsed = Papa.parse(text, { header: true })
+        if (parsed.errors.length > 0) {
+          setUploadError("Failed to parse CSV file. Please check the format.")
+          setIsUploading(false)
+          return
+        }
+        rows = parsed.data as any[]
+      } else if (
+        csvFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        csvFile.name.endsWith(".xlsx")
+      ) {
+        // Parse Excel file
+        const data = await csvFile.arrayBuffer()
+        const workbook = XLSX.read(data, { type: "array" })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        rows = XLSX.utils.sheet_to_json(worksheet) as any[]
+      } else {
+        setUploadError("Unsupported file type.")
+        setIsUploading(false)
+        return
+      }
+      let successCount = 0
+      let errorCount = 0
+      for (const row of rows) {
+        try {
+          // Basic validation (customize as needed)
+          if (!row.firstname || !row.lastname || !row.class) continue
+          // Generate a unique ID if not present
+          const studentId = row.adm_no || `ST${Date.now().toString().slice(-6)}`
+          // Add timestamp and metadata
+          const currentDate = new Date()
+          const studentData = {
+            ...row,
+            id: studentId,
+            status: "Active",
+            created_at: Timestamp.fromDate(currentDate),
+            date: currentDate.toLocaleDateString(),
+            month: currentDate.toLocaleString("default", { month: "long" }),
+            year: currentDate.getFullYear().toString(),
+          }
+          await setDoc(doc(db, "students", studentId), studentData)
+          successCount++
+        } catch (err) {
+          errorCount++
+        }
+      }
       toast({
-        title: "Success",
-        description: `${csvFile.name} uploaded successfully`,
+        title: "Upload Complete",
+        description: `${successCount} students uploaded, ${errorCount} errors`,
+        variant: errorCount > 0 ? "destructive" : "default",
       })
-
-      // Reset state
       setCsvFile(null)
       setIsAddStudentOpen(false)
+      await refreshStudents()
     } catch (error) {
       setUploadError("Failed to process CSV file. Please try again.")
       console.error("CSV upload error:", error)
@@ -651,53 +1023,72 @@ export default function StudentsPage() {
 
     setIsSearchingNIN(true)
     try {
-      // In a real implementation, this would call an API to get student data
-      // For now, we'll simulate by searching our local data
-
-      // First check if we have the student in our local data
-      const foundStudent = students.find((student) => student.nin === ninSearchQuery)
-
-      if (foundStudent) {
-        // Populate the form with the found student's data
-        setFormData({
-          ...formData,
-          firstname: foundStudent.firstname || "",
-          lastname: foundStudent.lastname || "",
-          dob: foundStudent.dob || "",
-          gender: foundStudent.gender || "",
-          homeaddress: foundStudent.homeaddress || "",
-          phonenumber: foundStudent.phonenumber || "",
-          emailaddress: foundStudent.emailaddress || "",
-          nationality: foundStudent.nationality || "Sierra Leone",
-          nin: foundStudent.nin || ninSearchQuery,
-        })
-
-        toast({
-          title: "Success",
-          description: "Student information found and populated",
-        })
-      } else {
-        // Simulate API call to National ID database
-        // In a real implementation, this would be an actual API call
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-
-        // For demo purposes, we'll just set the NIN and show a message
-        setFormData({
-          ...formData,
-          nin: ninSearchQuery,
-        })
-
-        toast({
-          title: "Information",
-          description:
-            "No student found with this NIN. When API is connected, this would fetch data from the National ID database.",
-        })
+      console.log('Searching for NIN:', ninSearchQuery)
+      
+      const response = await fetch('/api/nin-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nin: ninSearchQuery })
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: NIN not found`)
       }
-    } catch (error) {
-      console.error("Error searching by NIN:", error)
+      
+      const data = await response.json()
+      console.log('API response data:', data)
+      
+      // Check if the API returned valid data
+      if (!data || !data.firstName || !data.lastName) {
+        console.log('Invalid data structure:', data)
+        throw new Error('Invalid NIN data received')
+      }
+      
+      // Auto-populate form with NIN data
+      setFormData((prev) => ({
+        ...prev,
+        firstname: data.firstName || prev.firstname,
+        lastname: data.lastName || prev.lastname,
+        dob: data.dateOfBirth || prev.dob,
+        gender: data.gender || prev.gender,
+        nationality: data.nationality || prev.nationality,
+        homeaddress: data.address || prev.homeaddress,
+        phonenumber: data.phoneNumber || prev.phonenumber,
+        emailaddress: data.emailaddress || prev.emailaddress,
+        level: data.level || prev.level,
+        faculty: data.faculty || prev.faculty,
+        nin: ninSearchQuery
+      }))
+      
+      console.log('Form updated with NIN data')
+      
       toast({
-        title: "Error",
-        description: "Failed to search by NIN. Please try again.",
+        title: "Success",
+        description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
+      })
+    } catch (error) {
+      console.error('NIN search failed:', error)
+      
+      // Show specific error message based on the error
+      let errorMessage = "NIN verification failed"
+      if (error instanceof Error) {
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          errorMessage = `NIN "${ninSearchQuery}" not found in the database`
+        } else if (error.message.includes('Invalid NIN data')) {
+          errorMessage = "Invalid data received from NIN database"
+        } else if (error.message.includes('fetch')) {
+          errorMessage = "Network error - please check your connection"
+        }
+      }
+      
+      toast({
+        title: "NIN Not Found",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -1093,25 +1484,38 @@ export default function StudentsPage() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div>
-                          <Label htmlFor="faculty">Faculty</Label>
-                          <Select
-                            onValueChange={(value) => handleSelectChange("faculty", value)}
-                            value={formData.faculty}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select faculty" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Science">Science</SelectItem>
-                              <SelectItem value="Commercial">Commercial</SelectItem>
-                              <SelectItem value="Arts">Arts</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        {schoolStage === "Senior Secondary" && (
+                          <div>
+                            <Label htmlFor="faculty">Faculty</Label>
+                            <Select
+                              onValueChange={(value) => handleSelectChange("faculty", value)}
+                              value={formData.faculty}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select faculty" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Science">Science</SelectItem>
+                                <SelectItem value="Commercial">Commercial</SelectItem>
+                                <SelectItem value="Arts">Arts</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                         <div>
                           <Label htmlFor="level">Level</Label>
-                          <Input id="level" value={formData.level} onChange={handleInputChange} />
+                          <Select onValueChange={(value) => handleSelectChange("level", value)} value={formData.level}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select level" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getLevelOptions(schoolStage).map((level) => (
+                                <SelectItem key={level} value={level}>
+                                  {level}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div>
                           <Label htmlFor="homeaddress">Home Address</Label>
@@ -1156,210 +1560,38 @@ export default function StudentsPage() {
                               <SelectValue placeholder="Select nationality" />
                             </SelectTrigger>
                             <SelectContent className="max-h-[200px]">
-                              <SelectItem value="Sierra Leone">Sierra Leone</SelectItem>
-                              <SelectItem value="Afghanistan">Afghanistan</SelectItem>
-                              <SelectItem value="Albania">Albania</SelectItem>
-                              <SelectItem value="Algeria">Algeria</SelectItem>
-                              <SelectItem value="Andorra">Andorra</SelectItem>
-                              <SelectItem value="Angola">Angola</SelectItem>
-                              <SelectItem value="Antigua and Barbuda">Antigua and Barbuda</SelectItem>
-                              <SelectItem value="Argentina">Argentina</SelectItem>
-                              <SelectItem value="Armenia">Armenia</SelectItem>
-                              <SelectItem value="Australia">Australia</SelectItem>
-                              <SelectItem value="Austria">Austria</SelectItem>
-                              <SelectItem value="Azerbaijan">Azerbaijan</SelectItem>
-                              <SelectItem value="Bahamas">Bahamas</SelectItem>
-                              <SelectItem value="Bahrain">Bahrain</SelectItem>
-                              <SelectItem value="Bangladesh">Bangladesh</SelectItem>
-                              <SelectItem value="Barbados">Barbados</SelectItem>
-                              <SelectItem value="Belarus">Belarus</SelectItem>
-                              <SelectItem value="Belgium">Belgium</SelectItem>
-                              <SelectItem value="Belize">Belize</SelectItem>
-                              <SelectItem value="Benin">Benin</SelectItem>
-                              <SelectItem value="Bhutan">Bhutan</SelectItem>
-                              <SelectItem value="Bolivia">Bolivia</SelectItem>
-                              <SelectItem value="Bosnia and Herzegovina">Bosnia and Herzegovina</SelectItem>
-                              <SelectItem value="Botswana">Botswana</SelectItem>
-                              <SelectItem value="Brazil">Brazil</SelectItem>
-                              <SelectItem value="Brunei">Brunei</SelectItem>
-                              <SelectItem value="Bulgaria">Bulgaria</SelectItem>
-                              <SelectItem value="Burkina Faso">Burkina Faso</SelectItem>
-                              <SelectItem value="Burundi">Burundi</SelectItem>
-                              <SelectItem value="Cabo Verde">Cabo Verde</SelectItem>
-                              <SelectItem value="Cambodia">Cambodia</SelectItem>
-                              <SelectItem value="Cameroon">Cameroon</SelectItem>
-                              <SelectItem value="Canada">Canada</SelectItem>
-                              <SelectItem value="Central African Republic">Central African Republic</SelectItem>
-                              <SelectItem value="Chad">Chad</SelectItem>
-                              <SelectItem value="Chile">Chile</SelectItem>
-                              <SelectItem value="China">China</SelectItem>
-                              <SelectItem value="Colombia">Colombia</SelectItem>
-                              <SelectItem value="Comoros">Comoros</SelectItem>
-                              <SelectItem value="Congo">Congo</SelectItem>
-                              <SelectItem value="Costa Rica">Costa Rica</SelectItem>
-                              <SelectItem value="Croatia">Croatia</SelectItem>
-                              <SelectItem value="Cuba">Cuba</SelectItem>
-                              <SelectItem value="Cyprus">Cyprus</SelectItem>
-                              <SelectItem value="Czech Republic">Czech Republic</SelectItem>
-                              <SelectItem value="Denmark">Denmark</SelectItem>
-                              <SelectItem value="Djibouti">Djibouti</SelectItem>
-                              <SelectItem value="Dominica">Dominica</SelectItem>
-                              <SelectItem value="Dominican Republic">Dominican Republic</SelectItem>
-                              <SelectItem value="Ecuador">Ecuador</SelectItem>
-                              <SelectItem value="Egypt">Egypt</SelectItem>
-                              <SelectItem value="El Salvador">El Salvador</SelectItem>
-                              <SelectItem value="Equatorial Guinea">Equatorial Guinea</SelectItem>
-                              <SelectItem value="Eritrea">Eritrea</SelectItem>
-                              <SelectItem value="Estonia">Estonia</SelectItem>
-                              <SelectItem value="Eswatini">Eswatini</SelectItem>
-                              <SelectItem value="Ethiopia">Ethiopia</SelectItem>
-                              <SelectItem value="Fiji">Fiji</SelectItem>
-                              <SelectItem value="Finland">Finland</SelectItem>
-                              <SelectItem value="France">France</SelectItem>
-                              <SelectItem value="Gabon">Gabon</SelectItem>
-                              <SelectItem value="Gambia">Gambia</SelectItem>
-                              <SelectItem value="Georgia">Georgia</SelectItem>
-                              <SelectItem value="Germany">Germany</SelectItem>
-                              <SelectItem value="Ghana">Ghana</SelectItem>
-                              <SelectItem value="Greece">Greece</SelectItem>
-                              <SelectItem value="Grenada">Grenada</SelectItem>
-                              <SelectItem value="Guatemala">Guatemala</SelectItem>
-                              <SelectItem value="Guinea">Guinea</SelectItem>
-                              <SelectItem value="Guinea-Bissau">Guinea-Bissau</SelectItem>
-                              <SelectItem value="Guyana">Guyana</SelectItem>
-                              <SelectItem value="Haiti">Haiti</SelectItem>
-                              <SelectItem value="Honduras">Honduras</SelectItem>
-                              <SelectItem value="Hungary">Hungary</SelectItem>
-                              <SelectItem value="Iceland">Iceland</SelectItem>
-                              <SelectItem value="India">India</SelectItem>
-                              <SelectItem value="Indonesia">Indonesia</SelectItem>
-                              <SelectItem value="Iran">Iran</SelectItem>
-                              <SelectItem value="Iraq">Iraq</SelectItem>
-                              <SelectItem value="Ireland">Ireland</SelectItem>
-                              <SelectItem value="Israel">Israel</SelectItem>
-                              <SelectItem value="Italy">Italy</SelectItem>
-                              <SelectItem value="Jamaica">Jamaica</SelectItem>
-                              <SelectItem value="Japan">Japan</SelectItem>
-                              <SelectItem value="Jordan">Jordan</SelectItem>
-                              <SelectItem value="Kazakhstan">Kazakhstan</SelectItem>
-                              <SelectItem value="Kenya">Kenya</SelectItem>
-                              <SelectItem value="Kiribati">Kiribati</SelectItem>
-                              <SelectItem value="Korea, North">Korea, North</SelectItem>
-                              <SelectItem value="Korea, South">Korea, South</SelectItem>
-                              <SelectItem value="Kosovo">Kosovo</SelectItem>
-                              <SelectItem value="Kuwait">Kuwait</SelectItem>
-                              <SelectItem value="Kyrgyzstan">Kyrgyzstan</SelectItem>
-                              <SelectItem value="Laos">Laos</SelectItem>
-                              <SelectItem value="Latvia">Latvia</SelectItem>
-                              <SelectItem value="Lebanon">Lebanon</SelectItem>
-                              <SelectItem value="Lesotho">Lesotho</SelectItem>
-                              <SelectItem value="Liberia">Liberia</SelectItem>
-                              <SelectItem value="Libya">Libya</SelectItem>
-                              <SelectItem value="Liechtenstein">Liechtenstein</SelectItem>
-                              <SelectItem value="Lithuania">Lithuania</SelectItem>
-                              <SelectItem value="Luxembourg">Luxembourg</SelectItem>
-                              <SelectItem value="Madagascar">Madagascar</SelectItem>
-                              <SelectItem value="Malawi">Malawi</SelectItem>
-                              <SelectItem value="Malaysia">Malaysia</SelectItem>
-                              <SelectItem value="Maldives">Maldives</SelectItem>
-                              <SelectItem value="Mali">Mali</SelectItem>
-                              <SelectItem value="Malta">Malta</SelectItem>
-                              <SelectItem value="Marshall Islands">Marshall Islands</SelectItem>
-                              <SelectItem value="Mauritania">Mauritania</SelectItem>
-                              <SelectItem value="Mauritius">Mauritius</SelectItem>
-                              <SelectItem value="Mexico">Mexico</SelectItem>
-                              <SelectItem value="Micronesia">Micronesia</SelectItem>
-                              <SelectItem value="Moldova">Moldova</SelectItem>
-                              <SelectItem value="Monaco">Monaco</SelectItem>
-                              <SelectItem value="Mongolia">Mongolia</SelectItem>
-                              <SelectItem value="Montenegro">Montenegro</SelectItem>
-                              <SelectItem value="Morocco">Morocco</SelectItem>
-                              <SelectItem value="Mozambique">Mozambique</SelectItem>
-                              <SelectItem value="Myanmar">Myanmar</SelectItem>
-                              <SelectItem value="Namibia">Namibia</SelectItem>
-                              <SelectItem value="Nauru">Nauru</SelectItem>
-                              <SelectItem value="Nepal">Nepal</SelectItem>
-                              <SelectItem value="Netherlands">Netherlands</SelectItem>
-                              <SelectItem value="New Zealand">New Zealand</SelectItem>
-                              <SelectItem value="Nicaragua">Nicaragua</SelectItem>
-                              <SelectItem value="Niger">Niger</SelectItem>
-                              <SelectItem value="Nigeria">Nigeria</SelectItem>
-                              <SelectItem value="North Macedonia">North Macedonia</SelectItem>
-                              <SelectItem value="Norway">Norway</SelectItem>
-                              <SelectItem value="Oman">Oman</SelectItem>
-                              <SelectItem value="Pakistan">Pakistan</SelectItem>
-                              <SelectItem value="Palau">Palau</SelectItem>
-                              <SelectItem value="Palestine">Palestine</SelectItem>
-                              <SelectItem value="Panama">Panama</SelectItem>
-                              <SelectItem value="Papua New Guinea">Papua New Guinea</SelectItem>
-                              <SelectItem value="Paraguay">Paraguay</SelectItem>
-                              <SelectItem value="Peru">Peru</SelectItem>
-                              <SelectItem value="Philippines">Philippines</SelectItem>
-                              <SelectItem value="Poland">Poland</SelectItem>
-                              <SelectItem value="Portugal">Portugal</SelectItem>
-                              <SelectItem value="Qatar">Qatar</SelectItem>
-                              <SelectItem value="Romania">Romania</SelectItem>
-                              <SelectItem value="Russia">Russia</SelectItem>
-                              <SelectItem value="Rwanda">Rwanda</SelectItem>
-                              <SelectItem value="Saint Kitts and Nevis">Saint Kitts and Nevis</SelectItem>
-                              <SelectItem value="Saint Lucia">Saint Lucia</SelectItem>
-                              <SelectItem value="Saint Vincent and the Grenadines">
-                                Saint Vincent and the Grenadines
-                              </SelectItem>
-                              <SelectItem value="Samoa">Samoa</SelectItem>
-                              <SelectItem value="San Marino">San Marino</SelectItem>
-                              <SelectItem value="Sao Tome and Principe">Sao Tome and Principe</SelectItem>
-                              <SelectItem value="Saudi Arabia">Saudi Arabia</SelectItem>
-                              <SelectItem value="Senegal">Senegal</SelectItem>
-                              <SelectItem value="Serbia">Serbia</SelectItem>
-                              <SelectItem value="Seychelles">Seychelles</SelectItem>
-                              <SelectItem value="Sierra Leone">Sierra Leone</SelectItem>
-                              <SelectItem value="Singapore">Singapore</SelectItem>
-                              <SelectItem value="Slovakia">Slovakia</SelectItem>
-                              <SelectItem value="Slovenia">Slovenia</SelectItem>
-                              <SelectItem value="Solomon Islands">Solomon Islands</SelectItem>
-                              <SelectItem value="Somalia">Somalia</SelectItem>
-                              <SelectItem value="South Africa">South Africa</SelectItem>
-                              <SelectItem value="South Sudan">South Sudan</SelectItem>
-                              <SelectItem value="Spain">Spain</SelectItem>
-                              <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
-                              <SelectItem value="Sudan">Sudan</SelectItem>
-                              <SelectItem value="Suriname">Suriname</SelectItem>
-                              <SelectItem value="Sweden">Sweden</SelectItem>
-                              <SelectItem value="Switzerland">Switzerland</SelectItem>
-                              <SelectItem value="Syria">Syria</SelectItem>
-                              <SelectItem value="Taiwan">Taiwan</SelectItem>
-                              <SelectItem value="Tajikistan">Tajikistan</SelectItem>
-                              <SelectItem value="Tanzania">Tanzania</SelectItem>
-                              <SelectItem value="Thailand">Thailand</SelectItem>
-                              <SelectItem value="Timor-Leste">Timor-Leste</SelectItem>
-                              <SelectItem value="Togo">Togo</SelectItem>
-                              <SelectItem value="Tonga">Tonga</SelectItem>
-                              <SelectItem value="Trinidad and Tobago">Trinidad and Tobago</SelectItem>
-                              <SelectItem value="Tunisia">Tunisia</SelectItem>
-                              <SelectItem value="Turkey">Turkey</SelectItem>
-                              <SelectItem value="Turkmenistan">Turkmenistan</SelectItem>
-                              <SelectItem value="Tuvalu">Tuvalu</SelectItem>
-                              <SelectItem value="Uganda">Uganda</SelectItem>
-                              <SelectItem value="Ukraine">Ukraine</SelectItem>
-                              <SelectItem value="United Arab Emirates">United Arab Emirates</SelectItem>
-                              <SelectItem value="United Kingdom">United Kingdom</SelectItem>
-                              <SelectItem value="United States">United States</SelectItem>
-                              <SelectItem value="Uruguay">Uruguay</SelectItem>
-                              <SelectItem value="Uzbekistan">Uzbekistan</SelectItem>
-                              <SelectItem value="Vanuatu">Vanuatu</SelectItem>
-                              <SelectItem value="Vatican City">Vatican City</SelectItem>
-                              <SelectItem value="Venezuela">Venezuela</SelectItem>
-                              <SelectItem value="Vietnam">Vietnam</SelectItem>
-                              <SelectItem value="Yemen">Yemen</SelectItem>
-                              <SelectItem value="Zambia">Zambia</SelectItem>
-                              <SelectItem value="Zimbabwe">Zimbabwe</SelectItem>
+                              {nationalityOptions.map((option) => (
+                                <SelectItem key={option.key} value={option.value}>
+                                  {option.value}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
                         <div>
                           <Label htmlFor="nin">NIN</Label>
-                          <Input id="nin" value={formData.nin} onChange={handleInputChange} />
+                          <div className="flex gap-2">
+                            <Input id="nin" value={formData.nin} onChange={handleInputChange} placeholder="Enter NIN to search" />
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              onClick={() => searchNINFromAPI(formData.nin)}
+                              disabled={isSearchingNIN || !formData.nin}
+                              className="whitespace-nowrap"
+                            >
+                              {isSearchingNIN ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                                  Searching...
+                                </>
+                              ) : (
+                                "Search by NIN"
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Test NINs: SL12345678, SL87654321, SL11223344, SL11112222, SL22223333
+                          </p>
                         </div>
                         <div>
                           <Label htmlFor="disability">Disability</Label>

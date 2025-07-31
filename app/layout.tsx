@@ -7,7 +7,11 @@ import type { Metadata } from "next"
 export const metadata: Metadata = {
   title: "Skultɛk",
   description: "School Management System",
-    generator: 'v0.dev'
+  generator: 'v0.dev',
+  icons: {
+    icon: '/schooltech.png',
+    apple: '/schooltech.png'
+  }
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -32,6 +32,10 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { updatePassword } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 type SchoolAdmin = {
   id: string
@@ -59,6 +63,10 @@ export default function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
+  const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [changingPassword, setChangingPassword] = useState(false)
 
   // Attendance data for chart
   const attendanceData = [
@@ -76,6 +84,7 @@ export default function Dashboard() {
       try {
         const schoolInfo = await getCurrentSchoolInfo()
         setSchoolName(schoolInfo.schoolName)
+        setSchoolStage(schoolInfo.stage)
         const schoolId = schoolInfo.school_id
 
         if (schoolId && schoolId !== "unknown" && schoolId !== "error") {
@@ -153,6 +162,37 @@ export default function Dashboard() {
     fetchData()
   }, [])
 
+  useEffect(() => {
+    // Show modal only on first login (per browser)
+    if (typeof window !== "undefined" && !localStorage.getItem("passwordChangePrompted")) {
+      setShowChangePasswordModal(true)
+      localStorage.setItem("passwordChangePrompted", "true")
+    }
+  }, [])
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setChangingPassword(true)
+    try {
+      if (!auth.currentUser) throw new Error("No authenticated user.")
+      await updatePassword(auth.currentUser, newPassword)
+      setShowChangePasswordModal(false)
+      setNewPassword("")
+      toast({
+        title: "Password Changed",
+        description: "Your password has been updated successfully.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to change password.",
+        variant: "destructive",
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   // Prepare chart data for special needs
   const specialNeedsChartData = [
     { name: "With Disabilities", value: specialNeedsStats.totalWithDisabilities },
@@ -199,10 +239,17 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{schoolName}</h1>
-              <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
+              {schoolStage && (
+                <Card className="py-1 px-3 flex items-center shadow-none border-none" style={{ backgroundColor: schoolStage === 'Primary' ? '#fee2e2' : schoolStage === 'Junior Secondary' ? '#dbeafe' : schoolStage === 'Senior Secondary' ? '#dcfce7' : '#f3f4f6' }}>
+                  <span className="font-semibold text-sm" style={{ color: schoolStage === 'Primary' ? '#b91c1c' : schoolStage === 'Junior Secondary' ? '#1d4ed8' : schoolStage === 'Senior Secondary' ? '#15803d' : '#6b7280' }}>
+                    {schoolStage}
+                  </span>
+                </Card>
+              )}
             </div>
+            <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
           </div>
         )}
 
@@ -378,6 +425,32 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+      <Dialog open={showChangePasswordModal} onOpenChange={setShowChangePasswordModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Your Password</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <Input
+              type="password"
+              placeholder="Enter new password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              required
+              minLength={6}
+              disabled={changingPassword}
+            />
+            <DialogFooter>
+              <Button type="submit" disabled={changingPassword}>
+                {changingPassword ? "Changing..." : "Change Password"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setShowChangePasswordModal(false)}>
+                Skip
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

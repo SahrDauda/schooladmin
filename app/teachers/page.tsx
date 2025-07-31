@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,8 @@ import { TeacherAttendanceQR } from "@/components/teacher-attendance-qr"
 import { createUserWithEmailAndPassword } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 import { sendEmail } from "@/lib/index"
+import Papa from "papaparse"
+import * as XLSX from "xlsx"
 
 const teacherSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -80,6 +82,10 @@ export default function TeachersPage() {
   })
   const [editFormData, setEditFormData] = useState(formData)
   const [subjects, setSubjects] = useState<any[]>([])
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -345,6 +351,116 @@ export default function TeachersPage() {
     return `${firstname?.[0] || ""}${lastname?.[0] || ""}`.toUpperCase()
   }
 
+  // Bulk upload handlers
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (
+      file.type !== "text/csv" &&
+      !file.name.endsWith(".csv") &&
+      file.type !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" &&
+      !file.name.endsWith(".xlsx")
+    ) {
+      setUploadError("Please upload a valid CSV or Excel file")
+      return
+    }
+    setCsvFile(file)
+  }
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setUploadError(null)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    if (
+      file.type !== "text/csv" &&
+      !file.name.endsWith(".csv") &&
+      file.type !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" &&
+      !file.name.endsWith(".xlsx")
+    ) {
+      setUploadError("Please upload a valid CSV or Excel file")
+      return
+    }
+    setCsvFile(file)
+  }
+
+  const handleUploadCSV = async () => {
+    if (!csvFile) {
+      setUploadError("Please select a CSV or Excel file first")
+      return
+    }
+    setIsUploading(true)
+    setUploadError(null)
+    try {
+      let rows: any[] = []
+      if (
+        csvFile.type === "text/csv" ||
+        csvFile.name.endsWith(".csv")
+      ) {
+        // Parse CSV file
+        const text = await csvFile.text()
+        const parsed = Papa.parse(text, { header: true })
+        if (parsed.errors.length > 0) {
+          setUploadError("Failed to parse CSV file. Please check the format.")
+          setIsUploading(false)
+          return
+        }
+        rows = parsed.data
+      } else if (
+        csvFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        csvFile.name.endsWith(".xlsx")
+      ) {
+        // Parse Excel file
+        const data = await csvFile.arrayBuffer()
+        const workbook = XLSX.read(data, { type: "array" })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        rows = XLSX.utils.sheet_to_json(worksheet)
+      } else {
+        setUploadError("Unsupported file type.")
+        setIsUploading(false)
+        return
+      }
+      let successCount = 0
+      let errorCount = 0
+      for (const row of rows) {
+        try {
+          // Basic validation (customize as needed)
+          if (!row.firstname || !row.lastname || !row.email) continue
+          // Generate a unique ID if not present
+          const teacherId = row.id || `TCH${Date.now().toString().slice(-6)}`
+          // Add timestamp and metadata
+          const currentDate = new Date()
+          const teacherData = {
+            ...row,
+            id: teacherId,
+            school_id: schoolInfo.school_id,
+            schoolName: schoolInfo.schoolName,
+            created_at: Timestamp.fromDate(currentDate),
+            status: "Active",
+          }
+          await setDoc(doc(db, "teachers", teacherId), teacherData)
+          successCount++
+        } catch (err) {
+          errorCount++
+        }
+      }
+      toast({
+        title: "Upload Complete",
+        description: `${successCount} teachers uploaded, ${errorCount} errors`,
+        variant: errorCount > 0 ? "destructive" : "default",
+      })
+      setCsvFile(null)
+      await fetchTeachers()
+    } catch (error) {
+      setUploadError("Failed to process file. Please try again.")
+      console.error("Upload error:", error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
@@ -537,6 +653,34 @@ export default function TeachersPage() {
                   </Select>
                 )}
               </div>
+            </div>
+            <div className="mb-4">
+              <div className="border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center cursor-pointer"
+                onDrop={handleFileDrop}
+                onDragOver={e => e.preventDefault()}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <UserPlus className="w-6 h-6 text-gray-500 mb-2" />
+                <p className="text-gray-500">Drag and drop your CSV or Excel file here or click to select</p>
+                <input
+                  type="file"
+                  accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, .xlsx"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  ref={fileInputRef}
+                />
+              </div>
+              {uploadError && (
+                <div className="text-red-500 mt-2 text-sm">{uploadError}</div>
+              )}
+              {csvFile && (
+                <div className="mt-2">
+                  <p>Selected file: {csvFile.name}</p>
+                  <Button variant="secondary" onClick={handleUploadCSV} disabled={isUploading}>
+                    {isUploading ? "Uploading..." : "Upload"}
+                  </Button>
+                </div>
+              )}
             </div>
             {isLoading ? (
               <div className="flex justify-center items-center py-8">

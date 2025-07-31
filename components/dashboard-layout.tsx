@@ -36,7 +36,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [adminName, setAdminName] = useState("Admin User")
-  const [adminRole, setAdminRole] = useState("Administrator")
+  const [adminRole, setAdminRole] = useState("Principal")
+  const [adminGender, setAdminGender] = useState("")
   const [isMobile, setIsMobile] = useState(false)
 
   const sidebarItems = [
@@ -49,7 +50,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Grades", href: "/grades", icon: FileText },
     { name: "Subjects", href: "/subjects", icon: BookOpen },
     { name: "Reports", href: "/reports", icon: MessageSquare },
-    { name: "Administrators", href: "/admin", icon: UserCog },
   ]
 
   useEffect(() => {
@@ -61,9 +61,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     const storedName = localStorage.getItem("adminName")
     const storedRole = localStorage.getItem("adminRole")
+    const storedGender = localStorage.getItem("adminGender")
 
     if (storedName) setAdminName(storedName)
-    if (storedRole) setAdminRole(storedRole)
+    if (storedGender) setAdminGender(storedGender)
+    // Always set role to "Principal" regardless of database value
+    setAdminRole("Principal")
 
     if (adminId) {
       const fetchAdminData = async () => {
@@ -71,14 +74,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
           if (adminDoc.exists()) {
             const adminData = adminDoc.data()
-            if (adminData.name) {
-              setAdminName(adminData.name)
-              localStorage.setItem("adminName", adminData.name)
-            }
-            if (adminData.role) {
-              setAdminRole(adminData.role)
-              localStorage.setItem("adminRole", adminData.role)
-            }
+                      if (adminData.adminname) {
+            setAdminName(adminData.adminname)
+            localStorage.setItem("adminName", adminData.adminname)
+          } else if (adminData.adminName) {
+            setAdminName(adminData.adminName)
+            localStorage.setItem("adminName", adminData.adminName)
+          } else if (adminData.name) {
+            setAdminName(adminData.name)
+            localStorage.setItem("adminName", adminData.name)
+          }
+          
+          // Set gender for title
+          if (adminData.gender) {
+            setAdminGender(adminData.gender)
+            localStorage.setItem("adminGender", adminData.gender)
+          }
+            // Always set role to "Principal" and store it
+            setAdminRole("Principal")
+            localStorage.setItem("adminRole", "Principal")
           }
         } catch (error) {
           console.error("Error fetching admin data:", error)
@@ -108,6 +122,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     localStorage.removeItem("adminId")
     localStorage.removeItem("adminName")
     localStorage.removeItem("adminRole")
+    localStorage.removeItem("adminGender")
     router.push("/")
   }
 
@@ -115,6 +130,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (isMobile) {
       setSidebarOpen(false)
     }
+  }
+
+  // Function to format name with title based on gender
+  const getFormattedName = () => {
+    if (!adminName || adminName === "Admin User") return adminName
+    
+    let title = ""
+    if (adminGender === "Male") {
+      title = "Mr "
+    } else if (adminGender === "Female") {
+      title = "Mrs "
+    }
+    
+    return title + adminName
   }
 
   return (
@@ -197,14 +226,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <Avatar className="h-10 w-10">
               <AvatarImage src="/placeholder.svg?height=40&width=40" alt="User" />
               <AvatarFallback className="bg-white/10 text-white">
-                {adminName
+                {getFormattedName()
                   .split(" ")
                   .map((n) => n[0])
                   .join("")}
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col">
-              <span className="text-sm font-medium text-white">{adminName}</span>
+              <span className="text-sm font-medium text-white">{getFormattedName()}</span>
               <span className="text-xs text-gray-400">{adminRole}</span>
             </div>
           </div>

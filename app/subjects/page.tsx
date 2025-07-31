@@ -36,6 +36,15 @@ interface Subject {
   updated_at?: Timestamp
 }
 
+interface Department {
+  id: string
+  name: string
+  school_id: string
+  schoolname: string
+  created_at?: Timestamp
+  updated_at?: Timestamp
+}
+
 // Validation schema
 const subjectSchema = z.object({
   name: z.string().min(1, "Subject name is required"),
@@ -45,9 +54,46 @@ const subjectSchema = z.object({
   level: z.string().optional(),
 })
 
+// Stage-specific level options
+const getLevelOptions = (stage: string) => {
+  switch (stage) {
+    case "Primary":
+      return [
+        "All",
+        "Prep 1",
+        "Prep 2", 
+        "Prep 3",
+        "Prep 4",
+        "Prep 5",
+        "Prep 6"
+      ]
+    case "Junior Secondary":
+      return [
+        "All",
+        "JSS 1",
+        "JSS 2",
+        "JSS 3"
+      ]
+    case "Senior Secondary":
+      return [
+        "All",
+        "SSS 1",
+        "SSS 2", 
+        "SSS 3"
+      ]
+    default:
+      return [
+        "Not Specified"
+      ]
+  }
+}
+
 export default function SubjectsPage() {
   // State for subjects
   const [subjects, setSubjects] = useState<Subject[]>([])
+
+  // State for departments
+  const [departments, setDepartments] = useState<Department[]>([])
 
   // State for loading
   const [isLoading, setIsLoading] = useState(true)
@@ -57,9 +103,18 @@ export default function SubjectsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
+  
+  // State for department dialogs
+  const [isAddDepartmentDialogOpen, setIsAddDepartmentDialogOpen] = useState(false)
+  const [departmentFormData, setDepartmentFormData] = useState({
+    name: "",
+    school_id: "",
+    schoolname: "",
+  })
+  const [isSubmittingDepartment, setIsSubmittingDepartment] = useState(false)
 
   // State for school info
-  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
+  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>({ school_id: "", schoolName: "", stage: "" })
 
   // State for form data
   const [formData, setFormData] = useState({
@@ -86,6 +141,7 @@ export default function SubjectsPage() {
   useEffect(() => {
     const loadSchoolInfo = async () => {
       const info = await getCurrentSchoolInfo()
+      console.log("School info loaded:", info)
       setSchoolInfo(info)
       setFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
     }
@@ -93,13 +149,14 @@ export default function SubjectsPage() {
     loadSchoolInfo()
   }, [])
 
-  // Fetch subjects
+  // Fetch subjects and departments
   useEffect(() => {
-    const fetchSubjects = async () => {
+    const fetchData = async () => {
       if (!schoolInfo.school_id) return
 
       setIsLoading(true)
       try {
+        // Fetch subjects
         const subjectsRef = collection(db, "subjects")
         const subjectsQuery = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
         const subjectsSnapshot = await getDocs(subjectsQuery)
@@ -114,11 +171,29 @@ export default function SubjectsPage() {
         // Sort subjects by name
         subjectsList.sort((a, b) => a.name.localeCompare(b.name))
         setSubjects(subjectsList)
+
+        // Fetch departments (only for Senior Secondary)
+        if (schoolInfo.stage === "Senior Secondary") {
+          const departmentsRef = collection(db, "departments")
+          const departmentsQuery = query(departmentsRef, where("school_id", "==", schoolInfo.school_id))
+          const departmentsSnapshot = await getDocs(departmentsQuery)
+          const departmentsList: Department[] = departmentsSnapshot.docs.map(
+            (doc) =>
+            ({
+              id: doc.id,
+              ...doc.data(),
+            } as Department),
+          )
+
+          // Sort departments by name
+          departmentsList.sort((a, b) => a.name.localeCompare(b.name))
+          setDepartments(departmentsList)
+        }
       } catch (error) {
-        console.error("Error fetching subjects:", error)
+        console.error("Error fetching data:", error)
         toast({
           title: "Error",
-          description: "Failed to load subjects",
+          description: "Failed to load data",
           variant: "destructive",
         })
       } finally {
@@ -127,9 +202,9 @@ export default function SubjectsPage() {
     }
 
     if (schoolInfo.school_id) {
-      fetchSubjects()
+      fetchData()
     }
-  }, [schoolInfo.school_id])
+  }, [schoolInfo.school_id, schoolInfo.stage])
 
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -139,6 +214,92 @@ export default function SubjectsPage() {
 
   const handleSelectChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  // Generate subject code
+  const generateSubjectCode = () => {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const numbers = '0123456789'
+    
+    let code = ''
+    // Generate 3 random letters
+    for (let i = 0; i < 3; i++) {
+      code += letters.charAt(Math.floor(Math.random() * letters.length))
+    }
+    // Generate 3 random numbers
+    for (let i = 0; i < 3; i++) {
+      code += numbers.charAt(Math.floor(Math.random() * numbers.length))
+    }
+    
+    setFormData((prev) => ({ ...prev, code }))
+  }
+
+  // Handle department form input changes
+  const handleDepartmentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target
+    setDepartmentFormData((prev) => ({ ...prev, [id]: value }))
+  }
+
+  // Open add department dialog
+  const handleOpenAddDepartmentDialog = () => {
+    setDepartmentFormData({
+      name: "",
+      school_id: schoolInfo.school_id,
+      schoolname: schoolInfo.schoolName,
+    })
+    setIsAddDepartmentDialogOpen(true)
+  }
+
+  // Submit department form
+  const handleSubmitDepartment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmittingDepartment(true)
+
+    try {
+      // Generate a unique ID for new departments
+      const departmentId = `DEPT_${Date.now().toString().slice(-6)}`
+
+      // Add timestamp and metadata
+      const currentDate = new Date()
+      const departmentData = {
+        ...departmentFormData,
+        id: departmentId,
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
+        created_at: Timestamp.fromDate(currentDate),
+      }
+
+      // Save to Firestore
+      await setDoc(doc(db, "departments", departmentId), departmentData)
+
+      // Show success message
+      toast({
+        title: "Success",
+        description: "Department added successfully",
+      })
+
+      // Refresh departments list
+      const updatedDepartments = [...departments, { ...departmentData }]
+      updatedDepartments.sort((a, b) => a.name.localeCompare(b.name))
+      setDepartments(updatedDepartments)
+
+      // Reset form and close dialog
+      setDepartmentFormData({
+        name: "",
+        school_id: schoolInfo.school_id,
+        schoolname: schoolInfo.schoolName,
+      })
+      setIsAddDepartmentDialogOpen(false)
+    } catch (error) {
+      console.error("Error saving department:", error)
+      toast({
+        title: "Error",
+        description: "Failed to save department. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmittingDepartment(false)
+    }
   }
 
   // Open add dialog
@@ -298,8 +459,21 @@ export default function SubjectsPage() {
   })
 
   // Get unique departments and levels for filters
-  const departments = ["all", ...[...new Set(subjects.map((s) => s.department))].filter(Boolean)]
+  const departmentFilters = ["all", ...[...new Set(subjects.map((s) => s.department))].filter(Boolean)]
   const levels = ["all", ...[...new Set(subjects.map((s) => s.level))].filter(Boolean)]
+
+  // Get stage-specific level options
+  const levelOptions = getLevelOptions(schoolInfo.stage || "")
+  const isSeniorSecondary = schoolInfo.stage === "Senior Secondary"
+  console.log("School stage:", schoolInfo.stage, "Level options:", levelOptions, "Is Senior Secondary:", isSeniorSecondary)
+  
+  // Debug: Check if stage matches exactly
+  console.log("Stage comparison:", {
+    stage: schoolInfo.stage,
+    isPrimary: schoolInfo.stage === "Primary",
+    isJuniorSecondary: schoolInfo.stage === "Junior Secondary", 
+    isSeniorSecondary: schoolInfo.stage === "Senior Secondary"
+  })
 
   return (
     <DashboardLayout>
@@ -307,10 +481,18 @@ export default function SubjectsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-2xl font-semibold">Subjects</CardTitle>
-            <Button onClick={handleOpenAddDialog}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Subject
-            </Button>
+            <div className="flex gap-2">
+              {isSeniorSecondary && (
+                <Button variant="outline" onClick={handleOpenAddDepartmentDialog}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Department
+                </Button>
+              )}
+              <Button onClick={handleOpenAddDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Subject
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -324,18 +506,20 @@ export default function SubjectsPage() {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.filter((c): c is string => !!c).map((dept) => (
-                        <SelectItem key={dept} value={dept}>
-                          {dept === "all" ? "All Departments" : dept}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {isSeniorSecondary && (
+                    <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departmentFilters.filter((c): c is string => !!c).map((dept) => (
+                          <SelectItem key={dept} value={dept}>
+                            {dept === "all" ? "All Departments" : dept}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Select value={levelFilter} onValueChange={setLevelFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Level" />
@@ -368,7 +552,7 @@ export default function SubjectsPage() {
                       <TableRow>
                         <TableHead>Subject Code</TableHead>
                         <TableHead>Subject Name</TableHead>
-                        <TableHead>Department</TableHead>
+                        {isSeniorSecondary && <TableHead>Department</TableHead>}
                         <TableHead>Level</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -381,7 +565,7 @@ export default function SubjectsPage() {
                         >
                           <TableCell className="font-medium">{subject.code}</TableCell>
                           <TableCell>{subject.name}</TableCell>
-                          <TableCell>{subject.department || "—"}</TableCell>
+                          {isSeniorSecondary && <TableCell>{subject.department || "—"}</TableCell>}
                           <TableCell>{subject.level || "—"}</TableCell>
                         </TableRow>
                       ))}
@@ -408,12 +592,30 @@ export default function SubjectsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="code">Subject Code *</Label>
-                  <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                  <div className="flex gap-2">
+                    <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                    <Button type="button" variant="outline" onClick={generateSubjectCode} className="whitespace-nowrap">
+                      Generate
+                    </Button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="department">Department</Label>
-                  <Input id="department" value={formData.department} onChange={handleInputChange} />
-                </div>
+                {isSeniorSecondary && (
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department</Label>
+                    <Select value={formData.department} onValueChange={(value) => handleSelectChange("department", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.name}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="level">Level</Label>
                   <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
@@ -421,10 +623,11 @@ export default function SubjectsPage() {
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="NotSpecified">Not Specified</SelectItem>
-                      <SelectItem value="Primary">Primary</SelectItem>
-                      <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
-                      <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
+                      {levelOptions.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {level}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -457,12 +660,30 @@ export default function SubjectsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="code">Subject Code *</Label>
-                  <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                  <div className="flex gap-2">
+                    <Input id="code" value={formData.code} onChange={handleInputChange} required />
+                    <Button type="button" variant="outline" onClick={generateSubjectCode} className="whitespace-nowrap">
+                      Generate
+                    </Button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="department">Department</Label>
-                  <Input id="department" value={formData.department} onChange={handleInputChange} />
-                </div>
+                {isSeniorSecondary && (
+                  <div className="space-y-2">
+                    <Label htmlFor="department">Department</Label>
+                    <Select value={formData.department} onValueChange={(value) => handleSelectChange("department", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.name}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="level">Level</Label>
                   <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
@@ -470,10 +691,11 @@ export default function SubjectsPage() {
                       <SelectValue placeholder="Select level" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="NotSpecified">Not Specified</SelectItem>
-                      <SelectItem value="Primary">Primary</SelectItem>
-                      <SelectItem value="JuniorSecondary">Junior Secondary</SelectItem>
-                      <SelectItem value="SeniorSecondary">Senior Secondary</SelectItem>
+                      {levelOptions.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {level}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -508,10 +730,12 @@ export default function SubjectsPage() {
                     <h3 className="text-sm font-medium text-muted-foreground">Subject Name</h3>
                     <p className="text-base font-medium">{selectedSubject.name}</p>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
-                    <p className="text-base">{selectedSubject.department || "—"}</p>
-                  </div>
+                  {isSeniorSecondary && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
+                      <p className="text-base">{selectedSubject.department || "—"}</p>
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Level</h3>
                     <p className="text-base">{selectedSubject.level || "—"}</p>
@@ -545,6 +769,33 @@ export default function SubjectsPage() {
                 </DialogFooter>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Department Dialog */}
+        <Dialog open={isAddDepartmentDialogOpen} onOpenChange={setIsAddDepartmentDialogOpen}>
+          <DialogContent className="sm:max-w-[500px] w-[90%]">
+            <DialogHeader>
+              <DialogTitle>Add Department</DialogTitle>
+              <DialogDescription>Add a new department/faculty to the school.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmitDepartment} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Department Name *</Label>
+                <Input 
+                  id="name" 
+                  value={departmentFormData.name} 
+                  onChange={handleDepartmentInputChange} 
+                  placeholder="e.g., Science, Commercial, Arts"
+                  required 
+                />
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmittingDepartment}>
+                  {isSubmittingDepartment ? "Saving..." : "Save Department"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

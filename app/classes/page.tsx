@@ -26,6 +26,37 @@ import { db } from "@/lib/firebase"
 import { z } from "zod"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
+// Stage-specific level options
+const getLevelOptions = (stage: string) => {
+  switch (stage) {
+    case "Primary":
+      return [
+        "Prep 1",
+        "Prep 2", 
+        "Prep 3",
+        "Prep 4",
+        "Prep 5",
+        "Prep 6"
+      ]
+    case "Junior Secondary":
+      return [
+        "JSS 1",
+        "JSS 2",
+        "JSS 3"
+      ]
+    case "Senior Secondary":
+      return [
+        "SSS 1",
+        "SSS 2", 
+        "SSS 3"
+      ]
+    default:
+      return [
+        "Not Specified"
+      ]
+  }
+}
+
 interface Class {
   id: string
   name: string
@@ -57,7 +88,7 @@ export default function ClassesPage() {
   const [isViewClassOpen, setIsViewClassOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [selectedLevel, setSelectedLevel] = useState("all")
-  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
+  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>({ school_id: "", schoolName: "", stage: "" })
   const [formData, setFormData] = useState({
     name: "",
     level: "",
@@ -319,7 +350,9 @@ export default function ClassesPage() {
   const occupancyRate = totalCapacity > 0 ? Math.round((totalStudentsInClasses / totalCapacity) * 100) : 0
 
   // Get unique level options from classes data
-  const levelOptions = [...new Set(classes.map((cls) => cls.level))].sort()
+  // Get stage-specific level options
+  const levelOptions = getLevelOptions(schoolInfo.stage || "")
+  const existingLevelOptions = [...new Set(classes.map((cls) => cls.level))].sort()
 
   // Get teacher name by ID
   const getTeacherName = (teacherId: string) => {
@@ -363,12 +396,11 @@ export default function ClassesPage() {
                           <SelectValue placeholder="Select level" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="JSS 1">JSS 1</SelectItem>
-                          <SelectItem value="JSS 2">JSS 2</SelectItem>
-                          <SelectItem value="JSS 3">JSS 3</SelectItem>
-                          <SelectItem value="SSS 1">SSS 1</SelectItem>
-                          <SelectItem value="SSS 2">SSS 2</SelectItem>
-                          <SelectItem value="SSS 3">SSS 3</SelectItem>
+                          {levelOptions.map((level) => (
+                            <SelectItem key={level} value={level}>
+                              {level}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -491,7 +523,7 @@ export default function ClassesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Levels</SelectItem>
-                    {levelOptions.map((level, index) => (
+                    {existingLevelOptions.map((level, index) => (
                       <SelectItem key={index} value={level}>
                         {level}
                       </SelectItem>
@@ -644,12 +676,11 @@ export default function ClassesPage() {
                               <SelectValue placeholder="Select level" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="JSS 1">JSS 1</SelectItem>
-                              <SelectItem value="JSS 2">JSS 2</SelectItem>
-                              <SelectItem value="JSS 3">JSS 3</SelectItem>
-                              <SelectItem value="SSS 1">SSS 1</SelectItem>
-                              <SelectItem value="SSS 2">SSS 2</SelectItem>
-                              <SelectItem value="SSS 3">SSS 3</SelectItem>
+                              {levelOptions.map((level) => (
+                                <SelectItem key={level} value={level}>
+                                  {level}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

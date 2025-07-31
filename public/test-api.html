@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NIN API Test</title>
+</head>
+<body>
+    <h1>NIN API Test</h1>
+    <input type="text" id="ninInput" placeholder="Enter NIN" value="SL12345678">
+    <button onclick="testAPI()">Test API</button>
+    <div id="result"></div>
+
+    <script>
+        async function testAPI() {
+            const nin = document.getElementById('ninInput').value;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('Testing NIN:', nin);
+                
+                const response = await fetch('/api/nin-verification', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ nin: nin })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    resultDiv.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    const error = await response.json();
+                    console.log('Error:', error);
+                    resultDiv.innerHTML = '<p style="color: red;">Error: ' + JSON.stringify(error) + '</p>';
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                resultDiv.innerHTML = '<p style="color: red;">Network error: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html> 

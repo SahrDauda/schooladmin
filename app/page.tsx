@@ -3,13 +3,14 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { collection, query, where, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore"
+import { auth, db } from "@/lib/firebase"
+import { signInWithEmailAndPassword } from "firebase/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
-import { Lock, Mail } from "lucide-react"
+import { Lock, Mail, Eye, EyeOff } from "lucide-react"
 import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 import type { QuerySnapshot } from "firebase/firestore"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
@@ -21,6 +22,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const { isConnected } = useFirebaseConnection()
 
   useEffect(() => {
@@ -31,34 +33,8 @@ export default function LoginPage() {
     }
   }, [])
 
-  const handleForgotPassword = async () => {
-    if (!emailaddress) {
-      toast({
-        title: "Email Required",
-        description: "Please enter your email address",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setLoading(true)
-    try {
-      // Here you would implement your password reset logic
-      // For example, sending a reset email through Firebase Auth
-      toast({
-        title: "Password Reset",
-        description: "If an account exists, you will receive a password reset email",
-      })
-    } catch (error) {
-      console.error("Password reset error:", error)
-      toast({
-        title: "Reset Failed",
-        description: "Failed to send password reset email",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+  const handleForgotPassword = () => {
+    router.push("/forgot-password")
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -67,32 +43,22 @@ export default function LoginPage() {
     setErrorMessage("")
 
     try {
-      // Add timeout to the Firestore query
-      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", emailaddress))
+      // Use Firebase Auth for authentication
+      const userCredential = await signInWithEmailAndPassword(auth, emailaddress, password)
+      const user = userCredential.user
 
-      // Wrap the query in a Promise.race to handle slow connections
-      const querySnapshot = (await Promise.race([
-        getDocs(adminQuery),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Connection is very slow. Please try again.")), 30000),
-        ),
-      ])) as QuerySnapshot
-
+      // Query Firestore for admin by emailaddress field
+      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
+      const querySnapshot = await getDocs(adminQuery)
       if (querySnapshot.empty) {
-        throw new Error("Invalid email or password")
+        throw new Error("No admin record found for this user.")
       }
-
       const adminDoc = querySnapshot.docs[0]
       const adminData = adminDoc.data()
 
-      // Check if password matches
-      if (adminData.password !== password) {
-        throw new Error("Invalid email or password")
-      }
-
       // Store admin info in localStorage for session management
       localStorage.setItem("adminId", adminDoc.id)
-      localStorage.setItem("adminName", adminData.name || "Admin User")
+      localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || "Admin User")
       localStorage.setItem("adminRole", adminData.role || "Administrator")
 
       // If remember me is checked, store the email in localStorage
@@ -150,13 +116,22 @@ export default function LoginPage() {
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Password"
-                    className="pl-10 h-10 sm:h-11 text-sm sm:text-base"
+                    className="pl-10 h-10 sm:h-11 text-sm sm:text-base pr-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">

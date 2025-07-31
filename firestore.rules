@@ -1,0 +1,230 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/schooladmin/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.role == "Administrator";
+    }
+    
+    function isTeacher() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+    }
+    
+    function isSchoolAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/schooladmin/$(request.auth.uid));
+    }
+    
+    function getCurrentSchoolId() {
+      return isSchoolAdmin() ? 
+        get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.school_id : 
+        null;
+    }
+    
+    function belongsToSameSchool(resourceSchoolId) {
+      return getCurrentSchoolId() == resourceSchoolId;
+    }
+    
+    function isValidEmail(email) {
+      return email.matches('^[^@]+@[^@]+\\.[^@]+$');
+    }
+    
+    function isValidPassword(password) {
+      return password is string && password.size() >= 6;
+    }
+    
+    // School Admin Collection
+    match /schooladmin/{adminId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isAdmin() &&
+        request.resource.data.keys().hasAll(['emailaddress', 'password', 'name', 'role', 'school_id']) &&
+        isValidEmail(request.resource.data.emailaddress) &&
+        isValidPassword(request.resource.data.password) &&
+        request.resource.data.role in ['Administrator', 'School Admin'] &&
+        request.resource.data.school_id is string;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == adminId || isAdmin()
+      ) &&
+        (!('emailaddress' in request.resource.data) || isValidEmail(request.resource.data.emailaddress)) &&
+        (!('password' in request.resource.data) || isValidPassword(request.resource.data.password));
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Schools Collection
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(schoolId) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && isAdmin();
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Students Collection
+    match /students/{studentId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['firstname', 'lastname', 'class', 'school_id']) &&
+        request.resource.data.firstname is string &&
+        request.resource.data.lastname is string &&
+        request.resource.data.class is string &&
+        request.resource.data.school_id is string;
+      allow update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        (!('firstname' in request.resource.data) || request.resource.data.firstname is string) &&
+        (!('lastname' in request.resource.data) || request.resource.data.lastname is string) &&
+        (!('class' in request.resource.data) || request.resource.data.class is string) &&
+        (!('school_id' in request.resource.data) || request.resource.data.school_id is string);
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Teachers Collection
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['firstname', 'lastname', 'emailaddress', 'school_id']) &&
+        request.resource.data.firstname is string &&
+        request.resource.data.lastname is string &&
+        isValidEmail(request.resource.data.emailaddress) &&
+        request.resource.data.school_id is string;
+      allow update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        (!('firstname' in request.resource.data) || request.resource.data.firstname is string) &&
+        (!('lastname' in request.resource.data) || request.resource.data.lastname is string) &&
+        (!('emailaddress' in request.resource.data) || isValidEmail(request.resource.data.emailaddress)) &&
+        (!('school_id' in request.resource.data) || request.resource.data.school_id is string);
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Classes Collection
+    match /classes/{classId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Subjects Collection
+    match /subjects/{subjectId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Grades Collection
+    match /grades/{gradeId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Attendance Collection
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Timetable Collection
+    match /timetable/{timetableId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Password Reset Codes Collection
+    // Allow anyone (even unauthenticated) to create a reset code for forgot password.
+    // All other operations (read, update, delete) require authentication and ownership/admin check.
+    match /passwordResetCodes/{codeId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated() && (
+        request.auth.token.email == resource.data.email ||
+        isAdmin()
+      );
+      // Validate reset code data only on create
+      allow create: if request.resource.data.keys().hasAll(['email', 'code', 'createdAt', 'expiresAt', 'used']) &&
+        isValidEmail(request.resource.data.email) &&
+        request.resource.data.code is string &&
+        request.resource.data.code.size() == 4 &&
+        request.resource.data.used is bool;
+    }
+    
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 
