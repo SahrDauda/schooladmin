@@ -56,7 +56,7 @@ import { Badge } from "@/components/ui/badge"
 import { useSearchParams, useRouter } from "next/navigation"
 import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
 import Papa from "papaparse"
-import XLSX from "xlsx"
+import * as XLSX from "xlsx"
 
 // Stage-specific level options
 const getLevelOptions = (stage: string) => {
