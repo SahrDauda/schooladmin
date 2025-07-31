@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -30,7 +30,7 @@ export function GradeCommentDialog({ isOpen, onClose, grade, onCommentUpdated }:
   const [isLoading, setIsLoading] = useState(false)
 
   // Initialize comment when grade changes
-  useState(() => {
+  useEffect(() => {
     if (grade) {
       setComment(grade.comments || "")
     }
