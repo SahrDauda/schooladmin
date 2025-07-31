@@ -24,7 +24,7 @@ import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
-import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { getCurrentSchoolInfo, getStudentCountsByClass } from "@/lib/school-utils"
 
 // Stage-specific level options
 const getLevelOptions = (stage: string) => {
@@ -109,6 +109,23 @@ export default function ClassesPage() {
 
     loadSchoolInfo()
   }, [])
+
+  // Check for refresh flag from students page
+  useEffect(() => {
+    const checkRefreshFlag = () => {
+      const refreshFlag = localStorage.getItem("refreshClasses")
+      if (refreshFlag === "true") {
+        localStorage.removeItem("refreshClasses")
+        fetchClasses()
+      }
+    }
+
+    // Check immediately and set up interval
+    checkRefreshFlag()
+    const interval = setInterval(checkRefreshFlag, 2000) // Check every 2 seconds
+
+    return () => clearInterval(interval)
+  }, [schoolInfo.school_id])
 
   const fetchClasses = async () => {
     setIsLoading(true)

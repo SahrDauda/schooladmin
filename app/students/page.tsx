@@ -769,6 +769,9 @@ export default function StudentsPage() {
 
       // Refresh the students list
       await refreshStudents()
+      
+      // Trigger classes page refresh by setting a flag
+      localStorage.setItem("refreshClasses", "true")
 
       // Reset form and close dialog
       setFormData({
@@ -984,6 +987,10 @@ export default function StudentsPage() {
       })
 
       await refreshStudents()
+      
+      // Trigger classes page refresh by setting a flag
+      localStorage.setItem("refreshClasses", "true")
+      
       setIsViewStudentOpen(false)
       setIsEditing(false)
     } catch (error) {

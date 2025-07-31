@@ -91,3 +91,37 @@ export function getCurrentSchoolInfoSync(): SchoolInfo {
     stage: "",
   }
 }
+
+export async function getStudentCountsByClass(schoolId: string): Promise<{ [className: string]: number }> {
+  try {
+    const studentsRef = collection(db, "students")
+    const studentsQuery = query(studentsRef, where("school_id", "==", schoolId))
+    const studentsSnapshot = await getDocs(studentsQuery)
+    
+    const studentCounts: { [className: string]: number } = {}
+    
+    studentsSnapshot.docs.forEach((doc) => {
+      const studentData = doc.data()
+      const className = studentData.class || "Unassigned"
+      studentCounts[className] = (studentCounts[className] || 0) + 1
+    })
+    
+    return studentCounts
+  } catch (error) {
+    console.error("Error fetching student counts by class:", error)
+    return {}
+  }
+}
+
+export async function getTotalStudentCount(schoolId: string): Promise<number> {
+  try {
+    const studentsRef = collection(db, "students")
+    const studentsQuery = query(studentsRef, where("school_id", "==", schoolId))
+    const studentsSnapshot = await getDocs(studentsQuery)
+    
+    return studentsSnapshot.size
+  } catch (error) {
+    console.error("Error fetching total student count:", error)
+    return 0
+  }
+}

@@ -31,7 +31,7 @@ import {
   Legend,
 } from "recharts"
 import Link from "next/link"
-import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { updatePassword } from "firebase/auth"
@@ -99,6 +99,9 @@ export default function Dashboard() {
           const teachersList = teachersSnapshot.docs.map((doc) => doc.data())
           const classesList = classesSnapshot.docs.map((doc) => doc.data())
 
+          // Get accurate total student count using utility function
+          const totalStudentCount = await getTotalStudentCount(schoolId)
+
           // Calculate special needs statistics
           const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
           const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
@@ -128,7 +131,7 @@ export default function Dashboard() {
           setStats([
             {
               title: "Total Students",
-              value: studentsList.length.toString(),
+              value: totalStudentCount.toString(),
               icon: Users,
               color: "bg-blue-100 text-blue-700",
             },
@@ -160,6 +163,20 @@ export default function Dashboard() {
     }
 
     fetchData()
+
+    // Check for refresh flag from students page
+    const checkRefreshFlag = () => {
+      const refreshFlag = localStorage.getItem("refreshClasses")
+      if (refreshFlag === "true") {
+        localStorage.removeItem("refreshClasses")
+        fetchData()
+      }
+    }
+
+    // Set up interval to check for refresh flag
+    const interval = setInterval(checkRefreshFlag, 2000) // Check every 2 seconds
+
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
