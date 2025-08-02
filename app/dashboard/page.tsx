@@ -32,10 +32,7 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { updatePassword } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+
 
 type SchoolAdmin = {
   id: string
@@ -64,9 +61,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
   const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
-  const [newPassword, setNewPassword] = useState("")
-  const [changingPassword, setChangingPassword] = useState(false)
+
 
   // Attendance data for chart
   const attendanceData = [
@@ -179,36 +174,7 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    // Show modal only on first login (per browser)
-    if (typeof window !== "undefined" && !localStorage.getItem("passwordChangePrompted")) {
-      setShowChangePasswordModal(true)
-      localStorage.setItem("passwordChangePrompted", "true")
-    }
-  }, [])
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setChangingPassword(true)
-    try {
-      if (!auth.currentUser) throw new Error("No authenticated user.")
-      await updatePassword(auth.currentUser, newPassword)
-      setShowChangePasswordModal(false)
-      setNewPassword("")
-      toast({
-        title: "Password Changed",
-        description: "Your password has been updated successfully.",
-      })
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to change password.",
-        variant: "destructive",
-      })
-    } finally {
-      setChangingPassword(false)
-    }
-  }
 
   // Prepare chart data for special needs
   const specialNeedsChartData = [
@@ -442,32 +408,6 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
-      <Dialog open={showChangePasswordModal} onOpenChange={setShowChangePasswordModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Your Password</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleChangePassword} className="space-y-4">
-            <Input
-              type="password"
-              placeholder="Enter new password"
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              required
-              minLength={6}
-              disabled={changingPassword}
-            />
-            <DialogFooter>
-              <Button type="submit" disabled={changingPassword}>
-                {changingPassword ? "Changing..." : "Change Password"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setShowChangePasswordModal(false)}>
-                Skip
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   )
 }

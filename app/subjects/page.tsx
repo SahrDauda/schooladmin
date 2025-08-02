@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { Plus, Pencil, Trash2, Search } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, where, Timestamp, deleteDoc } from "firebase/firestore"
@@ -132,6 +132,8 @@ export default function SubjectsPage() {
 
   // State for search
   const [searchTerm, setSearchTerm] = useState("")
+  const [subjectCodeSearchQuery, setSubjectCodeSearchQuery] = useState("")
+  const [isSearchingSubjectCode, setIsSearchingSubjectCode] = useState(false)
 
   // State for filter
   const [departmentFilter, setDepartmentFilter] = useState("all")
@@ -232,6 +234,66 @@ export default function SubjectsPage() {
     }
     
     setFormData((prev) => ({ ...prev, code }))
+  }
+
+  // Search subject by code
+  const searchSubjectByCode = async () => {
+    if (!subjectCodeSearchQuery) {
+      toast({
+        title: "Error",
+        description: "Please enter a subject code to search",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSearchingSubjectCode(true)
+    try {
+      console.log('Searching for subject code:', subjectCodeSearchQuery)
+      
+      // Search in the local subjects array
+      const foundSubject = subjects.find(subject => 
+        subject.code.toLowerCase() === subjectCodeSearchQuery.toLowerCase()
+      )
+      
+      if (foundSubject) {
+        // Auto-populate form with subject data
+        setFormData((prev) => ({
+          ...prev,
+          name: foundSubject.name || prev.name,
+          code: foundSubject.code || prev.code,
+          department: foundSubject.department || prev.department,
+          description: foundSubject.description || prev.description,
+          level: foundSubject.level || prev.level,
+        }))
+        
+        console.log('Form updated with subject data')
+        
+        toast({
+          title: "Success",
+          description: `Subject information retrieved for ${foundSubject.name}`,
+        })
+      } else {
+        throw new Error('Subject not found')
+      }
+    } catch (error) {
+      console.error('Subject search failed:', error)
+      
+      let errorMessage = "Subject search failed"
+      if (error instanceof Error) {
+        if (error.message.includes('not found')) {
+          errorMessage = `Subject code "${subjectCodeSearchQuery}" not found in the database`
+        }
+      }
+      
+      toast({
+        title: "Subject Not Found",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingSubjectCode(false)
+    }
   }
 
   // Handle department form input changes
@@ -585,6 +647,32 @@ export default function SubjectsPage() {
               <DialogDescription>Add a new subject to the system.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Search by Subject Code */}
+              <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                <h3 className="text-sm font-medium mb-2">Search by Subject Code</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter subject code"
+                    value={subjectCodeSearchQuery}
+                    onChange={(e) => setSubjectCodeSearchQuery(e.target.value)}
+                  />
+                  <Button variant="secondary" onClick={searchSubjectByCode} disabled={isSearchingSubjectCode}>
+                    {isSearchingSubjectCode ? (
+                      <span className="flex items-center">
+                        <span className="animate-spin mr-2">⏳</span> Searching...
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <Search className="w-4 h-4 mr-2" /> Search
+                      </span>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the subject code to automatically fill the form with existing subject information
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Subject Name *</Label>
@@ -653,6 +741,32 @@ export default function SubjectsPage() {
               <DialogDescription>Update subject information.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Search by Subject Code */}
+              <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                <h3 className="text-sm font-medium mb-2">Search by Subject Code</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter subject code"
+                    value={subjectCodeSearchQuery}
+                    onChange={(e) => setSubjectCodeSearchQuery(e.target.value)}
+                  />
+                  <Button variant="secondary" onClick={searchSubjectByCode} disabled={isSearchingSubjectCode}>
+                    {isSearchingSubjectCode ? (
+                      <span className="flex items-center">
+                        <span className="animate-spin mr-2">⏳</span> Searching...
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <Search className="w-4 h-4 mr-2" /> Search
+                      </span>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the subject code to automatically fill the form with existing subject information
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Subject Name *</Label>

@@ -17,11 +17,15 @@ export default function NewPasswordPage() {
   const [email, setEmail] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isFirstTimeLogin, setIsFirstTimeLogin] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
+    // Check if this is a first-time login (from localStorage) or password reset (from sessionStorage)
+    const adminId = localStorage.getItem("adminId")
     const storedEmail = sessionStorage.getItem("resetEmail")
-    if (!storedEmail) {
+    
+    if (!adminId && !storedEmail) {
       toast({
         title: "Session Expired",
         description: "Please start the password reset process again.",
@@ -30,7 +34,17 @@ export default function NewPasswordPage() {
       router.push("/forgot-password")
       return
     }
-    setEmail(storedEmail)
+    
+    // If adminId exists, this is first-time login
+    if (adminId) {
+      const adminName = localStorage.getItem("adminName")
+      setEmail(localStorage.getItem("rememberedEmail") || "")
+      setIsFirstTimeLogin(true)
+    } else {
+      // This is password reset flow
+      setEmail(storedEmail || "")
+      setIsFirstTimeLogin(false)
+    }
   }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,38 +71,63 @@ export default function NewPasswordPage() {
         return
       }
 
-      // Find the schooladmin document with this email
-      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", email))
-      const querySnapshot = await getDocs(adminQuery)
-
-      if (querySnapshot.empty) {
-        toast({
-          title: "Account Not Found",
-          description: "No account found with this email address.",
-          variant: "destructive",
+      // Check if this is first-time login or password reset
+      const adminId = localStorage.getItem("adminId")
+      
+      if (adminId) {
+        // First-time login scenario
+        // Update the password in the schooladmin document
+        await updateDoc(doc(db, "schooladmin", adminId), {
+          password: password
         })
-        return
+
+        toast({
+          title: "Password Set Successfully",
+          description: "Your password has been set. Welcome to the system!",
+        })
+
+        // Clear any session storage
+        sessionStorage.removeItem("resetEmail")
+
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 2000)
+      } else {
+        // Password reset scenario
+        // Find the schooladmin document with this email
+        const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", email))
+        const querySnapshot = await getDocs(adminQuery)
+
+        if (querySnapshot.empty) {
+          toast({
+            title: "Account Not Found",
+            description: "No account found with this email address.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        const adminDoc = querySnapshot.docs[0]
+
+        // Update the password in the schooladmin document
+        await updateDoc(doc(db, "schooladmin", adminDoc.id), {
+          password: password
+        })
+
+        toast({
+          title: "Password Updated",
+          description: "Your password has been successfully updated. You can now log in.",
+        })
+
+        // Clear session storage
+        sessionStorage.removeItem("resetEmail")
+
+        // Redirect to login page after a short delay
+        setTimeout(() => {
+          router.push("/")
+        }, 2000)
       }
-
-      const adminDoc = querySnapshot.docs[0]
-
-      // Update the password in the schooladmin document
-      await updateDoc(doc(db, "schooladmin", adminDoc.id), {
-        password: password
-      })
-
-      toast({
-        title: "Password Updated",
-        description: "Your password has been successfully updated. You can now log in.",
-      })
-
-      // Clear session storage
-      sessionStorage.removeItem("resetEmail")
-
-      // Redirect to login page after a short delay
-      setTimeout(() => {
-        router.push("/")
-      }, 2000)
     } catch (error: any) {
       toast({
         title: "Update Failed",
@@ -104,15 +143,22 @@ export default function NewPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader>
-          <CardTitle className="text-center">Create New Password</CardTitle>
+          <CardTitle className="text-center">
+            {isFirstTimeLogin ? "Set Your Password" : "Create New Password"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="text-center mb-4">
               <p className="text-sm text-muted-foreground">
-                Creating new password for:
+                {isFirstTimeLogin ? "Setting password for:" : "Creating new password for:"}
               </p>
               <p className="font-medium">{email}</p>
+              {isFirstTimeLogin && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Welcome! Please set your password to complete your account setup.
+                </p>
+              )}
             </div>
             
             <div className="relative">
@@ -158,7 +204,7 @@ export default function NewPasswordPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Updating..." : "Update Password"}
+              {loading ? (isFirstTimeLogin ? "Setting..." : "Updating...") : (isFirstTimeLogin ? "Set Password" : "Update Password")}
             </Button>
           </form>
         </CardContent>

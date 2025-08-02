@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard-layout"
 import { z } from "zod"
 import { Button } from "@/components/ui/button" // Ensure Button is imported
+import { Search } from "lucide-react"
 
 const studentSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -73,6 +74,7 @@ export default function AddStudentPage() {
   const [classes, setClasses] = useState<any[]>([])
   const [schoolStage, setSchoolStage] = useState<string | null>(null)
   const [levelOptions, setLevelOptions] = useState<string[]>([])
+  const [isSearchingNIN, setIsSearchingNIN] = useState(false)
 
   useEffect(() => {
     // Fetch classes for the dropdown
@@ -142,6 +144,83 @@ export default function AddStudentPage() {
       setLevelOptions([]) // Default or empty if stage is unknown
     }
   }, [schoolStage])
+
+  // NIN API integration
+  const searchNINFromAPI = async (nin: string) => {
+    setIsSearchingNIN(true)
+    try {
+      console.log('Searching for NIN:', nin)
+      const response = await fetch('/api/nin-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nin: nin })
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+      console.log('Response headers:', response.headers)
+        
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: NIN not found`)
+      }
+      
+      const data = await response.json()
+      console.log('API response data:', data)
+      
+      // Check if the API returned valid data
+      if (!data || !data.firstName || !data.lastName) {
+        console.log('Invalid data structure:', data)
+        throw new Error('Invalid NIN data received')
+      }
+      
+      // Auto-populate form with NIN data
+      setFormData((prev) => ({
+        ...prev,
+        firstname: data.firstName || prev.firstname,
+        lastname: data.lastName || prev.lastname,
+        dob: data.dateOfBirth || prev.dob,
+        gender: data.gender || prev.gender,
+        nationality: data.nationality || prev.nationality,
+        homeaddress: data.address || prev.homeaddress,
+        phonenumber: data.phoneNumber || prev.phonenumber,
+        emailaddress: data.emailaddress || prev.emailaddress,
+        level: data.level || prev.level,
+        faculty: data.faculty || prev.faculty,
+        nin: nin
+      }))
+      
+      console.log('Form updated with NIN data')
+      
+      toast({
+        title: "Success",
+        description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
+      })
+    } catch (error) {
+      console.error('NIN search failed:', error)
+      
+      // Show specific error message based on the error
+      let errorMessage = "NIN verification failed"
+      if (error instanceof Error) {
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          errorMessage = `NIN "${nin}" not found in the database`
+        } else if (error.message.includes('Invalid NIN data')) {
+          errorMessage = "Invalid data received from NIN database"
+        } else if (error.message.includes('fetch')) {
+          errorMessage = "Network error - please check your connection"
+        }
+      }
+      
+      toast({
+        title: "NIN Not Found",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingNIN(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -213,6 +292,38 @@ export default function AddStudentPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Search by NIN */}
+              <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                <h3 className="text-sm font-medium mb-2">Search by National ID Number (NIN)</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter NIN to search"
+                    value={formData.nin}
+                    onChange={(e) => setFormData({ ...formData, nin: e.target.value })}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={() => searchNINFromAPI(formData.nin)}
+                    disabled={isSearchingNIN || !formData.nin}
+                    className="whitespace-nowrap"
+                  >
+                    {isSearchingNIN ? (
+                      <span className="flex items-center">
+                        <span className="animate-spin mr-2">⏳</span> Searching...
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <Search className="w-4 h-4 mr-2" /> Search by NIN
+                      </span>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the student's National ID Number to automatically fill their information. Test NINs: SL12345678, SL87654321, SL11223344
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {/* Basic Information */}
                 <div className="space-y-2">

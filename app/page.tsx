@@ -3,7 +3,7 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore"
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -68,8 +68,23 @@ export default function LoginPage() {
         localStorage.removeItem("rememberedEmail")
       }
 
-      // Redirect to dashboard
-      router.push("/dashboard")
+      // Check if this is the first time login
+      const isFirstTimeLogin = !adminData.hasLoggedInBefore
+      
+      if (isFirstTimeLogin) {
+        // Mark as logged in for the first time
+        const adminRef = doc(db, "schooladmin", adminDoc.id)
+        await updateDoc(adminRef, {
+          hasLoggedInBefore: true,
+          firstLoginAt: Timestamp.fromDate(new Date())
+        })
+        
+        // Redirect to new password page
+        router.push("/new-password")
+      } else {
+        // Redirect to dashboard
+        router.push("/dashboard")
+      }
     } catch (err) {
       const error = err as Error
       console.error("Login error:", error)
