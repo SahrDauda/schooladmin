@@ -381,14 +381,76 @@ export default function TeachersPage() {
 
       // Reset form
       setFormData({
+        // Personal Information
         firstname: "",
         lastname: "",
+        middlename: "",
+        dob: "",
         gender: "",
-        email: "",
-        phone: "",
+        nationality: "Sierra Leonean",
+        nin: "",
+        marital_status: "",
+        religion: "",
         address: "",
-        qualification: "",
+        phone: "",
+        email: "",
+        
+        // Position Information
+        level: "",
         subject: "",
+        district_preference: "",
+        school_preference: "",
+        application_type: "",
+        
+        // Academic Qualifications
+        institution_name: "",
+        qualification_obtained: "",
+        year_completed: "",
+        certificate_number: "",
+        
+        // Professional Qualifications
+        teacher_certificate: "",
+        higher_teacher_certificate: "",
+        bachelor_education: "",
+        pgde: "",
+        other_credentials: "",
+        
+        // Work Experience
+        previous_schools: "",
+        positions_held: "",
+        employment_dates: "",
+        responsibilities: "",
+        
+        // Teaching License
+        registration_number: "",
+        registration_year: "",
+        
+        // Referees
+        referee1_name: "",
+        referee1_position: "",
+        referee1_address: "",
+        referee1_phone: "",
+        referee1_relationship: "",
+        referee2_name: "",
+        referee2_position: "",
+        referee2_address: "",
+        referee2_phone: "",
+        referee2_relationship: "",
+        
+        // Supporting Documents
+        certificates_attached: false,
+        birth_certificate_attached: false,
+        national_id_attached: false,
+        photo_attached: false,
+        license_attached: false,
+        employment_letters_attached: false,
+        
+        // Declaration
+        declaration_signed: false,
+        declaration_date: "",
+        
+        // System Fields
+        qualification: "",
         joining_date: "",
         school_id: schoolInfo.school_id,
       })
