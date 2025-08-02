@@ -148,22 +148,30 @@ export default function ClassesPage() {
       const studentsSnapshot = await getDocs(studentsQuery)
 
       // Count students for each class
-      const studentCounts: { [classId: string]: number } = {}
+      const studentCounts: { [className: string]: number } = {}
       studentsSnapshot.docs.forEach((doc) => {
         const studentData = doc.data()
         if (studentData.class) {
-          if (!studentCounts[studentData.class]) {
-            studentCounts[studentData.class] = 0
+          const className = studentData.class.trim()
+          if (!studentCounts[className]) {
+            studentCounts[className] = 0
           }
-          studentCounts[studentData.class]++
+          studentCounts[className]++
         }
       })
 
+      console.log("Student counts by class:", studentCounts)
+
       // Update class objects with accurate student counts
-      const updatedClasses = classesList.map((cls) => ({
-        ...cls,
-        students_count: studentCounts[cls.id] || 0,
-      }))
+      const updatedClasses = classesList.map((cls) => {
+        // Try to match by class name first, then by ID as fallback
+        const studentCount = studentCounts[cls.name] || studentCounts[cls.id] || 0
+        console.log(`Class: ${cls.name}, Students: ${studentCount}`)
+        return {
+          ...cls,
+          students_count: studentCount,
+        }
+      })
 
       // Sort the classes by level client-side instead of in the query
       const sortedClasses = updatedClasses.sort((a, b) => {
@@ -250,6 +258,7 @@ export default function ClassesPage() {
       const currentDate = new Date()
       const classData = {
         ...formData,
+        capacity: Number(formData.capacity) || 0, // Ensure capacity is stored as number
         id: classId,
         school_id: schoolInfo.school_id,
         schoolName: schoolInfo.schoolName, // Add school name to the record
@@ -304,6 +313,7 @@ export default function ClassesPage() {
     try {
       await setDoc(doc(db, "classes", selectedClass.id), {
         ...editFormData,
+        capacity: Number(editFormData.capacity) || 0, // Ensure capacity is stored as number
         school_id: schoolInfo.school_id,
         schoolName: schoolInfo.schoolName, // Add school name to the record
         updated_at: Timestamp.fromDate(new Date()),
@@ -363,7 +373,15 @@ export default function ClassesPage() {
   // Calculate dashboard metrics
   const totalClasses = classes.length
   const totalStudentsInClasses = classes.reduce((sum, cls) => sum + (cls.students_count || 0), 0)
-  const totalCapacity = classes.reduce((sum, cls) => sum + (cls.capacity || 0), 0)
+  
+  // Ensure capacity values are properly converted to numbers
+  const totalCapacity = classes.reduce((sum, cls) => {
+    const capacity = Number(cls.capacity) || 0
+    console.log(`Class: ${cls.name}, Capacity: ${cls.capacity} (type: ${typeof cls.capacity}), Converted: ${capacity}`)
+    return sum + capacity
+  }, 0)
+  
+  console.log("Total capacity calculation:", totalCapacity)
   const occupancyRate = totalCapacity > 0 ? Math.round((totalStudentsInClasses / totalCapacity) * 100) : 0
 
   // Get unique level options from classes data

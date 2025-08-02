@@ -14,6 +14,7 @@ import DashboardLayout from "@/components/dashboard-layout"
 import { z } from "zod"
 import { Button } from "@/components/ui/button" // Ensure Button is imported
 import { Search } from "lucide-react"
+import { generateAdmissionNumber } from "@/lib/school-utils"
 
 const studentSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -107,6 +108,15 @@ export default function AddStudentPage() {
               ...prev,
               school_id: currentSchoolId,
               schoolname: currentSchoolName,
+            }))
+
+            // Auto-generate admission number
+            const currentYear = new Date().getFullYear().toString()
+            const admissionNumber = await generateAdmissionNumber(currentSchoolId, currentYear)
+            setFormData((prev) => ({
+              ...prev,
+              adm_no: admissionNumber,
+              batch: currentYear,
             }))
 
             // Now fetch the stage from the 'schools' collection using currentSchoolId
@@ -344,8 +354,9 @@ export default function AddStudentPage() {
                   <Input
                     id="adm_no"
                     value={formData.adm_no}
-                    onChange={(e) => setFormData({ ...formData, adm_no: e.target.value })}
-                    required
+                    readOnly
+                    className="bg-gray-50"
+                    placeholder="Will be auto-generated"
                   />
                 </div>
                 {/* Hidden fields for school data */}

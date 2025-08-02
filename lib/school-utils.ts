@@ -125,3 +125,29 @@ export async function getTotalStudentCount(schoolId: string): Promise<number> {
     return 0
   }
 }
+
+export async function generateAdmissionNumber(schoolId: string, year: string): Promise<string> {
+  try {
+    // Get all students for this school and year
+    const studentsRef = collection(db, "students")
+    const studentsQuery = query(
+      studentsRef, 
+      where("school_id", "==", schoolId),
+      where("batch", "==", year)
+    )
+    const studentsSnapshot = await getDocs(studentsQuery)
+    
+    // Count existing students for this school and year
+    const existingCount = studentsSnapshot.size
+    
+    // Generate the next number (001, 002, etc.)
+    const nextNumber = (existingCount + 1).toString().padStart(3, '0')
+    
+    // Format: SCHOOL_ID + YEAR + SEQUENTIAL_NUMBER
+    return `${schoolId}${year}${nextNumber}`
+  } catch (error) {
+    console.error("Error generating admission number:", error)
+    // Fallback to timestamp-based generation
+    return `${schoolId}${year}${Date.now().toString().slice(-3)}`
+  }
+}

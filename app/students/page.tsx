@@ -55,6 +55,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { useSearchParams, useRouter } from "next/navigation"
 import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
+import { generateAdmissionNumber } from "@/lib/school-utils"
 import Papa from "papaparse"
 import * as XLSX from "xlsx"
 
@@ -585,6 +586,15 @@ export default function StudentsPage() {
               school_id: schoolId,
               schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
             }))
+
+            // Auto-generate admission number
+            const currentYear = new Date().getFullYear().toString()
+            const admissionNumber = await generateAdmissionNumber(schoolId, currentYear)
+            setFormData((prev) => ({
+              ...prev,
+              adm_no: admissionNumber,
+              batch: currentYear,
+            }))
           }
         }
       } catch (error) {
@@ -774,11 +784,13 @@ export default function StudentsPage() {
       localStorage.setItem("refreshClasses", "true")
 
       // Reset form and close dialog
+      const currentYear = new Date().getFullYear().toString()
+      const admissionNumber = await generateAdmissionNumber(schoolId, currentYear)
       setFormData({
         id: "",
-        batch: "",
-        school_id: "",
-        adm_no: "",
+        batch: currentYear,
+        school_id: schoolId,
+        adm_no: admissionNumber,
         schoolname: "",
         firstname: "",
         lastname: "",
@@ -1423,7 +1435,13 @@ export default function StudentsPage() {
                         <input type="hidden" id="schoolname" value={formData.schoolname} />
                         <div>
                           <Label htmlFor="adm_no">Admission Number</Label>
-                          <Input id="adm_no" value={formData.adm_no} onChange={handleInputChange} />
+                          <Input 
+                            id="adm_no" 
+                            value={formData.adm_no} 
+                            readOnly 
+                            className="bg-gray-50"
+                            placeholder="Will be auto-generated"
+                          />
                         </div>
                         <div>
                           <Label htmlFor="firstname">First Name</Label>

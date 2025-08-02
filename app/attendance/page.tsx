@@ -9,15 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ClipboardCheck, Calendar, Search, Users, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, where, Timestamp, orderBy } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, where, Timestamp, orderBy, getDoc } from "firebase/firestore"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { db } from "@/lib/firebase"
 import { format } from "date-fns"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+interface Student {
+  id: string
+  firstname?: string
+  lastname?: string
+  class?: string
+  school_id?: string
+  [key: string]: any
+}
+
 export default function AttendancePage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [students, setStudents] = useState<any[]>([])
+  const [students, setStudents] = useState<Student[]>([])
   const [classes, setClasses] = useState<any[]>([])
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -36,6 +46,8 @@ export default function AttendancePage() {
   })
   const [teacherAttendanceRecords, setTeacherAttendanceRecords] = useState<any[]>([])
   const [teacherAttendanceLoading, setTeacherAttendanceLoading] = useState(false)
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false)
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -46,13 +58,28 @@ export default function AttendancePage() {
     loadSchoolInfo()
   }, [])
 
+  // Fetch students when class is selected
+  useEffect(() => {
+    if (selectedClass && schoolInfo.school_id) {
+      fetchStudentsByClass(selectedClass)
+      fetchAttendanceRecords(selectedClass, selectedDate)
+    }
+  }, [selectedClass, selectedDate, schoolInfo.school_id])
+
+  // Fetch classes when school info is loaded
+  useEffect(() => {
+    if (schoolInfo.school_id) {
+      fetchClasses()
+    }
+  }, [schoolInfo.school_id])
+
   const fetchClasses = async () => {
     try {
       if (!schoolInfo.school_id) return
 
       const classesRef = collection(db, "classes")
       const q = query(classesRef, where("school_id", "==", schoolInfo.school_id))
-      const querySnapshot = await getDocs(classesRef)
+      const querySnapshot = await getDocs(q)
 
       const classesList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -70,21 +97,42 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
+      // First get the class name from the class ID
+      const classDoc = await getDoc(doc(db, "classes", classId))
+      if (!classDoc.exists()) {
+        console.error("Class not found:", classId)
+        toast({
+          title: "Error",
+          description: "Selected class not found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const className = classDoc.data().name
+      console.log("Fetching students for class:", className)
+
       const studentsRef = collection(db, "students")
       const q = query(
         studentsRef,
         where("school_id", "==", schoolInfo.school_id),
-        where("class", "==", classId),
-        orderBy("lastname", "asc"),
+        where("class", "==", className),
       )
       const querySnapshot = await getDocs(q)
 
       const studentsList = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-      }))
+      })) as Student[]
 
-      setStudents(studentsList)
+      // Sort students by lastname client-side
+      const sortedStudentsList = studentsList.sort((a, b) => {
+        const lastNameA = (a.lastname || "").toLowerCase()
+        const lastNameB = (b.lastname || "").toLowerCase()
+        return lastNameA.localeCompare(lastNameB)
+      })
+
+      setStudents(sortedStudentsList)
 
       // Initialize attendance data
       const initialAttendanceData: { [key: string]: string } = {}
@@ -112,11 +160,21 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
+      // Get class name from class ID
+      const classDoc = await getDoc(doc(db, "classes", classId))
+      if (!classDoc.exists()) {
+        console.error("Class not found for attendance:", classId)
+        return
+      }
+
+      const className = classDoc.data().name
+      console.log("Fetching attendance for class:", className)
+
       const attendanceRef = collection(db, "attendance")
       const q = query(
         attendanceRef,
         where("school_id", "==", schoolInfo.school_id),
-        where("class_id", "==", classId),
+        where("class_name", "==", className),
         where("date", "==", date),
       )
       const querySnapshot = await getDocs(q)
@@ -178,13 +236,6 @@ export default function AttendancePage() {
       fetchClasses()
     }
   }, [schoolInfo.school_id])
-
-  useEffect(() => {
-    if (selectedClass && selectedDate && schoolInfo.school_id) {
-      fetchStudentsByClass(selectedClass)
-      fetchAttendanceRecords(selectedClass, selectedDate)
-    }
-  }, [selectedClass, selectedDate, schoolInfo.school_id])
 
   const handleAttendanceChange = (studentId: string, status: string) => {
     setAttendanceData((prev) => {
@@ -432,17 +483,24 @@ export default function AttendancePage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-12">#</TableHead>
-                          <TableHead>Student Name</TableHead>
                           <TableHead>ID</TableHead>
+                          <TableHead>Student Name</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredStudents.map((student, index) => (
-                          <TableRow key={student.id}>
+                          <TableRow 
+                            key={student.id} 
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => {
+                              setSelectedStudent(student)
+                              setIsStudentModalOpen(true)
+                            }}
+                          >
                             <TableCell>{index + 1}</TableCell>
-                            <TableCell className="font-medium">{`${student.firstname} ${student.lastname}`}</TableCell>
-                            <TableCell>{student.id}</TableCell>
+                            <TableCell className="font-medium">{student.id}</TableCell>
+                            <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
                             <TableCell>
                               {isMarkingAttendance ? (
                                 <Select
@@ -538,6 +596,66 @@ export default function AttendancePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Student Attendance Details Modal */}
+      <Dialog open={isStudentModalOpen} onOpenChange={setIsStudentModalOpen}>
+        <DialogContent className="sm:max-w-[600px] w-[90%]">
+          <DialogHeader>
+            <DialogTitle>Student Attendance Details</DialogTitle>
+          </DialogHeader>
+          {selectedStudent && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Student ID</h3>
+                  <p className="text-base font-medium">{selectedStudent.id}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Full Name</h3>
+                  <p className="text-base font-medium">{`${selectedStudent.firstname} ${selectedStudent.lastname}`}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Class</h3>
+                  <p className="text-base">{selectedStudent.class || "—"}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Date</h3>
+                  <p className="text-base">{selectedDate}</p>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">Attendance Status</h3>
+                <div className="flex items-center gap-2">
+                  {getStatusBadge(attendanceData[selectedStudent.id] || "present")}
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">Attendance Summary</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{attendanceSummary.present}</div>
+                    <div className="text-xs text-muted-foreground">Present</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{attendanceSummary.absent}</div>
+                    <div className="text-xs text-muted-foreground">Absent</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-amber-600">{attendanceSummary.late}</div>
+                    <div className="text-xs text-muted-foreground">Late</div>
+                  </div>
+                </div>
+                <div className="text-center mt-2">
+                  <div className="text-lg font-bold">{attendanceSummary.percentage}%</div>
+                  <div className="text-xs text-muted-foreground">Attendance Rate</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

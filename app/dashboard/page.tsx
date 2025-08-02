@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore"
+import { collection, getDocs, query, where, doc, getDoc, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -32,6 +32,10 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Eye, EyeOff } from "lucide-react"
 
 
 type SchoolAdmin = {
@@ -61,7 +65,87 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
   const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [isFirstTimeLogin, setIsFirstTimeLogin] = useState(false)
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
 
+  // Check if this is first time login
+  useEffect(() => {
+    // Only run on client side
+    if (typeof window !== "undefined") {
+      const checkFirstTimeLogin = () => {
+        const adminId = localStorage.getItem("adminId")
+        if (adminId) {
+          // Check if this is the first time login by checking if password was just set
+          const hasLoggedInBefore = localStorage.getItem("hasLoggedInBefore")
+          if (hasLoggedInBefore === "false") {
+            setIsFirstTimeLogin(true)
+            setShowPasswordModal(true)
+          }
+        }
+      }
+      
+      checkFirstTimeLogin()
+    }
+  }, [])
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setChangingPassword(true)
+
+    try {
+      // Validate passwords
+      if (password.length < 6) {
+        toast({
+          title: "Password Too Short",
+          description: "Password must be at least 6 characters long.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (password !== confirmPassword) {
+        toast({
+          title: "Passwords Don't Match",
+          description: "Please make sure both passwords are the same.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Update password in Firestore
+      const adminId = localStorage.getItem("adminId")
+      if (adminId) {
+        await updateDoc(doc(db, "schooladmin", adminId), {
+          password: password
+        })
+
+        // Mark as logged in for the first time
+        localStorage.setItem("hasLoggedInBefore", "true")
+
+        toast({
+          title: "Password Set Successfully",
+          description: "Your password has been set. Welcome to the system!",
+        })
+
+        setShowPasswordModal(false)
+        setPassword("")
+        setConfirmPassword("")
+      }
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update password.",
+        variant: "destructive",
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   // Attendance data for chart
   const attendanceData = [
@@ -408,6 +492,94 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Password Change Modal */}
+      <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
+        <DialogContent className="sm:max-w-[500px] w-[90%]">
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              {isFirstTimeLogin ? "Set Your Password" : "Change Password"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            <div className="text-center mb-4">
+              <p className="text-sm text-muted-foreground">
+                {isFirstTimeLogin ? "Setting password for:" : "Changing password for:"}
+              </p>
+              <p className="font-medium">{localStorage.getItem("adminName") || "Admin"}</p>
+              {isFirstTimeLogin && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Welcome! Please set your password to complete your account setup.
+                </p>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter new password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  disabled={changingPassword}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  disabled={changingPassword}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowPasswordModal(false)}
+                disabled={changingPassword}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={changingPassword}>
+                {changingPassword ? (isFirstTimeLogin ? "Setting..." : "Changing...") : (isFirstTimeLogin ? "Set Password" : "Change Password")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

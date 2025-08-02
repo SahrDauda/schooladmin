@@ -79,8 +79,11 @@ export default function LoginPage() {
           firstLoginAt: Timestamp.fromDate(new Date())
         })
         
-        // Redirect to new password page
-        router.push("/new-password")
+        // Set localStorage flag to trigger modal
+        localStorage.setItem("hasLoggedInBefore", "false")
+        
+        // Redirect to dashboard (modal will show)
+        router.push("/dashboard")
       } else {
         // Redirect to dashboard
         router.push("/dashboard")
