@@ -32,6 +32,8 @@ import {
   Search,
   Download,
   FileIcon as FilePdf,
+  Camera,
+  X,
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
@@ -54,6 +56,7 @@ import { z } from "zod"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useSearchParams, useRouter } from "next/navigation"
 import { exportToCSV, exportToExcel, exportToPDF, prepareDataForExport } from "@/lib/export-utils"
 import { generateAdmissionNumber } from "@/lib/school-utils"
@@ -320,6 +323,7 @@ interface Student {
   parent_relationship?: string
   parent_phone?: string
   parent_email?: string
+  passport_picture?: string
   [key: string]: any
 }
 
@@ -359,6 +363,7 @@ export default function StudentsPage() {
     sick: "",
     sick_type: "",
     parent_id: "",
+    passport_picture: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [students, setStudents] = useState<Student[]>([])
@@ -384,7 +389,7 @@ export default function StudentsPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isViewStudentOpen, setIsViewStudentOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [editFormData, setEditFormData] = useState<Student>(formData)
+  const [editFormData, setEditFormData] = useState<Student & { passport_picture?: string }>(formData)
   const [classes, setClasses] = useState<any[]>([])
   const [specialNeedsFilter, setSpecialNeedsFilter] = useState(
     initialFilter === "special-needs" ? "all-special" : "all",
@@ -400,6 +405,8 @@ export default function StudentsPage() {
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false)
   const [parentNinSearchQuery, setParentNinSearchQuery] = useState("")
   const [isSearchingParentNin, setIsSearchingParentNin] = useState(false)
+  const [passportPicture, setPassportPicture] = useState<File | null>(null)
+  const [passportPicturePreview, setPassportPicturePreview] = useState<string>("")
 
   // NIN API integration for students
   const searchNINFromAPI = async (nin: string) => {
@@ -478,6 +485,47 @@ export default function StudentsPage() {
   }
 
   // NIN API integration for parents
+  // Passport picture handlers
+  const handlePassportPictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "File too large",
+          description: "Please select an image smaller than 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      setPassportPicture(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setPassportPicturePreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const removePassportPicture = () => {
+    setPassportPicture(null)
+    setPassportPicturePreview("")
+  }
+
+  // Helper function to get student initials
+  const getStudentInitials = (firstname: string, lastname: string) => {
+    return `${firstname?.charAt(0) || ''}${lastname?.charAt(0) || ''}`.toUpperCase()
+  }
+
   const searchParentNINFromAPI = async (nin: string) => {
     if (!nin.trim()) {
       toast({
@@ -895,6 +943,27 @@ export default function StudentsPage() {
         }
       }
 
+      // Handle passport picture upload
+      let passportPictureUrl = ""
+      if (passportPicture) {
+        try {
+          // Convert file to base64 for storage
+          const reader = new FileReader()
+          reader.onload = async (e) => {
+            const base64 = e.target?.result as string
+            passportPictureUrl = base64
+          }
+          reader.readAsDataURL(passportPicture)
+        } catch (error) {
+          console.error("Error processing passport picture:", error)
+          toast({
+            title: "Warning",
+            description: "Failed to process passport picture, but student will be added",
+            variant: "destructive",
+          })
+        }
+      }
+
       // Add timestamp and metadata
       const currentDate = new Date()
       const studentData = {
@@ -903,6 +972,7 @@ export default function StudentsPage() {
         id: studentId,
         parent_id: "", // Always blank for new students
         status: "Active",
+        passport_picture: passportPictureUrl,
         created_at: Timestamp.fromDate(currentDate),
         date: currentDate.toLocaleDateString(),
         month: currentDate.toLocaleString("default", { month: "long" }),
@@ -959,7 +1029,12 @@ export default function StudentsPage() {
         disability_type: "",
         sick: "",
         sick_type: "",
+        passport_picture: "",
       })
+      
+      // Reset passport picture state
+      setPassportPicture(null)
+      setPassportPicturePreview("")
       setIsAddStudentOpen(false)
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1857,6 +1932,50 @@ export default function StudentsPage() {
                           </div>
                         )}
                       </div>
+                      
+                      {/* Passport Picture Section */}
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="passport_picture">Passport Picture</Label>
+                          <div className="mt-2">
+                            {passportPicturePreview ? (
+                              <div className="relative inline-block">
+                                <img
+                                  src={passportPicturePreview}
+                                  alt="Passport preview"
+                                  className="w-32 h-32 object-cover rounded-lg border"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={removePassportPicture}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                                <input
+                                  type="file"
+                                  id="passport_picture"
+                                  accept="image/*"
+                                  onChange={handlePassportPictureChange}
+                                  className="hidden"
+                                />
+                                <label
+                                  htmlFor="passport_picture"
+                                  className="cursor-pointer flex flex-col items-center space-y-2"
+                                >
+                                  <Camera className="h-8 w-8 text-gray-400" />
+                                  <span className="text-sm text-gray-600">Click to upload passport picture</span>
+                                  <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
                       <DialogFooter>
                         <Button type="submit" disabled={isSubmitting}>
                           {isSubmitting ? "Submitting..." : "Add Student"}
@@ -2009,6 +2128,7 @@ export default function StudentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Photo</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Class</TableHead>
@@ -2030,6 +2150,14 @@ export default function StudentsPage() {
                       }
                     }}
                   >
+                    <TableCell>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={student.passport_picture} alt={`${student.firstname} ${student.lastname}`} />
+                        <AvatarFallback className="text-xs">
+                          {getStudentInitials(student.firstname || '', student.lastname || '')}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
                     <TableCell>{student.id}</TableCell>
                     <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
                     <TableCell>{student.class}</TableCell>
@@ -2472,6 +2600,62 @@ export default function StudentsPage() {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Passport Picture Section for Edit */}
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="edit_passport_picture">Passport Picture</Label>
+                      <div className="mt-2">
+                        {editFormData.passport_picture ? (
+                          <div className="relative inline-block">
+                            <img
+                              src={editFormData.passport_picture}
+                              alt="Passport preview"
+                              className="w-32 h-32 object-cover rounded-lg border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setEditFormData((prev) => ({ ...prev, passport_picture: "" }))}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                            <input
+                              type="file"
+                              id="edit_passport_picture"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) {
+                                  const reader = new FileReader()
+                                  reader.onload = (e) => {
+                                    setEditFormData((prev) => ({
+                                      ...prev,
+                                      passport_picture: e.target?.result as string
+                                    }))
+                                  }
+                                  reader.readAsDataURL(file)
+                                }
+                              }}
+                              className="hidden"
+                            />
+                            <label
+                              htmlFor="edit_passport_picture"
+                              className="cursor-pointer flex flex-col items-center space-y-2"
+                            >
+                              <Camera className="h-8 w-8 text-gray-400" />
+                              <span className="text-sm text-gray-600">Click to upload passport picture</span>
+                              <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
                   <DialogFooter>
                     <Button type="submit">Save Changes</Button>
                   </DialogFooter>
@@ -2547,6 +2731,34 @@ export default function StudentsPage() {
                   <div>
                     <Label className="font-bold">School</Label>
                     <p>{selectedStudent.schoolname || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="font-bold">Passport Picture</Label>
+                    {selectedStudent.passport_picture ? (
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={selectedStudent.passport_picture}
+                          alt="Student passport"
+                          className="w-32 h-32 object-cover rounded-lg border"
+                        />
+                        <div className="text-sm text-muted-foreground">
+                          <p>Profile photo uploaded</p>
+                          <p>Click to view full size</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-32 w-32">
+                          <AvatarFallback className="text-4xl">
+                            {getStudentInitials(selectedStudent.firstname || '', selectedStudent.lastname || '')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="text-sm text-muted-foreground">
+                          <p>No passport picture uploaded</p>
+                          <p>Upload a photo in edit mode</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
