@@ -69,14 +69,76 @@ export default function TeachersPage() {
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [isQrModalOpen, setIsQrModalOpen] = useState(false)
   const [formData, setFormData] = useState({
+    // Personal Information
     firstname: "",
     lastname: "",
+    middlename: "",
+    dob: "",
     gender: "",
-    email: "",
-    phone: "",
+    nationality: "Sierra Leonean",
+    nin: "",
+    marital_status: "",
+    religion: "",
     address: "",
-    qualification: "",
+    phone: "",
+    email: "",
+    
+    // Position Information
+    level: "",
     subject: "",
+    district_preference: "",
+    school_preference: "",
+    application_type: "",
+    
+    // Academic Qualifications
+    institution_name: "",
+    qualification_obtained: "",
+    year_completed: "",
+    certificate_number: "",
+    
+    // Professional Qualifications
+    teacher_certificate: "",
+    higher_teacher_certificate: "",
+    bachelor_education: "",
+    pgde: "",
+    other_credentials: "",
+    
+    // Work Experience
+    previous_schools: "",
+    positions_held: "",
+    employment_dates: "",
+    responsibilities: "",
+    
+    // Teaching License
+    registration_number: "",
+    registration_year: "",
+    
+    // Referees
+    referee1_name: "",
+    referee1_position: "",
+    referee1_address: "",
+    referee1_phone: "",
+    referee1_relationship: "",
+    referee2_name: "",
+    referee2_position: "",
+    referee2_address: "",
+    referee2_phone: "",
+    referee2_relationship: "",
+    
+    // Supporting Documents
+    certificates_attached: false,
+    birth_certificate_attached: false,
+    national_id_attached: false,
+    photo_attached: false,
+    license_attached: false,
+    employment_letters_attached: false,
+    
+    // Declaration
+    declaration_signed: false,
+    declaration_date: "",
+    
+    // System Fields
+    qualification: "",
     joining_date: "",
     school_id: "",
   })
@@ -141,6 +203,9 @@ export default function TeachersPage() {
         qualification: data.qualification || prev.qualification,
         subject: data.subject || prev.subject,
         joining_date: data.joiningDate || prev.joining_date,
+        nin: nin.trim(),
+        nationality: data.nationality || prev.nationality,
+        dob: data.dateOfBirth || prev.dob,
       }))
       
       console.log('Form updated with teacher data')
@@ -553,10 +618,13 @@ export default function TeachersPage() {
                     <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
                   </DialogHeader>
                   <Tabs defaultValue="personal" className="space-y-4">
-                    <TabsList>
-                      <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                      <TabsTrigger value="professional">Professional Information</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="personal">Personal Info</TabsTrigger>
+                      <TabsTrigger value="position">Position</TabsTrigger>
+                      <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
+                      <TabsTrigger value="experience">Experience</TabsTrigger>
                     </TabsList>
+                    
                     <TabsContent value="personal" className="space-y-4">
                       <form className="space-y-4">
                         {/* Search by NIN */}
@@ -583,19 +651,65 @@ export default function TeachersPage() {
                           <p className="text-xs text-gray-500 mt-1">
                             Enter the teacher's NIN to automatically fill the form with existing teacher information
                           </p>
+                          
+                          {/* Available Teacher NINs */}
+                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <h4 className="text-sm font-medium text-blue-800 mb-2">Available Teacher NINs for Testing:</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL12345678</span>
+                                <br />
+                                <span className="text-gray-600">Abubakarr Koroma</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL87654321</span>
+                                <br />
+                                <span className="text-gray-600">Fatmata Sesay</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL11223344</span>
+                                <br />
+                                <span className="text-gray-600">Mohamed Bangura</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL55667788</span>
+                                <br />
+                                <span className="text-gray-600">Aminata Turay</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL99887766</span>
+                                <br />
+                                <span className="text-gray-600">Ibrahim Kamara</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-blue-600">TL33445566</span>
+                                <br />
+                                <span className="text-gray-600">Hawa Conteh</span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-blue-600 mt-2">Click any NIN to copy to clipboard</p>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <Label htmlFor="firstname">First Name</Label>
-                            <Input id="firstname" value={formData.firstname} onChange={handleInputChange} />
+                            <Label htmlFor="firstname">First Name *</Label>
+                            <Input id="firstname" value={formData.firstname} onChange={handleInputChange} required />
                           </div>
                           <div>
-                            <Label htmlFor="lastname">Last Name</Label>
-                            <Input id="lastname" value={formData.lastname} onChange={handleInputChange} />
+                            <Label htmlFor="lastname">Last Name *</Label>
+                            <Input id="lastname" value={formData.lastname} onChange={handleInputChange} required />
                           </div>
                           <div>
-                            <Label htmlFor="gender">Gender</Label>
+                            <Label htmlFor="middlename">Middle Name</Label>
+                            <Input id="middlename" value={formData.middlename} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="dob">Date of Birth *</Label>
+                            <Input id="dob" type="date" value={formData.dob} onChange={handleInputChange} required />
+                          </div>
+                          <div>
+                            <Label htmlFor="gender">Gender *</Label>
                             <Select onValueChange={(value) => handleSelectChange("gender", value)}>
                               <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Select gender" />
@@ -607,29 +721,66 @@ export default function TeachersPage() {
                             </Select>
                           </div>
                           <div>
-                            <Label htmlFor="email">Email</Label>
-                            <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
+                            <Label htmlFor="nationality">Nationality</Label>
+                            <Input id="nationality" value={formData.nationality} onChange={handleInputChange} />
                           </div>
                           <div>
-                            <Label htmlFor="phone">Phone</Label>
-                            <Input id="phone" value={formData.phone} onChange={handleInputChange} />
+                            <Label htmlFor="nin">National ID Number (NIN)</Label>
+                            <Input id="nin" value={formData.nin} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="marital_status">Marital Status</Label>
+                            <Select onValueChange={(value) => handleSelectChange("marital_status", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Single">Single</SelectItem>
+                                <SelectItem value="Married">Married</SelectItem>
+                                <SelectItem value="Divorced">Divorced</SelectItem>
+                                <SelectItem value="Widowed">Widowed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="religion">Religion</Label>
+                            <Input id="religion" value={formData.religion} onChange={handleInputChange} />
                           </div>
                           <div className="md:col-span-2">
-                            <Label htmlFor="address">Address</Label>
-                            <Input id="address" value={formData.address} onChange={handleInputChange} />
+                            <Label htmlFor="address">Home Address / Permanent Address *</Label>
+                            <Input id="address" value={formData.address} onChange={handleInputChange} required />
+                          </div>
+                          <div>
+                            <Label htmlFor="phone">Phone Number(s) *</Label>
+                            <Input id="phone" value={formData.phone} onChange={handleInputChange} required />
+                          </div>
+                          <div>
+                            <Label htmlFor="email">Email Address</Label>
+                            <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
                           </div>
                         </div>
                       </form>
                     </TabsContent>
-                    <TabsContent value="professional" className="space-y-4">
-                      <form onSubmit={handleSubmitTeacher} className="space-y-4">
+
+                    <TabsContent value="position" className="space-y-4">
+                      <form className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <Label htmlFor="qualification">Qualification</Label>
-                            <Input id="qualification" value={formData.qualification} onChange={handleInputChange} />
+                            <Label htmlFor="level">Level *</Label>
+                            <Select onValueChange={(value) => handleSelectChange("level", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select level" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Pre-primary">Pre-primary</SelectItem>
+                                <SelectItem value="Primary">Primary</SelectItem>
+                                <SelectItem value="Junior Secondary">Junior Secondary</SelectItem>
+                                <SelectItem value="Senior Secondary">Senior Secondary</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div>
-                            <Label htmlFor="subject">Subject</Label>
+                            <Label htmlFor="subject">Subject Specialization</Label>
                             <Select
                               value={formData.subject}
                               onValueChange={(value) => handleSelectChange("subject", value)}
@@ -644,9 +795,115 @@ export default function TeachersPage() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            {subjects.length === 0 && (
-                              <div className="text-sm text-muted-foreground mt-1">No subjects available. Please add subjects first.</div>
-                            )}
+                          </div>
+                          <div>
+                            <Label htmlFor="district_preference">District of Preference</Label>
+                            <Input id="district_preference" value={formData.district_preference} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="school_preference">School of Preference</Label>
+                            <Input id="school_preference" value={formData.school_preference} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="application_type">Application Type</Label>
+                            <Select onValueChange={(value) => handleSelectChange("application_type", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="First Appointment">First Appointment</SelectItem>
+                                <SelectItem value="Transfer">Transfer</SelectItem>
+                                <SelectItem value="Promotion">Promotion</SelectItem>
+                                <SelectItem value="Re-engagement">Re-engagement</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </form>
+                    </TabsContent>
+
+                    <TabsContent value="qualifications" className="space-y-4">
+                      <form className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="institution_name">Institution Name</Label>
+                            <Input id="institution_name" value={formData.institution_name} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="qualification_obtained">Qualification Obtained</Label>
+                            <Select onValueChange={(value) => handleSelectChange("qualification_obtained", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select qualification" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="WASSCE">WASSCE</SelectItem>
+                                <SelectItem value="HTC">HTC</SelectItem>
+                                <SelectItem value="TC">TC</SelectItem>
+                                <SelectItem value="B.Ed">B.Ed</SelectItem>
+                                <SelectItem value="PGDE">PGDE</SelectItem>
+                                <SelectItem value="M.Ed">M.Ed</SelectItem>
+                                <SelectItem value="PhD">PhD</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="year_completed">Year Completed</Label>
+                            <Input id="year_completed" value={formData.year_completed} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="certificate_number">Certificate/Index Number</Label>
+                            <Input id="certificate_number" value={formData.certificate_number} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="teacher_certificate">Teacher Certificate (TC)</Label>
+                            <Input id="teacher_certificate" value={formData.teacher_certificate} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="higher_teacher_certificate">Higher Teacher Certificate (HTC)</Label>
+                            <Input id="higher_teacher_certificate" value={formData.higher_teacher_certificate} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="bachelor_education">Bachelor of Education (B.Ed)</Label>
+                            <Input id="bachelor_education" value={formData.bachelor_education} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="pgde">Postgraduate Diploma in Education (PGDE)</Label>
+                            <Input id="pgde" value={formData.pgde} onChange={handleInputChange} />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label htmlFor="other_credentials">Other Teaching Credentials</Label>
+                            <Input id="other_credentials" value={formData.other_credentials} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="registration_number">Teacher Registration Number</Label>
+                            <Input id="registration_number" value={formData.registration_number} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="registration_year">Year of Registration</Label>
+                            <Input id="registration_year" value={formData.registration_year} onChange={handleInputChange} />
+                          </div>
+                        </div>
+                      </form>
+                    </TabsContent>
+
+                    <TabsContent value="experience" className="space-y-4">
+                      <form onSubmit={handleSubmitTeacher} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                            <Label htmlFor="previous_schools">Name of School(s)</Label>
+                            <Input id="previous_schools" value={formData.previous_schools} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="positions_held">Position(s) Held</Label>
+                            <Input id="positions_held" value={formData.positions_held} onChange={handleInputChange} />
+                          </div>
+                          <div>
+                            <Label htmlFor="employment_dates">Dates of Employment</Label>
+                            <Input id="employment_dates" value={formData.employment_dates} onChange={handleInputChange} />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label htmlFor="responsibilities">Responsibilities/Subjects Taught</Label>
+                            <Input id="responsibilities" value={formData.responsibilities} onChange={handleInputChange} />
                           </div>
                           <div>
                             <Label htmlFor="joining_date">Joining Date</Label>
@@ -658,6 +915,56 @@ export default function TeachersPage() {
                             />
                           </div>
                         </div>
+
+                        {/* Referees Section */}
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">Referees</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="referee1_name">Referee 1 - Name</Label>
+                              <Input id="referee1_name" value={formData.referee1_name} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee1_position">Referee 1 - Position</Label>
+                              <Input id="referee1_position" value={formData.referee1_position} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee1_address">Referee 1 - Address</Label>
+                              <Input id="referee1_address" value={formData.referee1_address} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee1_phone">Referee 1 - Phone</Label>
+                              <Input id="referee1_phone" value={formData.referee1_phone} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee1_relationship">Referee 1 - Relationship</Label>
+                              <Input id="referee1_relationship" value={formData.referee1_relationship} onChange={handleInputChange} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="referee2_name">Referee 2 - Name</Label>
+                              <Input id="referee2_name" value={formData.referee2_name} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee2_position">Referee 2 - Position</Label>
+                              <Input id="referee2_position" value={formData.referee2_position} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee2_address">Referee 2 - Address</Label>
+                              <Input id="referee2_address" value={formData.referee2_address} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee2_phone">Referee 2 - Phone</Label>
+                              <Input id="referee2_phone" value={formData.referee2_phone} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                              <Label htmlFor="referee2_relationship">Referee 2 - Relationship</Label>
+                              <Input id="referee2_relationship" value={formData.referee2_relationship} onChange={handleInputChange} />
+                            </div>
+                          </div>
+                        </div>
+
                         <DialogFooter>
                           <Button type="submit" disabled={isSubmitting}>
                             {isSubmitting ? "Submitting..." : "Add Teacher"}

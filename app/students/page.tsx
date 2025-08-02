@@ -47,6 +47,7 @@ import {
   Query,
   DocumentData,
   CollectionReference,
+  updateDoc,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
@@ -314,6 +315,11 @@ interface Student {
   emailaddress?: string
   religion?: string
   nationality?: string
+  parent_id?: string
+  parent_name?: string
+  parent_relationship?: string
+  parent_phone?: string
+  parent_email?: string
   [key: string]: any
 }
 
@@ -352,6 +358,7 @@ export default function StudentsPage() {
     disability_type: "",
     sick: "",
     sick_type: "",
+    parent_id: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [students, setStudents] = useState<Student[]>([])
@@ -894,6 +901,7 @@ export default function StudentsPage() {
         ...formData,
         ...schoolData, // Ensure school data is included
         id: studentId,
+        parent_id: "", // Always blank for new students
         status: "Active",
         created_at: Timestamp.fromDate(currentDate),
         date: currentDate.toLocaleDateString(),
@@ -947,6 +955,7 @@ export default function StudentsPage() {
         nationality: "",
         nin: "",
         disability: "",
+        parent_id: "",
         disability_type: "",
         sick: "",
         sick_type: "",
@@ -1428,13 +1437,11 @@ export default function StudentsPage() {
         }
       }
 
-      // Prepare parent data
+      // Prepare parent data (without student references)
       const currentDate = new Date()
       const parentData = {
         ...parentFormData,
         id: parentId,
-        student_id: studentId,
-        student_name: studentName,
         ...schoolData,
         status: "Active",
         created_at: Timestamp.fromDate(currentDate),
@@ -1446,10 +1453,23 @@ export default function StudentsPage() {
       // Save to Firestore
       await setDoc(doc(db, "parents", parentId), parentData)
 
+      // Update student record with parent information
+      const studentRef = doc(db, "students", studentId)
+      await updateDoc(studentRef, {
+        parent_id: parentId,
+        parent_name: `${parentFormData.firstname} ${parentFormData.lastname}`,
+        parent_relationship: parentFormData.relationship_with_student || "Parent",
+        parent_phone: parentFormData.phonenumber,
+        parent_email: parentFormData.emailaddress
+      })
+
       toast({
         title: "Success",
         description: `Parent added successfully for ${studentName}`,
       })
+
+      // Refresh students list to show updated parent information
+      await fetchStudents()
 
       // Reset form
       setParentFormData({
@@ -1756,6 +1776,44 @@ export default function StudentsPage() {
                           <p className="text-xs text-muted-foreground mt-1">
                             Test NINs: SL12345678, SL87654321, SL11223344, SL11112222, SL22223333
                           </p>
+                          
+                          {/* Available Student NINs */}
+                          <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-md">
+                            <h4 className="text-sm font-medium text-purple-800 mb-2">Available Student NINs for Testing:</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL12345678</span>
+                                <br />
+                                <span className="text-gray-600">Fatmata Kamara</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL87654321</span>
+                                <br />
+                                <span className="text-gray-600">Mohamed Sesay</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL11223344</span>
+                                <br />
+                                <span className="text-gray-600">Aminata Bangura</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL55667788</span>
+                                <br />
+                                <span className="text-gray-600">Ibrahim Koroma</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL99887766</span>
+                                <br />
+                                <span className="text-gray-600">Mariama Turay</span>
+                              </div>
+                              <div className="bg-white p-2 rounded border">
+                                <span className="font-mono text-purple-600">SL33445566</span>
+                                <br />
+                                <span className="text-gray-600">Alhaji Mansaray</span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-purple-600 mt-2">Click any NIN to copy to clipboard</p>
+                          </div>
                         </div>
                         <div>
                           <Label htmlFor="disability">Disability</Label>
@@ -1996,12 +2054,19 @@ export default function StudentsPage() {
                       </div>
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            Add Parent
-                          </Button>
-                        </DialogTrigger>
+                      {student.parent_name ? (
+                        <div className="text-sm">
+                          <span className="font-medium">{student.parent_name}</span>
+                          <br />
+                          <span className="text-xs text-muted-foreground">{student.parent_relationship || "Parent"}</span>
+                        </div>
+                      ) : (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              Add Parent
+                            </Button>
+                          </DialogTrigger>
                         <DialogContent className="sm:max-w-[500px] md:max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto">
                           <DialogHeader>
                             <DialogTitle>
@@ -2041,6 +2106,44 @@ export default function StudentsPage() {
                               <p className="text-xs text-gray-500 mt-1">
                                 Enter the parent's NIN to automatically fill the form with existing parent information
                               </p>
+                              
+                              {/* Available Parent NINs */}
+                              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                                <h4 className="text-sm font-medium text-green-800 mb-2">Available Parent NINs for Testing:</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL12345678</span>
+                                    <br />
+                                    <span className="text-gray-600">Alhaji Koroma</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL87654321</span>
+                                    <br />
+                                    <span className="text-gray-600">Fatmata Sesay</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL11223344</span>
+                                    <br />
+                                    <span className="text-gray-600">Mohamed Bangura</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL55667788</span>
+                                    <br />
+                                    <span className="text-gray-600">Aminata Turay</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL99887766</span>
+                                    <br />
+                                    <span className="text-gray-600">Ibrahim Kamara</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded border">
+                                    <span className="font-mono text-green-600">PL33445566</span>
+                                    <br />
+                                    <span className="text-gray-600">Hawa Conteh</span>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-green-600 mt-2">Click any NIN to copy to clipboard</p>
+                              </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2198,6 +2301,7 @@ export default function StudentsPage() {
                           </form>
                         </DialogContent>
                       </Dialog>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
