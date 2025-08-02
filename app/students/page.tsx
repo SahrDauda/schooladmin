@@ -389,7 +389,33 @@ export default function StudentsPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isViewStudentOpen, setIsViewStudentOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [editFormData, setEditFormData] = useState<Student & { passport_picture?: string }>(formData)
+  const [editFormData, setEditFormData] = useState<Student & { passport_picture?: string }>({
+    id: "",
+    batch: "",
+    school_id: "",
+    adm_no: "",
+    schoolname: "",
+    firstname: "",
+    lastname: "",
+    dob: "",
+    gender: "",
+    bgroup: "",
+    class: "",
+    faculty: "",
+    level: "",
+    homeaddress: "",
+    phonenumber: "",
+    emailaddress: "",
+    religion: "",
+    nationality: "",
+    nin: "",
+    disability: "",
+    parent_id: "",
+    disability_type: "",
+    sick: "",
+    sick_type: "",
+    passport_picture: "",
+  })
   const [classes, setClasses] = useState<any[]>([])
   const [specialNeedsFilter, setSpecialNeedsFilter] = useState(
     initialFilter === "special-needs" ? "all-special" : "all",

@@ -22,13 +22,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2, QrCode, Camera, X } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where } from "firebase/firestore"
+import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { z } from "zod"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { TeacherAttendanceQR } from "@/components/teacher-attendance-qr"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 import { sendEmail } from "@/lib/index"
 import Papa from "papaparse"
@@ -357,10 +357,15 @@ export default function TeachersPage() {
       // Generate a random password for the teacher
       const password = generateRandomPassword()
 
-      // Create Firebase Auth user
+      // Create Firebase Auth user with the same ID as the document
       let userCredential
       try {
         userCredential = await createUserWithEmailAndPassword(auth, formData.email, password)
+        
+        // Update the auth user's UID to match the document ID
+        // Note: Firebase Auth doesn't allow changing UID after creation
+        // So we'll create the auth user with a custom UID using admin SDK
+        // For now, we'll store the document ID in the auth_uid field
       } catch (authError: any) {
         let errorMsg = "Failed to create teacher account."
         if (authError.code === "auth/email-already-in-use") {
@@ -410,9 +415,10 @@ export default function TeachersPage() {
         passport_picture: passportPictureUrl,
         created_at: Timestamp.fromDate(currentDate),
         status: "Active", // Always set to Active
-        // Do NOT store password in Firestore
-        // Optionally, you can store the auth UID if needed:
-        auth_uid: userCredential.user.uid,
+        // Store the document ID as auth_uid for consistency
+        auth_uid: teacherId,
+        // Also store the Firebase Auth UID for reference
+        firebase_auth_uid: userCredential.user.uid,
       }
 
       // Save to Firestore
@@ -568,7 +574,37 @@ export default function TeachersPage() {
   const handleDeleteTeacher = async (teacherId: string) => {
     if (confirm("Are you sure you want to delete this teacher? This action cannot be undone.")) {
       try {
-        await deleteDoc(doc(db, "teachers", teacherId))
+        // Get the teacher data to find the auth UID
+        const teacherDoc = await getDoc(doc(db, "teachers", teacherId))
+        if (teacherDoc.exists()) {
+          const teacherData = teacherDoc.data()
+          
+          // Delete the Firestore document
+          await deleteDoc(doc(db, "teachers", teacherId))
+          
+          // Try to delete the auth user if firebase_auth_uid exists
+          if (teacherData.firebase_auth_uid) {
+            try {
+              // Call the API to delete the auth user
+              const response = await fetch('/api/delete-auth-user', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ authUid: teacherData.firebase_auth_uid })
+              })
+              
+              if (!response.ok) {
+                console.error("Failed to delete auth user")
+              } else {
+                console.log("Auth user deletion initiated")
+              }
+            } catch (authError) {
+              console.error("Error deleting auth user:", authError)
+              // Continue with the deletion even if auth deletion fails
+            }
+          }
+        }
 
         toast({
           title: "Success",
