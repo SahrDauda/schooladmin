@@ -86,6 +86,8 @@ export default function TeachersPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [ninSearchQuery, setNinSearchQuery] = useState("")
+  const [isSearchingNin, setIsSearchingNin] = useState(false)
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -96,6 +98,76 @@ export default function TeachersPage() {
 
     loadSchoolInfo()
   }, [])
+
+  // NIN API integration
+  const searchNINFromAPI = async (nin: string) => {
+    if (!nin.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a NIN to search",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSearchingNin(true)
+    try {
+      console.log('Searching for teacher NIN:', nin)
+      
+      const response = await fetch('/api/nin-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nin: nin.trim(), type: 'teacher' }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Teacher not found')
+      }
+
+      const data = await response.json()
+      console.log('Teacher data retrieved:', data)
+
+      // Auto-populate form with teacher data
+      setFormData((prev) => ({
+        ...prev,
+        firstname: data.firstName || prev.firstname,
+        lastname: data.lastName || prev.lastname,
+        gender: data.gender || prev.gender,
+        email: data.emailaddress || prev.email,
+        phone: data.phoneNumber || prev.phone,
+        address: data.address || prev.address,
+        qualification: data.qualification || prev.qualification,
+        subject: data.subject || prev.subject,
+        joining_date: data.joiningDate || prev.joining_date,
+      }))
+      
+      console.log('Form updated with teacher data')
+      
+      toast({
+        title: "Success",
+        description: `Teacher information retrieved for ${data.firstName} ${data.lastName}`,
+      })
+    } catch (error) {
+      console.error('Teacher NIN search failed:', error)
+      
+      let errorMessage = "Teacher search failed"
+      if (error instanceof Error) {
+        if (error.message.includes('not found')) {
+          errorMessage = `Teacher NIN "${nin}" not found in the database`
+        }
+      }
+      
+      toast({
+        title: "Teacher Not Found",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingNin(false)
+    }
+  }
 
   // Fetch subjects for the current school
   useEffect(() => {
@@ -487,6 +559,32 @@ export default function TeachersPage() {
                     </TabsList>
                     <TabsContent value="personal" className="space-y-4">
                       <form className="space-y-4">
+                        {/* Search by NIN */}
+                        <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                          <h3 className="text-sm font-medium mb-2">Search by NIN</h3>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Enter teacher NIN"
+                              value={ninSearchQuery}
+                              onChange={(e) => setNinSearchQuery(e.target.value)}
+                            />
+                            <Button variant="secondary" onClick={() => searchNINFromAPI(ninSearchQuery)} disabled={isSearchingNin}>
+                              {isSearchingNin ? (
+                                <span className="flex items-center">
+                                  <span className="animate-spin mr-2">⏳</span> Searching...
+                                </span>
+                              ) : (
+                                <span className="flex items-center">
+                                  <Search className="w-4 h-4 mr-2" /> Search
+                                </span>
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Enter the teacher's NIN to automatically fill the form with existing teacher information
+                          </p>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label htmlFor="firstname">First Name</Label>

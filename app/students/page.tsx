@@ -391,8 +391,10 @@ export default function StudentsPage() {
   const [isSubmittingParent, setIsSubmittingParent] = useState(false)
   const [duplicateStudent, setDuplicateStudent] = useState<any>(null)
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false)
+  const [parentNinSearchQuery, setParentNinSearchQuery] = useState("")
+  const [isSearchingParentNin, setIsSearchingParentNin] = useState(false)
 
-  // NIN API integration
+  // NIN API integration for students
   const searchNINFromAPI = async (nin: string) => {
     setIsSearchingNIN(true)
     try {
@@ -465,6 +467,74 @@ export default function StudentsPage() {
       })
     } finally {
       setIsSearchingNIN(false)
+    }
+  }
+
+  // NIN API integration for parents
+  const searchParentNINFromAPI = async (nin: string) => {
+    if (!nin.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a NIN to search",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSearchingParentNin(true)
+    try {
+      console.log('Searching for parent NIN:', nin)
+      
+      const response = await fetch('/api/nin-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nin: nin.trim(), type: 'parent' }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Parent not found')
+      }
+
+      const data = await response.json()
+      console.log('Parent data retrieved:', data)
+
+      // Auto-populate form with parent data
+      setParentFormData((prev) => ({
+        ...prev,
+        firstname: data.firstName || prev.firstname,
+        lastname: data.lastName || prev.lastname,
+        gender: data.gender || prev.gender,
+        phonenumber: data.phoneNumber || prev.phonenumber,
+        emailaddress: data.emailaddress || prev.emailaddress,
+        occupation: data.occupation || prev.occupation,
+        relationship_with_student: data.relationshipWithStudent || prev.relationship_with_student,
+      }))
+      
+      console.log('Parent form updated with data')
+      
+      toast({
+        title: "Success",
+        description: `Parent information retrieved for ${data.firstName} ${data.lastName}`,
+      })
+    } catch (error) {
+      console.error('Parent NIN search failed:', error)
+      
+      let errorMessage = "Parent search failed"
+      if (error instanceof Error) {
+        if (error.message.includes('not found')) {
+          errorMessage = `Parent NIN "${nin}" not found in the database`
+        }
+      }
+      
+      toast({
+        title: "Parent Not Found",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingParentNin(false)
     }
   }
 
@@ -1947,6 +2017,32 @@ export default function StudentsPage() {
                             }
                             className="space-y-4"
                           >
+                            {/* Search by NIN */}
+                            <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                              <h3 className="text-sm font-medium mb-2">Search by NIN</h3>
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="Enter parent NIN"
+                                  value={parentNinSearchQuery}
+                                  onChange={(e) => setParentNinSearchQuery(e.target.value)}
+                                />
+                                <Button variant="secondary" onClick={() => searchParentNINFromAPI(parentNinSearchQuery)} disabled={isSearchingParentNin}>
+                                  {isSearchingParentNin ? (
+                                    <span className="flex items-center">
+                                      <span className="animate-spin mr-2">⏳</span> Searching...
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center">
+                                      <Search className="w-4 h-4 mr-2" /> Search
+                                    </span>
+                                  )}
+                                </Button>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Enter the parent's NIN to automatically fill the form with existing parent information
+                              </p>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                 <Label htmlFor="parent_firstname">First Name</Label>
