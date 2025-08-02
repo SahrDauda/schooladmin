@@ -389,6 +389,8 @@ export default function StudentsPage() {
   const [ninSearchQuery, setNinSearchQuery] = useState("")
   const [isExporting, setIsExporting] = useState(false)
   const [isSubmittingParent, setIsSubmittingParent] = useState(false)
+  const [duplicateStudent, setDuplicateStudent] = useState<any>(null)
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false)
 
   // NIN API integration
   const searchNINFromAPI = async (nin: string) => {
@@ -720,6 +722,67 @@ export default function StudentsPage() {
     return password
   }
 
+  const checkForDuplicateStudent = async (studentData: any) => {
+    try {
+      const studentsRef = collection(db, "students")
+      
+      // Check by NIN first (if provided)
+      if (studentData.nin && studentData.nin.trim()) {
+        const ninQuery = query(studentsRef, where("nin", "==", studentData.nin.trim()))
+        const ninSnapshot = await getDocs(ninQuery)
+        
+        if (!ninSnapshot.empty) {
+          const duplicate = ninSnapshot.docs[0].data()
+          setDuplicateStudent({
+            ...duplicate,
+            id: ninSnapshot.docs[0].id,
+            reason: "NIN"
+          })
+          setIsDuplicateModalOpen(true)
+          return true
+        }
+      }
+      
+      // Check by combination of name, dob, address, email (if NIN not provided)
+      if (!studentData.nin || !studentData.nin.trim()) {
+        const name = `${studentData.firstname} ${studentData.lastname}`.toLowerCase().trim()
+        const dob = studentData.dob
+        const address = studentData.homeaddress?.toLowerCase().trim()
+        const email = studentData.emailaddress?.toLowerCase().trim()
+        
+        if (name && dob && address && email) {
+          const allStudentsQuery = query(studentsRef)
+          const allStudentsSnapshot = await getDocs(allStudentsQuery)
+          
+          for (const doc of allStudentsSnapshot.docs) {
+            const existingStudent = doc.data()
+            const existingName = `${existingStudent.firstname} ${existingStudent.lastname}`.toLowerCase().trim()
+            const existingAddress = existingStudent.homeaddress?.toLowerCase().trim()
+            const existingEmail = existingStudent.emailaddress?.toLowerCase().trim()
+            
+            if (existingName === name && 
+                existingStudent.dob === dob && 
+                existingAddress === address && 
+                existingEmail === email) {
+              setDuplicateStudent({
+                ...existingStudent,
+                id: doc.id,
+                reason: "Personal Information"
+              })
+              setIsDuplicateModalOpen(true)
+              return true
+            }
+          }
+        }
+      }
+      
+      return false
+    } catch (error) {
+      console.error("Error checking for duplicate student:", error)
+      return false
+    }
+  }
+
   const handleSubmitStudent = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
@@ -766,6 +829,13 @@ export default function StudentsPage() {
         date: currentDate.toLocaleDateString(),
         month: currentDate.toLocaleString("default", { month: "long" }),
         year: currentDate.getFullYear().toString(),
+      }
+
+      // Check for duplicate student before saving
+      const isDuplicate = await checkForDuplicateStudent(studentData)
+      if (isDuplicate) {
+        setIsSubmitting(false)
+        return
       }
 
       // Save to Firestore
@@ -1467,7 +1537,6 @@ export default function StudentsPage() {
                             <SelectContent>
                               <SelectItem value="Male">Male</SelectItem>
                               <SelectItem value="Female">Female</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -2129,7 +2198,6 @@ export default function StudentsPage() {
                         <SelectContent>
                           <SelectItem value="Male">Male</SelectItem>
                           <SelectItem value="Female">Female</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -2285,6 +2353,74 @@ export default function StudentsPage() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Duplicate Student Modal */}
+        <Dialog open={isDuplicateModalOpen} onOpenChange={setIsDuplicateModalOpen}>
+          <DialogContent className="sm:max-w-[600px] w-[90%]">
+            <DialogHeader>
+              <DialogTitle className="text-red-600">Duplicate Student Detected</DialogTitle>
+              <DialogDescription>
+                A student with the same {duplicateStudent?.reason === "NIN" ? "NIN" : "personal information"} already exists in the system.
+              </DialogDescription>
+            </DialogHeader>
+            {duplicateStudent && (
+              <div className="space-y-4">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <h3 className="font-semibold text-red-800 mb-2">Existing Student Information:</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Student ID</h4>
+                      <p className="text-base font-medium">{duplicateStudent.id}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Full Name</h4>
+                      <p className="text-base font-medium">{`${duplicateStudent.firstname} ${duplicateStudent.lastname}`}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">School</h4>
+                      <p className="text-base">{duplicateStudent.schoolname || "N/A"}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Class</h4>
+                      <p className="text-base">{duplicateStudent.class || "N/A"}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Date of Birth</h4>
+                      <p className="text-base">{duplicateStudent.dob || "N/A"}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Address</h4>
+                      <p className="text-base">{duplicateStudent.homeaddress || "N/A"}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Email</h4>
+                      <p className="text-base">{duplicateStudent.emailaddress || "N/A"}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">NIN</h4>
+                      <p className="text-base">{duplicateStudent.nin || "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-sm text-muted-foreground">
+                  <p><strong>Reason for detection:</strong> {duplicateStudent.reason === "NIN" ? 
+                    "Same NIN number found in the system" : 
+                    "Same name, date of birth, address, and email combination found"
+                  }</p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsDuplicateModalOpen(false)}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

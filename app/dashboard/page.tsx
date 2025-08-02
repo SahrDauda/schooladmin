@@ -62,6 +62,11 @@ export default function Dashboard() {
     disabilityTypes: {},
     medicalConditionTypes: {},
   })
+  const [genderStats, setGenderStats] = useState({
+    totalMale: 0,
+    totalFemale: 0,
+    genderByClass: [] as any[]
+  })
   const [loading, setLoading] = useState(true)
   const [schoolId, setSchoolId] = useState("")
   const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
@@ -204,6 +209,40 @@ export default function Dashboard() {
             totalWithMedicalConditions: studentsWithMedicalConditions.length,
             disabilityTypes,
             medicalConditionTypes,
+          })
+
+          // Calculate gender statistics
+          const maleStudents = studentsList.filter((student) => student.gender === "Male")
+          const femaleStudents = studentsList.filter((student) => student.gender === "Female")
+          
+          // Calculate gender by class
+          const genderByClass: any[] = []
+          const classGroups = studentsList.reduce((acc: any, student) => {
+            const className = student.class || "Unknown"
+            if (!acc[className]) {
+              acc[className] = { male: 0, female: 0 }
+            }
+            if (student.gender === "Male") {
+              acc[className].male++
+            } else if (student.gender === "Female") {
+              acc[className].female++
+            }
+            return acc
+          }, {})
+
+          Object.entries(classGroups).forEach(([className, counts]: [string, any]) => {
+            genderByClass.push({
+              class: className,
+              male: counts.male,
+              female: counts.female,
+              total: counts.male + counts.female
+            })
+          })
+
+          setGenderStats({
+            totalMale: maleStudents.length,
+            totalFemale: femaleStudents.length,
+            genderByClass
           })
 
           // Update stats
@@ -485,6 +524,62 @@ export default function Dashboard() {
                     <YAxis domain={[0, 100]} />
                     <Tooltip />
                     <Bar dataKey="average" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Gender Statistics Section */}
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg md:text-xl">Total Male vs Female</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[250px] sm:h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Male", value: genderStats.totalMale, color: "#3b82f6" },
+                        { name: "Female", value: genderStats.totalFemale, color: "#ec4899" }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, value, percent }) => `${name}: ${value} (${((percent ?? 0) * 100).toFixed(0)}%)`}
+                    >
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#ec4899" />
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg md:text-xl">Gender Distribution by Class</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[250px] sm:h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={genderStats.genderByClass}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="class" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="male" fill="#3b82f6" name="Male" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="female" fill="#ec4899" name="Female" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
