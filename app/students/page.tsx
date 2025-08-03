@@ -518,10 +518,10 @@ export default function StudentsPage() {
   const handlePassportPictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
         toast({
           title: "File too large",
-          description: "Please select an image smaller than 5MB",
+          description: "Please select an image smaller than 10MB",
           variant: "destructive",
         })
         return
@@ -548,10 +548,10 @@ export default function StudentsPage() {
   const handleEditPassportPictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
         toast({
           title: "File too large",
-          description: "Please select an image smaller than 5MB",
+          description: "Please select an image smaller than 10MB",
           variant: "destructive",
         })
         return
@@ -2068,7 +2068,7 @@ export default function StudentsPage() {
                                 >
                                   <Camera className="h-8 w-8 text-gray-400" />
                                   <span className="text-sm text-gray-600">Click to upload passport picture</span>
-                                  <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                                  <span className="text-xs text-gray-500">JPG, PNG, GIF up to 10MB</span>
                                 </label>
                               </div>
                             )}
@@ -2736,7 +2736,7 @@ export default function StudentsPage() {
                             >
                               <Camera className="h-8 w-8 text-gray-400" />
                               <span className="text-sm text-gray-600">Click to upload passport picture</span>
-                              <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                              <span className="text-xs text-gray-500">JPG, PNG, GIF up to 10MB</span>
                             </label>
                           </div>
                         )}
