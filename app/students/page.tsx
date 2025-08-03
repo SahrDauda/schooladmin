@@ -433,6 +433,9 @@ export default function StudentsPage() {
   const [isSearchingParentNin, setIsSearchingParentNin] = useState(false)
   const [passportPicture, setPassportPicture] = useState<File | null>(null)
   const [passportPicturePreview, setPassportPicturePreview] = useState<string>("")
+  const [editPassportPicture, setEditPassportPicture] = useState<File | null>(null)
+  const [editPassportPicturePreview, setEditPassportPicturePreview] = useState<string>("")
+  const [isProcessingImage, setIsProcessingImage] = useState(false)
 
   // NIN API integration for students
   const searchNINFromAPI = async (nin: string) => {
@@ -542,9 +545,44 @@ export default function StudentsPage() {
     }
   }
 
+  const handleEditPassportPictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "File too large",
+          description: "Please select an image smaller than 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      setEditPassportPicture(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setEditPassportPicturePreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   const removePassportPicture = () => {
     setPassportPicture(null)
     setPassportPicturePreview("")
+  }
+
+  const removeEditPassportPicture = () => {
+    setEditPassportPicture(null)
+    setEditPassportPicturePreview("")
   }
 
   // Helper function to get student initials
@@ -973,13 +1011,20 @@ export default function StudentsPage() {
       let passportPictureUrl = ""
       if (passportPicture) {
         try {
-          // Convert file to base64 for storage
-          const reader = new FileReader()
-          reader.onload = async (e) => {
-            const base64 = e.target?.result as string
-            passportPictureUrl = base64
-          }
-          reader.readAsDataURL(passportPicture)
+          // Convert file to base64 for storage - properly awaited
+          passportPictureUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              const result = e.target?.result as string
+              if (result) {
+                resolve(result)
+              } else {
+                reject(new Error("Failed to read file"))
+              }
+            }
+            reader.onerror = () => reject(new Error("Failed to read file"))
+            reader.readAsDataURL(passportPicture)
+          })
         } catch (error) {
           console.error("Error processing passport picture:", error)
           toast({
@@ -1233,11 +1278,40 @@ export default function StudentsPage() {
   const handleUpdateStudent = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      // Handle passport picture upload for updates
+      let passportPictureUrl = editFormData.passport_picture || ""
+      if (passportPicture) {
+        try {
+          // Convert file to base64 for storage - properly awaited
+          passportPictureUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              const result = e.target?.result as string
+              if (result) {
+                resolve(result)
+              } else {
+                reject(new Error("Failed to read file"))
+              }
+            }
+            reader.onerror = () => reject(new Error("Failed to read file"))
+            reader.readAsDataURL(passportPicture)
+          })
+        } catch (error) {
+          console.error("Error processing passport picture:", error)
+          toast({
+            title: "Warning",
+            description: "Failed to process passport picture, but student will be updated",
+            variant: "destructive",
+          })
+        }
+      }
+
       // Ensure school ID is preserved
       const updatedData: Student = {
         ...editFormData,
         school_id: editFormData.school_id || schoolId,
         schoolname: editFormData.schoolname || schoolName,
+        passport_picture: passportPictureUrl,
         updated_at: Timestamp.fromDate(new Date()),
       }
 
@@ -2653,19 +2727,7 @@ export default function StudentsPage() {
                               type="file"
                               id="edit_passport_picture"
                               accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0]
-                                if (file) {
-                                  const reader = new FileReader()
-                                  reader.onload = (e) => {
-                                    setEditFormData((prev) => ({
-                                      ...prev,
-                                      passport_picture: e.target?.result as string
-                                    }))
-                                  }
-                                  reader.readAsDataURL(file)
-                                }
-                              }}
+                              onChange={handleEditPassportPictureChange}
                               className="hidden"
                             />
                             <label

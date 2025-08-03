@@ -85,8 +85,8 @@ export default function LoginPage() {
         // Redirect to dashboard (modal will show)
         router.push("/dashboard")
       } else {
-        // Redirect to dashboard
-        router.push("/dashboard")
+      // Redirect to dashboard
+      router.push("/dashboard")
       }
     } catch (err) {
       const error = err as Error

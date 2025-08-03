@@ -68,6 +68,7 @@ export default function Dashboard() {
     genderByClass: [] as any[]
   })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [schoolId, setSchoolId] = useState("")
   const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -166,7 +167,12 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setError(null)
+        console.log("Fetching dashboard data...")
+        
         const schoolInfo = await getCurrentSchoolInfo()
+        console.log("School info:", schoolInfo)
+        
         setSchoolName(schoolInfo.schoolName)
         setSchoolStage(schoolInfo.stage)
         const schoolId = schoolInfo.school_id
@@ -320,6 +326,22 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error loading dashboard</h3>
+                <div className="mt-2 text-sm text-red-700">{error}</div>
+              </div>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex flex-col space-y-4">
             {/* Skeleton for school info */}
@@ -342,6 +364,11 @@ export default function Dashboard() {
                 </Card>
               ))}
             </div>
+          </div>
+        ) : error ? (
+          <div className="text-center py-8">
+            <h2 className="text-xl font-semibold mb-2">Dashboard Unavailable</h2>
+            <p className="text-muted-foreground">Please try refreshing the page or contact support if the problem persists.</p>
           </div>
         ) : (
           <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -601,7 +628,11 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground">
                 {isFirstTimeLogin ? "Setting password for:" : "Changing password for:"}
               </p>
-              <p className="font-medium">{localStorage.getItem("adminName") || "Admin"}</p>
+              <p className="font-medium">
+                {typeof window !== "undefined" && localStorage.getItem("adminName") 
+                  ? localStorage.getItem("adminName") 
+                  : "Admin"}
+              </p>
               {isFirstTimeLogin && (
                 <p className="text-xs text-muted-foreground mt-2">
                   Welcome! Please set your password to complete your account setup.

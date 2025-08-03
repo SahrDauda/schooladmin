@@ -38,6 +38,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [adminName, setAdminName] = useState("Admin User")
   const [adminRole, setAdminRole] = useState("Principal")
   const [adminGender, setAdminGender] = useState("")
+  const [adminImage, setAdminImage] = useState("")
   const [isMobile, setIsMobile] = useState(false)
 
   const sidebarItems = [
@@ -81,9 +82,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             setAdminName(adminData.adminName)
             localStorage.setItem("adminName", adminData.adminName)
           } else if (adminData.name) {
-            setAdminName(adminData.name)
-            localStorage.setItem("adminName", adminData.name)
-          }
+              setAdminName(adminData.name)
+              localStorage.setItem("adminName", adminData.name)
+            }
           
           // Set gender for title
           if (adminData.gender) {
@@ -93,6 +94,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             // Always set role to "Principal" and store it
             setAdminRole("Principal")
             localStorage.setItem("adminRole", "Principal")
+            
+            // Set admin image
+            if (adminData.admin_images) {
+              setAdminImage(adminData.admin_images)
+            }
           }
         } catch (error) {
           console.error("Error fetching admin data:", error)
@@ -146,6 +152,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return title + adminName
   }
 
+  // Function to get initials from name
+  const getInitials = (name: string) => {
+    if (!name || name === "Admin User") return "AU"
+    
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {sidebarOpen && (
@@ -177,8 +195,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Settings className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleLogout}>
+            <DropdownMenuContent align="end" className="w-48 bg-background border shadow-lg">
+              <DropdownMenuItem onClick={() => router.push("/profile")} className="cursor-pointer">
+                <UserCog className="mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 Log out
               </DropdownMenuItem>
@@ -222,17 +244,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </ul>
         </nav>
         <div className="border-t border-white/10 p-4">
-          <div className="flex items-center gap-3 rounded-md px-4 py-3">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src="/placeholder.svg?height=40&width=40" alt="User" />
-              <AvatarFallback className="bg-white/10 text-white">
-                {getFormattedName()
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")}
+          <div className="flex flex-col items-center gap-3 rounded-md px-4 py-3">
+            <Avatar className="h-16 w-16">
+              <AvatarImage src={adminImage} alt="Admin Profile" />
+              <AvatarFallback className="bg-white/10 text-white text-lg">
+                {getInitials(adminName)}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col">
+            <div className="flex flex-col items-center text-center">
               <span className="text-sm font-medium text-white">{getFormattedName()}</span>
               <span className="text-xs text-gray-400">{adminRole}</span>
             </div>
@@ -240,7 +259,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      <main className={cn("pt-28", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
+      <main className={cn("pt-16", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
     </div>
   )
 }

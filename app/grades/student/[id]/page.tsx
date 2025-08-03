@@ -26,6 +26,20 @@ import { toast } from "@/hooks/use-toast"
 export default function StudentResultPage() {
   const params = useParams()
   const router = useRouter()
+  
+  if (!params?.id) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-[60vh]">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold">Invalid Student ID</h2>
+            <p className="text-muted-foreground mt-2">Student ID is required.</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+  
   const studentId = params.id as string
   const [student, setStudent] = useState<any>(null)
   const [grades, setGrades] = useState<any[]>([])
@@ -341,7 +355,7 @@ export default function StudentResultPage() {
 
   return (
     <DashboardLayout>
-      <div className="print:p-0">
+      <div className="print:p-0 p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
         <div className="flex justify-between items-center mb-4 print:hidden">
           <Button variant="outline" onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Grades

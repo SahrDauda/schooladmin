@@ -580,7 +580,7 @@ export default function TeachersPage() {
           const teacherData = teacherDoc.data()
           
           // Delete the Firestore document
-          await deleteDoc(doc(db, "teachers", teacherId))
+        await deleteDoc(doc(db, "teachers", teacherId))
           
           // Try to delete the auth user if firebase_auth_uid exists
           if (teacherData.firebase_auth_uid) {
