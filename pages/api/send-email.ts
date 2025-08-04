@@ -103,6 +103,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         `
         break
 
+      case 'custom':
+        const { subject: customSubject, message: customMessage } = req.body
+        subject = customSubject || 'Notification from Skultɛk'
+        message = customMessage || 'You have received a notification from Skultɛk School Management System.'
+        break
+
       default:
         return res.status(400).json({ error: 'Invalid notification type' })
     }

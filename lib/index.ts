@@ -14,7 +14,12 @@ export async function sendEmail(to: string, subject: string, body: string) {
     const res = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, body }),
+      body: JSON.stringify({ 
+        type: 'custom',
+        email: to,
+        subject: subject,
+        message: body
+      }),
     })
     return await res.json()
   } catch (error) {

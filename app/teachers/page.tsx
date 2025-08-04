@@ -68,6 +68,7 @@ export default function TeachersPage() {
   const [selectedSubject, setSelectedSubject] = useState("all")
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [isQrModalOpen, setIsQrModalOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState("personal")
   const [formData, setFormData] = useState({
     // Personal Information
     firstname: "",
@@ -351,21 +352,13 @@ export default function TeachersPage() {
       // Validate form data
       teacherSchema.parse(formData)
 
-      // Generate a unique ID
-      const teacherId = `TCH${Date.now().toString().slice(-6)}`
-
       // Generate a random password for the teacher
       const password = generateRandomPassword()
 
-      // Create Firebase Auth user with the same ID as the document
+      // Create Firebase Auth user first to get the UID
       let userCredential
       try {
         userCredential = await createUserWithEmailAndPassword(auth, formData.email, password)
-        
-        // Update the auth user's UID to match the document ID
-        // Note: Firebase Auth doesn't allow changing UID after creation
-        // So we'll create the auth user with a custom UID using admin SDK
-        // For now, we'll store the document ID in the auth_uid field
       } catch (authError: any) {
         let errorMsg = "Failed to create teacher account."
         if (authError.code === "auth/email-already-in-use") {
@@ -384,6 +377,9 @@ export default function TeachersPage() {
         return
       }
 
+      // Use the Firebase Auth UID as the document ID
+      const teacherId = userCredential.user.uid
+      
       // Handle passport picture upload
       let passportPictureUrl = ""
       if (passportPicture) {
@@ -404,7 +400,7 @@ export default function TeachersPage() {
           })
         }
       }
-
+      
       // Add timestamp and metadata
       const currentDate = new Date()
       const teacherData = {
@@ -415,24 +411,32 @@ export default function TeachersPage() {
         passport_picture: passportPictureUrl,
         created_at: Timestamp.fromDate(currentDate),
         status: "Active", // Always set to Active
-        // Store the document ID as auth_uid for consistency
+        // Store the Firebase Auth UID as both auth_uid and document ID
         auth_uid: teacherId,
-        // Also store the Firebase Auth UID for reference
-        firebase_auth_uid: userCredential.user.uid,
+        firebase_auth_uid: teacherId,
       }
 
-      // Save to Firestore
+      // Save to Firestore using the Firebase Auth UID as document ID
       await setDoc(doc(db, "teachers", teacherId), teacherData)
 
       // Send email with login credentials
       const emailSubject = "Welcome to SchoolTech – Your Account Credentials"
       const emailBody = `Dear ${formData.firstname} ${formData.lastname},\n\nWelcome to SchoolTech! We are excited to have you join us.\n\nYour account has been created. Please find your login credentials below:\n\nUsername: ${formData.email}\nPassword: ${password}\n\nFor security, we recommend logging in and changing your password as soon as possible.\n\nIf you have any questions or need assistance, feel free to reach out to the admin team.\n\nBest regards,\nSchoolTech Administration`
+      
+      console.log('Attempting to send email to:', formData.email)
       const emailResult = await sendEmail(formData.email, emailSubject, emailBody)
+      console.log('Email result:', emailResult)
+      
       if (!emailResult.success) {
         toast({
           title: "Warning",
           description: "Teacher added, but failed to send email with credentials.",
           variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Email Sent",
+          description: "Welcome email sent to teacher successfully.",
         })
       }
 
@@ -779,7 +783,7 @@ export default function TeachersPage() {
                     <DialogTitle>Add Teacher</DialogTitle>
                     <DialogDescription>Fill out the form below to add a new teacher.</DialogDescription>
                   </DialogHeader>
-                  <Tabs defaultValue="personal" className="space-y-4">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                     <TabsList className="grid w-full grid-cols-4">
                       <TabsTrigger value="personal">Personal Info</TabsTrigger>
                       <TabsTrigger value="position">Position</TabsTrigger>
@@ -906,7 +910,22 @@ export default function TeachersPage() {
                           </div>
                           <div>
                             <Label htmlFor="religion">Religion</Label>
-                            <Input id="religion" value={formData.religion} onChange={handleInputChange} />
+                            <Select onValueChange={(value) => handleSelectChange("religion", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select religion" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Christianity">Christianity</SelectItem>
+                                <SelectItem value="Islam">Islam</SelectItem>
+                                <SelectItem value="Hinduism">Hinduism</SelectItem>
+                                <SelectItem value="Buddhism">Buddhism</SelectItem>
+                                <SelectItem value="Judaism">Judaism</SelectItem>
+                                <SelectItem value="Traditional African Religion">Traditional African Religion</SelectItem>
+                                <SelectItem value="Atheism">Atheism</SelectItem>
+                                <SelectItem value="Agnosticism">Agnosticism</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="md:col-span-2">
                             <Label htmlFor="address">Home Address / Permanent Address *</Label>
@@ -920,6 +939,19 @@ export default function TeachersPage() {
                             <Label htmlFor="email">Email Address</Label>
                             <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
                           </div>
+                        </div>
+                        
+                        <div className="flex justify-end pt-4">
+                          <Button 
+                            type="button" 
+                            onClick={() => setActiveTab("position")}
+                            className="flex items-center gap-2"
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Button>
                         </div>
                       </form>
                     </TabsContent>
@@ -960,7 +992,33 @@ export default function TeachersPage() {
                           </div>
                           <div>
                             <Label htmlFor="district_preference">District of Preference</Label>
-                            <Input id="district_preference" value={formData.district_preference} onChange={handleInputChange} />
+                            <Select onValueChange={(value) => handleSelectChange("district_preference", value)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select district" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Western Area Rural">Western Area Rural</SelectItem>
+                                <SelectItem value="Western Area Urban">Western Area Urban</SelectItem>
+                                <SelectItem value="Eastern Province">Eastern Province</SelectItem>
+                                <SelectItem value="Northern Province">Northern Province</SelectItem>
+                                <SelectItem value="Southern Province">Southern Province</SelectItem>
+                                <SelectItem value="North West Province">North West Province</SelectItem>
+                                <SelectItem value="Bombali">Bombali</SelectItem>
+                                <SelectItem value="Kambia">Kambia</SelectItem>
+                                <SelectItem value="Koinadugu">Koinadugu</SelectItem>
+                                <SelectItem value="Tonkolili">Tonkolili</SelectItem>
+                                <SelectItem value="Port Loko">Port Loko</SelectItem>
+                                <SelectItem value="Karene">Karene</SelectItem>
+                                <SelectItem value="Falaba">Falaba</SelectItem>
+                                <SelectItem value="Kailahun">Kailahun</SelectItem>
+                                <SelectItem value="Kenema">Kenema</SelectItem>
+                                <SelectItem value="Kono">Kono</SelectItem>
+                                <SelectItem value="Bo">Bo</SelectItem>
+                                <SelectItem value="Bonthe">Bonthe</SelectItem>
+                                <SelectItem value="Moyamba">Moyamba</SelectItem>
+                                <SelectItem value="Pujehun">Pujehun</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div>
                             <Label htmlFor="school_preference">School of Preference</Label>
@@ -980,6 +1038,30 @@ export default function TeachersPage() {
                               </SelectContent>
                             </Select>
                           </div>
+                        </div>
+                        
+                        <div className="flex justify-between pt-4">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setActiveTab("personal")}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Previous
+                          </Button>
+                          <Button 
+                            type="button" 
+                            onClick={() => setActiveTab("qualifications")}
+                            className="flex items-center gap-2"
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Button>
                         </div>
                       </form>
                     </TabsContent>
@@ -1045,6 +1127,30 @@ export default function TeachersPage() {
                             <Input id="registration_year" value={formData.registration_year} onChange={handleInputChange} />
                           </div>
                         </div>
+                        
+                        <div className="flex justify-between pt-4">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setActiveTab("position")}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Previous
+                          </Button>
+                          <Button 
+                            type="button" 
+                            onClick={() => setActiveTab("experience")}
+                            className="flex items-center gap-2"
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Button>
+                        </div>
                       </form>
                     </TabsContent>
 
@@ -1061,7 +1167,7 @@ export default function TeachersPage() {
                           </div>
                           <div>
                             <Label htmlFor="employment_dates">Dates of Employment</Label>
-                            <Input id="employment_dates" value={formData.employment_dates} onChange={handleInputChange} />
+                            <Input id="employment_dates" type="date" value={formData.employment_dates} onChange={handleInputChange} />
                           </div>
                           <div className="md:col-span-2">
                             <Label htmlFor="responsibilities">Responsibilities/Subjects Taught</Label>
@@ -1170,6 +1276,20 @@ export default function TeachersPage() {
                           </div>
                         </div>
 
+                        <div className="flex justify-between pt-4">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setActiveTab("qualifications")}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Previous
+                          </Button>
+                        </div>
+                        
                         <DialogFooter>
                           <Button type="submit" disabled={isSubmitting}>
                             {isSubmitting ? "Submitting..." : "Add Teacher"}
