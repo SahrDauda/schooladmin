@@ -32,7 +32,7 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
-import { sendWelcomeNotification } from "@/lib/notification-utils"
+import { sendWelcomeNotification, testNotificationSystem } from "@/lib/notification-utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -134,19 +134,6 @@ export default function Dashboard() {
         // Mark as logged in for the first time
         localStorage.setItem("hasLoggedInBefore", "true")
 
-        // Send welcome notification
-        try {
-          const adminId = localStorage.getItem("adminId")
-          const adminName = localStorage.getItem("adminName") || "Admin"
-          const adminEmail = localStorage.getItem("adminEmail") || ""
-          
-          if (adminId) {
-            await sendWelcomeNotification(adminId, adminName, adminEmail)
-          }
-        } catch (error) {
-          console.error("Error sending welcome notification:", error)
-        }
-
         toast({
           title: "Password Set Successfully",
           description: "Your password has been set. Welcome to the system!",
@@ -164,6 +151,30 @@ export default function Dashboard() {
       })
     } finally {
       setChangingPassword(false)
+    }
+  }
+
+  // Test function for notification system
+  const testNotification = async () => {
+    try {
+      const adminId = localStorage.getItem("adminId")
+      const adminName = localStorage.getItem("adminName") || "Admin"
+      const adminEmail = "test@example.com" // You can change this for testing
+      
+      if (adminId) {
+        await testNotificationSystem(adminId, adminName, adminEmail)
+        toast({
+          title: "Test Complete",
+          description: "Notification system test completed. Check console for details.",
+        })
+      }
+    } catch (error) {
+      console.error("Test failed:", error)
+      toast({
+        title: "Test Failed",
+        description: "Notification system test failed. Check console for details.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -388,13 +399,19 @@ export default function Dashboard() {
           <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{schoolName}</h1>
-              {schoolStage && (
-                <Card className="py-1 px-3 flex items-center shadow-none border-none" style={{ backgroundColor: schoolStage === 'Primary' ? '#fee2e2' : schoolStage === 'Junior Secondary' ? '#dbeafe' : schoolStage === 'Senior Secondary' ? '#dcfce7' : '#f3f4f6' }}>
-                  <span className="font-semibold text-sm" style={{ color: schoolStage === 'Primary' ? '#b91c1c' : schoolStage === 'Junior Secondary' ? '#1d4ed8' : schoolStage === 'Senior Secondary' ? '#15803d' : '#6b7280' }}>
-                    {schoolStage}
-                  </span>
-                </Card>
-              )}
+              <div className="flex items-center gap-2">
+                {schoolStage && (
+                  <Card className="py-1 px-3 flex items-center shadow-none border-none" style={{ backgroundColor: schoolStage === 'Primary' ? '#fee2e2' : schoolStage === 'Junior Secondary' ? '#dbeafe' : schoolStage === 'Senior Secondary' ? '#dcfce7' : '#f3f4f6' }}>
+                    <span className="font-semibold text-sm" style={{ color: schoolStage === 'Primary' ? '#b91c1c' : schoolStage === 'Junior Secondary' ? '#1d4ed8' : schoolStage === 'Senior Secondary' ? '#15803d' : '#6b7280' }}>
+                      {schoolStage}
+                    </span>
+                  </Card>
+                )}
+                {/* Test button - remove this in production */}
+                <Button variant="outline" size="sm" onClick={testNotification}>
+                  Test Notifications
+                </Button>
+              </div>
             </div>
             <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
           </div>

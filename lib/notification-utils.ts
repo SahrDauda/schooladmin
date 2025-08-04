@@ -43,16 +43,21 @@ export async function createNotification({
 
 export async function sendWelcomeNotification(adminId: string, adminName: string, adminEmail: string) {
   try {
+    console.log('Creating welcome notification in Firestore...')
+    
     // Create notification in Firestore
-    await createNotification({
+    const notificationId = await createNotification({
       adminId,
       title: "Welcome to Skultɛk!",
       message: "Thank you for using Skultɛk School Management System. We're excited to have you on board!",
       type: "welcome",
       action_url: "/dashboard"
     })
+    
+    console.log('Notification created with ID:', notificationId)
 
     // Send welcome email
+    console.log('Sending welcome email to:', adminEmail)
     const emailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
@@ -66,8 +71,16 @@ export async function sendWelcomeNotification(adminId: string, adminName: string
       }),
     })
 
+    const emailResult = await emailResponse.json()
+    
     if (!emailResponse.ok) {
-      console.error('Failed to send welcome email')
+      const errorText = await emailResponse.text()
+      console.error('Failed to send welcome email:', emailResponse.status, errorText)
+    } else {
+      console.log('Welcome email result:', emailResult)
+      if (emailResult.warning) {
+        console.warn('Email warning:', emailResult.warning)
+      }
     }
 
     return true
@@ -79,16 +92,21 @@ export async function sendWelcomeNotification(adminId: string, adminName: string
 
 export async function sendPasswordChangeNotification(adminId: string, adminName: string, adminEmail: string) {
   try {
+    console.log('Creating password change notification in Firestore...')
+    
     // Create notification in Firestore
-    await createNotification({
+    const notificationId = await createNotification({
       adminId,
       title: "Password Changed",
       message: "Your password was recently changed. If this wasn't you, please contact support immediately.",
       type: "password_change",
       action_url: "/profile"
     })
+    
+    console.log('Password change notification created with ID:', notificationId)
 
     // Send password change email
+    console.log('Sending password change email to:', adminEmail)
     const emailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
@@ -102,13 +120,69 @@ export async function sendPasswordChangeNotification(adminId: string, adminName:
       }),
     })
 
+    const emailResult = await emailResponse.json()
+    
     if (!emailResponse.ok) {
-      console.error('Failed to send password change email')
+      const errorText = await emailResponse.text()
+      console.error('Failed to send password change email:', emailResponse.status, errorText)
+    } else {
+      console.log('Password change email result:', emailResult)
+      if (emailResult.warning) {
+        console.warn('Email warning:', emailResult.warning)
+      }
     }
 
     return true
   } catch (error) {
     console.error('Error sending password change notification:', error)
+    throw error
+  }
+}
+
+// Test function to verify notification system
+export async function testNotificationSystem(adminId: string, adminName: string, adminEmail: string) {
+  try {
+    console.log('Testing notification system...')
+    
+    // Test creating a notification
+    const notificationId = await createNotification({
+      adminId,
+      title: "Test Notification",
+      message: "This is a test notification to verify the system is working.",
+      type: "system",
+      action_url: "/dashboard"
+    })
+    
+    console.log('Test notification created with ID:', notificationId)
+    
+    // Test sending an email
+    const emailResponse = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'welcome',
+        email: adminEmail,
+        name: adminName,
+        adminId
+      }),
+    })
+    
+    const emailResult = await emailResponse.json()
+    
+    if (emailResponse.ok) {
+      console.log('Test email result:', emailResult)
+      if (emailResult.warning) {
+        console.warn('Test email warning:', emailResult.warning)
+      }
+    } else {
+      console.error('Test email failed:', emailResponse.status, emailResult)
+    }
+    
+    return true
+  } catch (error) {
+    console.error('Test notification system failed:', error)
     throw error
   }
 } 

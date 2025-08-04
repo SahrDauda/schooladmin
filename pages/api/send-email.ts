@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
+import nodemailer from 'nodemailer'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -7,8 +8,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const { type, email, name, adminId } = req.body
+    
+    console.log('Email API received request:', { type, email, name, adminId })
 
     if (!email || !type) {
+      console.error('Missing required fields:', { email, type })
       return res.status(400).json({ error: 'Email and type are required' })
     }
 
@@ -69,25 +73,76 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Invalid notification type' })
     }
 
-    // In a real application, you would integrate with an email service like SendGrid, AWS SES, etc.
-    // For now, we'll simulate sending the email
-    console.log('Email would be sent:', {
-      to: email,
-      subject,
-      message
+    // Check if Gmail credentials are configured
+    const gmailUser = process.env.GMAIL_USER
+    const gmailPassword = process.env.GMAIL_APP_PASSWORD
+    
+    if (!gmailUser || !gmailPassword) {
+      console.log('Gmail credentials not configured, simulating email send...')
+      console.log('Email would be sent:', {
+        to: email,
+        subject,
+        message: message.substring(0, 100) + '...'
+      })
+      
+      // Simulate email sending delay
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Email simulated (Gmail not configured)',
+        data: { email, subject, type },
+        warning: 'Email was simulated because Gmail credentials are not configured'
+      })
+    }
+
+    // Create transporter for email sending
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPassword
+      }
     })
 
-    // Simulate email sending delay
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Email options
+    const mailOptions = {
+      from: gmailUser,
+      to: email,
+      subject: subject,
+      text: message,
+      html: message.replace(/\n/g, '<br>')
+    }
 
+    console.log('Attempting to send email:', {
+      to: email,
+      subject,
+      from: mailOptions.from
+    })
+
+    // Send the email
+    const info = await transporter.sendMail(mailOptions)
+    
+    console.log('Email sent successfully:', info.messageId)
+    
     return res.status(200).json({ 
       success: true, 
       message: 'Email sent successfully',
-      data: { email, subject, type }
+      data: { email, subject, type, messageId: info.messageId }
     })
 
   } catch (error) {
     console.error('Email sending error:', error)
-    return res.status(500).json({ error: 'Failed to send email' })
+    
+    // If email sending fails, still return success but log the error
+    // This prevents the notification system from breaking if email fails
+    console.log('Email sending failed, but continuing with notification...')
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Notification created successfully (email may have failed)',
+      data: { email: req.body.email, type: req.body.type },
+      warning: 'Email sending failed but notification was created'
+    })
   }
 } 

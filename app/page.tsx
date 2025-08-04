@@ -14,6 +14,7 @@ import { Lock, Mail, Eye, EyeOff } from "lucide-react"
 import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 import type { QuerySnapshot } from "firebase/firestore"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
+import { sendWelcomeNotification } from "@/lib/notification-utils"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -79,14 +80,34 @@ export default function LoginPage() {
           firstLoginAt: Timestamp.fromDate(new Date())
         })
         
+        // Send welcome notification and email
+        try {
+          const adminName = adminData.adminname || adminData.adminName || adminData.name || "Admin"
+          const adminEmail = adminData.emailaddress || adminData.email || emailaddress
+          
+          console.log("Sending welcome notification for:", { adminId: adminDoc.id, adminName, adminEmail })
+          
+          await sendWelcomeNotification(adminDoc.id, adminName, adminEmail)
+          
+          console.log("Welcome notification sent successfully")
+          
+          toast({
+            title: "Welcome to Skultɛk!",
+            description: "Check your notifications for important information.",
+          })
+        } catch (error) {
+          console.error("Error sending welcome notification:", error)
+          // Don't show error toast to user, just log it
+        }
+        
         // Set localStorage flag to trigger modal
         localStorage.setItem("hasLoggedInBefore", "false")
         
         // Redirect to dashboard (modal will show)
         router.push("/dashboard")
       } else {
-      // Redirect to dashboard
-      router.push("/dashboard")
+        // Redirect to dashboard
+        router.push("/dashboard")
       }
     } catch (err) {
       const error = err as Error
