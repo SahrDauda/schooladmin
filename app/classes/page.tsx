@@ -311,6 +311,9 @@ export default function ClassesPage() {
   const handleUpdateClass = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const previousTeacherId = selectedClass.teacher_id
+      const newTeacherId = editFormData.teacher_id
+
       await setDoc(doc(db, "classes", selectedClass.id), {
         ...editFormData,
         capacity: Number(editFormData.capacity) || 0, // Ensure capacity is stored as number
@@ -318,6 +321,31 @@ export default function ClassesPage() {
         schoolName: schoolInfo.schoolName, // Add school name to the record
         updated_at: Timestamp.fromDate(new Date()),
       })
+
+      // Send notification if teacher was assigned
+      if (newTeacherId && newTeacherId !== previousTeacherId) {
+        try {
+          const teacher = teachers.find(t => t.id === newTeacherId)
+          if (teacher) {
+            const teacherName = teacher.firstname && teacher.lastname 
+              ? `${teacher.firstname} ${teacher.lastname}` 
+              : teacher.name || "Teacher"
+            const teacherEmail = teacher.email || teacher.emailaddress || ""
+
+            const { sendTeacherClassAssignmentNotification } = await import("@/lib/notification-utils")
+            await sendTeacherClassAssignmentNotification(
+              newTeacherId,
+              teacherName,
+              teacherEmail,
+              editFormData.name,
+              editFormData.level
+            )
+          }
+        } catch (error) {
+          console.error("Error sending teacher class assignment notification:", error)
+          // Don't fail the update if notification fails
+        }
+      }
 
       toast({
         title: "Success",

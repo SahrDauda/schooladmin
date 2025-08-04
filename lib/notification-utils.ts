@@ -143,6 +143,120 @@ export async function sendPasswordChangeNotification(adminId: string, adminName:
   }
 }
 
+export async function sendTeacherSubjectAssignmentNotification(
+  teacherId: string, 
+  teacherName: string, 
+  teacherEmail: string,
+  subjectName: string,
+  subjectCode: string
+) {
+  try {
+    console.log('Creating teacher subject assignment notification...')
+    
+    // Create notification in Firestore
+    const notificationId = await createNotification({
+      adminId: teacherId,
+      title: "Subject Assignment",
+      message: `You have been assigned to teach ${subjectName} (${subjectCode}). Please review your teaching schedule and prepare accordingly.`,
+      type: "system",
+      action_url: "/subjects"
+    })
+    
+    console.log('Teacher subject assignment notification created with ID:', notificationId)
+
+    // Send email notification
+    console.log('Sending subject assignment email to:', teacherEmail)
+    const emailResponse = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'teacher_assignment',
+        email: teacherEmail,
+        name: teacherName,
+        teacherId,
+        subjectName,
+        subjectCode
+      }),
+    })
+
+    const emailResult = await emailResponse.json()
+    
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text()
+      console.error('Failed to send subject assignment email:', emailResponse.status, errorText)
+    } else {
+      console.log('Subject assignment email result:', emailResult)
+      if (emailResult.warning) {
+        console.warn('Email warning:', emailResult.warning)
+      }
+    }
+
+    return true
+  } catch (error) {
+    console.error('Error sending teacher subject assignment notification:', error)
+    throw error
+  }
+}
+
+export async function sendTeacherClassAssignmentNotification(
+  teacherId: string, 
+  teacherName: string, 
+  teacherEmail: string,
+  className: string,
+  classLevel: string
+) {
+  try {
+    console.log('Creating teacher class assignment notification...')
+    
+    // Create notification in Firestore
+    const notificationId = await createNotification({
+      adminId: teacherId,
+      title: "Class Assignment",
+      message: `You have been assigned as the class teacher for ${className} (${classLevel}). Please review your class details and prepare for the academic year.`,
+      type: "system",
+      action_url: "/classes"
+    })
+    
+    console.log('Teacher class assignment notification created with ID:', notificationId)
+
+    // Send email notification
+    console.log('Sending class assignment email to:', teacherEmail)
+    const emailResponse = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'teacher_class_assignment',
+        email: teacherEmail,
+        name: teacherName,
+        teacherId,
+        className,
+        classLevel
+      }),
+    })
+
+    const emailResult = await emailResponse.json()
+    
+    if (!emailResponse.ok) {
+      const errorText = await emailResponse.text()
+      console.error('Failed to send class assignment email:', emailResponse.status, errorText)
+    } else {
+      console.log('Class assignment email result:', emailResult)
+      if (emailResult.warning) {
+        console.warn('Email warning:', emailResult.warning)
+      }
+    }
+
+    return true
+  } catch (error) {
+    console.error('Error sending teacher class assignment notification:', error)
+    throw error
+  }
+}
+
 // Test function to verify notification system
 export async function testNotificationSystem(adminId: string, adminName: string, adminEmail: string) {
   try {

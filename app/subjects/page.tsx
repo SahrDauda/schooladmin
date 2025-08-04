@@ -32,6 +32,8 @@ interface Subject {
   department?: string
   description?: string
   level?: string
+  assigned_teacher?: string
+  assigned_teacher_name?: string
   created_at?: Timestamp
   updated_at?: Timestamp
 }
@@ -43,6 +45,16 @@ interface Department {
   schoolname: string
   created_at?: Timestamp
   updated_at?: Timestamp
+}
+
+interface Teacher {
+  id: string
+  firstname?: string
+  lastname?: string
+  name?: string
+  email?: string
+  emailaddress?: string
+  school_id?: string
 }
 
 // Validation schema
@@ -95,6 +107,9 @@ export default function SubjectsPage() {
   // State for departments
   const [departments, setDepartments] = useState<Department[]>([])
 
+  // State for teachers
+  const [teachers, setTeachers] = useState<Teacher[]>([])
+
   // State for loading
   const [isLoading, setIsLoading] = useState(true)
 
@@ -102,7 +117,9 @@ export default function SubjectsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
+  const [selectedTeacher, setSelectedTeacher] = useState<string>("")
   
   // State for department dialogs
   const [isAddDepartmentDialogOpen, setIsAddDepartmentDialogOpen] = useState(false)
@@ -191,6 +208,26 @@ export default function SubjectsPage() {
           departmentsList.sort((a, b) => a.name.localeCompare(b.name))
           setDepartments(departmentsList)
         }
+
+        // Fetch teachers
+        const teachersRef = collection(db, "teachers")
+        const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
+        const teachersSnapshot = await getDocs(teachersQuery)
+        const teachersList: Teacher[] = teachersSnapshot.docs.map(
+          (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          } as Teacher),
+        )
+
+        // Sort teachers by name
+        teachersList.sort((a, b) => {
+          const nameA = a.firstname && a.lastname ? `${a.firstname} ${a.lastname}` : a.name || ""
+          const nameB = b.firstname && b.lastname ? `${b.firstname} ${b.lastname}` : b.name || ""
+          return nameA.localeCompare(nameB)
+        })
+        setTeachers(teachersList)
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -508,6 +545,79 @@ export default function SubjectsPage() {
     }
   }
 
+  const handleOpenAssignTeacherDialog = (subject: Subject) => {
+    setSelectedSubject(subject)
+    setSelectedTeacher(subject.assigned_teacher || "")
+    setIsAssignTeacherDialogOpen(true)
+  }
+
+  const handleAssignTeacher = async () => {
+    if (!selectedSubject || !selectedTeacher) return
+
+    try {
+      const teacher = teachers.find(t => t.id === selectedTeacher)
+      if (!teacher) {
+        toast({
+          title: "Error",
+          description: "Selected teacher not found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const teacherName = teacher.firstname && teacher.lastname 
+        ? `${teacher.firstname} ${teacher.lastname}` 
+        : teacher.name || "Teacher"
+      const teacherEmail = teacher.email || teacher.emailaddress || ""
+
+      // Update subject with assigned teacher
+      await setDoc(doc(db, "subjects", selectedSubject.id), {
+        ...selectedSubject,
+        assigned_teacher: selectedTeacher,
+        assigned_teacher_name: teacherName,
+        updated_at: Timestamp.fromDate(new Date())
+      }, { merge: true })
+
+      // Send notification to teacher
+      try {
+        const { sendTeacherSubjectAssignmentNotification } = await import("@/lib/notification-utils")
+        await sendTeacherSubjectAssignmentNotification(
+          selectedTeacher,
+          teacherName,
+          teacherEmail,
+          selectedSubject.name,
+          selectedSubject.code
+        )
+      } catch (error) {
+        console.error("Error sending teacher notification:", error)
+        // Don't fail the assignment if notification fails
+      }
+
+      // Update local state
+      setSubjects(subjects.map(subject => 
+        subject.id === selectedSubject.id 
+          ? { ...subject, assigned_teacher: selectedTeacher, assigned_teacher_name: teacherName }
+          : subject
+      ))
+
+      toast({
+        title: "Success",
+        description: `Teacher assigned to ${selectedSubject.name}`,
+      })
+
+      setIsAssignTeacherDialogOpen(false)
+      setSelectedSubject(null)
+      setSelectedTeacher("")
+    } catch (error) {
+      console.error("Error assigning teacher:", error)
+      toast({
+        title: "Error",
+        description: "Failed to assign teacher",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Filter subjects
   const filteredSubjects = subjects.filter((subject) => {
     const matchesSearch =
@@ -616,19 +726,54 @@ export default function SubjectsPage() {
                         <TableHead>Subject Name</TableHead>
                         {isSeniorSecondary && <TableHead>Department</TableHead>}
                         <TableHead>Level</TableHead>
+                        <TableHead>Assigned Teacher</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredSubjects.map((subject) => (
                         <TableRow
                           key={subject.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleOpenDetailsDialog(subject)}
+                          className="hover:bg-muted/50"
                         >
-                          <TableCell className="font-medium">{subject.code}</TableCell>
-                          <TableCell>{subject.name}</TableCell>
-                          {isSeniorSecondary && <TableCell>{subject.department || "—"}</TableCell>}
-                          <TableCell>{subject.level || "—"}</TableCell>
+                          <TableCell 
+                            className="font-medium cursor-pointer"
+                            onClick={() => handleOpenDetailsDialog(subject)}
+                          >
+                            {subject.code}
+                          </TableCell>
+                          <TableCell 
+                            className="cursor-pointer"
+                            onClick={() => handleOpenDetailsDialog(subject)}
+                          >
+                            {subject.name}
+                          </TableCell>
+                          {isSeniorSecondary && (
+                            <TableCell 
+                              className="cursor-pointer"
+                              onClick={() => handleOpenDetailsDialog(subject)}
+                            >
+                              {subject.department || "—"}
+                            </TableCell>
+                          )}
+                          <TableCell 
+                            className="cursor-pointer"
+                            onClick={() => handleOpenDetailsDialog(subject)}
+                          >
+                            {subject.level || "—"}
+                          </TableCell>
+                          <TableCell>
+                            {subject.assigned_teacher_name || "Not Assigned"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenAssignTeacherDialog(subject)}
+                            >
+                              Assign Teacher
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -910,6 +1055,50 @@ export default function SubjectsPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign Teacher Dialog */}
+        <Dialog open={isAssignTeacherDialogOpen} onOpenChange={setIsAssignTeacherDialogOpen}>
+          <DialogContent className="sm:max-w-[500px] w-[90%]">
+            <DialogHeader>
+              <DialogTitle>Assign Teacher to Subject</DialogTitle>
+              <DialogDescription>
+                Select a teacher to assign to {selectedSubject?.name} ({selectedSubject?.code})
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="teacher">Select Teacher</Label>
+                <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((teacher) => {
+                      const teacherName = teacher.firstname && teacher.lastname 
+                        ? `${teacher.firstname} ${teacher.lastname}` 
+                        : teacher.name || "Unknown Teacher"
+                      return (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {teacherName}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAssignTeacherDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAssignTeacher} disabled={!selectedTeacher}>
+                Assign Teacher
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

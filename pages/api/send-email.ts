@@ -69,6 +69,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         `
         break
 
+      case 'teacher_assignment':
+        const { subjectName, subjectCode } = req.body
+        subject = 'Subject Assignment - Skultɛk School Management System'
+        message = `
+          Dear ${name || 'Teacher'},
+
+          You have been assigned to teach ${subjectName} (${subjectCode}) in the Skultɛk School Management System.
+
+          Please review your teaching schedule and prepare accordingly. You can access your assigned subjects through your teacher dashboard.
+
+          If you have any questions about your assignment, please contact the school administration.
+
+          Best regards,
+          The Skultɛk School Administration Team
+        `
+        break
+
+      case 'teacher_class_assignment':
+        const { className, classLevel } = req.body
+        subject = 'Class Assignment - Skultɛk School Management System'
+        message = `
+          Dear ${name || 'Teacher'},
+
+          You have been assigned as the class teacher for ${className} (${classLevel}) in the Skultɛk School Management System.
+
+          Please review your class details and prepare for the academic year. You can access your assigned classes through your teacher dashboard.
+
+          If you have any questions about your assignment, please contact the school administration.
+
+          Best regards,
+          The Skultɛk School Administration Team
+        `
+        break
+
       default:
         return res.status(400).json({ error: 'Invalid notification type' })
     }
