@@ -28,6 +28,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -61,6 +62,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -292,8 +295,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       markAsRead(notification.id)
     }
     
-    // Navigate to notification details page
-    router.push(`/notifications/${notification.id}`)
+    // Open notification details modal
+    setSelectedNotification(notification)
+    setIsDetailsModalOpen(true)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -502,6 +506,59 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       <main className={cn("pt-16", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
+
+      {/* Notification Details Modal */}
+      <Dialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedNotification && getNotificationIcon(selectedNotification.type)}
+              Notification Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedNotification && (
+            <div className="space-y-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold">{selectedNotification.title}</h3>
+                  {getNotificationBadge(selectedNotification.type)}
+                  {!selectedNotification.read && (
+                    <Badge variant="destructive" className="text-xs">
+                      Unread
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Message</h4>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {selectedNotification.message}
+                    </p>
+                  </div>
+                </div>
+                
+
+                
+                {selectedNotification.action_url && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Related Action</h4>
+                    <Button 
+                      onClick={() => window.location.href = selectedNotification.action_url!}
+                      className="w-full sm:w-auto"
+                    >
+                      View Related Content
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

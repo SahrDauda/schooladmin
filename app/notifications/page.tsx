@@ -5,12 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bell, Mail, Shield, User, X, CheckCheck } from "lucide-react"
+import { Bell, Mail, Shield, User, X, CheckCheck, ArrowLeft } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import DashboardLayout from "@/components/dashboard-layout"
 import { useSearchParams, useRouter } from "next/navigation"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 interface Notification {
   id: string
@@ -28,7 +29,8 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true)
   const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
   const [adminId, setAdminId] = useState("")
-  const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null)
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
   const notificationRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
@@ -41,23 +43,16 @@ export default function NotificationsPage() {
     }
   }, [])
 
-  // Handle selected notification from URL parameter
+  // Handle selected notification from URL parameter (for backward compatibility)
   useEffect(() => {
     const selected = searchParams?.get('selected')
     if (selected) {
-      setSelectedNotificationId(selected)
-      // Scroll to the selected notification after a short delay
-      setTimeout(() => {
-        const element = notificationRefs.current[selected]
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          element.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
-          // Remove highlight after 3 seconds
-          setTimeout(() => {
-            element.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
-          }, 3000)
-        }
-      }, 500)
+      // Find the notification and open modal
+      const notification = notifications.find(n => n.id === selected)
+      if (notification) {
+        setSelectedNotification(notification)
+        setIsDetailsModalOpen(true)
+      }
     }
   }, [searchParams, notifications])
 
@@ -184,8 +179,9 @@ export default function NotificationsPage() {
       markAsRead(notification.id)
     }
     
-    // Navigate to notification details page
-    router.push(`/notifications/${notification.id}`)
+    // Open notification details modal
+    setSelectedNotification(notification)
+    setIsDetailsModalOpen(true)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -233,7 +229,7 @@ export default function NotificationsPage() {
                         notification.read 
                           ? 'bg-gray-50 border-gray-200' 
                           : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                      } ${selectedNotificationId === notification.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}
+                      }`}
                       onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start justify-between">
@@ -289,6 +285,59 @@ export default function NotificationsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Notification Details Modal */}
+      <Dialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedNotification && getNotificationIcon(selectedNotification.type)}
+              Notification Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedNotification && (
+            <div className="space-y-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold">{selectedNotification.title}</h3>
+                  {getNotificationBadge(selectedNotification.type)}
+                  {!selectedNotification.read && (
+                    <Badge variant="destructive" className="text-xs">
+                      Unread
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Message</h4>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {selectedNotification.message}
+                    </p>
+                  </div>
+                </div>
+                
+
+                
+                {selectedNotification.action_url && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Related Action</h4>
+                    <Button 
+                      onClick={() => window.location.href = selectedNotification.action_url!}
+                      className="w-full sm:w-auto"
+                    >
+                      View Related Content
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 } 

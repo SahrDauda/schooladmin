@@ -534,19 +534,7 @@ export default function Dashboard() {
                     </span>
                   </Card>
                 )}
-                {/* Test buttons - remove these in production */}
-                <Button variant="outline" size="sm" onClick={testNotification}>
-                  Test Notifications
-                </Button>
-                <Button variant="outline" size="sm" onClick={createTestNotification}>
-                  Create Test Notification
-                </Button>
-                <Button variant="outline" size="sm" onClick={checkNotifications}>
-                  Check Notifications
-                </Button>
-                <Button variant="outline" size="sm" onClick={simulateWelcomeNotification}>
-                  Simulate Welcome
-                </Button>
+
               </div>
             </div>
             <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
