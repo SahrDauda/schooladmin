@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard-layout"
 import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { sendPasswordChangeNotification } from "@/lib/notification-utils"
 import { UserCog, Edit, Save, X, Camera } from "lucide-react"
 
 interface AdminProfile {
@@ -287,6 +288,19 @@ export default function ProfilePage() {
         password: passwordData.newPassword,
         updated_at: Timestamp.fromDate(new Date()),
       })
+
+      // Send password change notification
+      try {
+        const adminId = localStorage.getItem("adminId")
+        const adminName = localStorage.getItem("adminName") || "Admin"
+        const adminEmail = profile?.email || profile?.emailaddress || ""
+        
+        if (adminId && adminEmail) {
+          await sendPasswordChangeNotification(adminId, adminName, adminEmail)
+        }
+      } catch (error) {
+        console.error("Error sending password change notification:", error)
+      }
 
       toast({
         title: "Success",
@@ -597,6 +611,7 @@ export default function ProfilePage() {
                           Selected: {profilePicture.name}
                         </div>
                       )}
+                      <div className="text-xs text-gray-500">JPG, PNG, GIF up to 10MB</div>
                     </div>
                   </div>
 

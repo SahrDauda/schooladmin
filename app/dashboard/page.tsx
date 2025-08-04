@@ -32,6 +32,7 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
+import { sendWelcomeNotification } from "@/lib/notification-utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -132,6 +133,19 @@ export default function Dashboard() {
 
         // Mark as logged in for the first time
         localStorage.setItem("hasLoggedInBefore", "true")
+
+        // Send welcome notification
+        try {
+          const adminId = localStorage.getItem("adminId")
+          const adminName = localStorage.getItem("adminName") || "Admin"
+          const adminEmail = localStorage.getItem("adminEmail") || ""
+          
+          if (adminId) {
+            await sendWelcomeNotification(adminId, adminName, adminEmail)
+          }
+        } catch (error) {
+          console.error("Error sending welcome notification:", error)
+        }
 
         toast({
           title: "Password Set Successfully",

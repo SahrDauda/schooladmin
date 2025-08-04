@@ -1162,7 +1162,7 @@ export default function TeachersPage() {
                                   >
                                     <Camera className="h-8 w-8 text-gray-400" />
                                     <span className="text-sm text-gray-600">Click to upload passport picture</span>
-                                    <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                                    <span className="text-xs text-gray-500">JPG, PNG, GIF up to 10MB</span>
                                   </label>
                                 </div>
                               )}
@@ -1536,7 +1536,7 @@ export default function TeachersPage() {
                                 >
                                   <Camera className="h-8 w-8 text-gray-400" />
                                   <span className="text-sm text-gray-600">Click to upload passport picture</span>
-                                  <span className="text-xs text-gray-500">JPG, PNG, GIF up to 5MB</span>
+                                  <span className="text-xs text-gray-500">JPG, PNG, GIF up to 10MB</span>
                                 </label>
                               </div>
                             )}

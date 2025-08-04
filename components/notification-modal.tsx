@@ -5,116 +5,149 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bell, Mail, Shield, User, Calendar, CheckCircle, AlertCircle } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { Bell, Mail, Shield, User, X } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 interface Notification {
   id: string
   title: string
   message: string
-  type: "welcome" | "password_change" | "system" | "info"
-  timestamp: Date
+  type: 'welcome' | 'password_change' | 'system' | 'info'
   read: boolean
-  action?: {
-    type: "navigate" | "email"
-    value: string
-  }
+  created_at: Timestamp
+  admin_id: string
+  action_url?: string
 }
 
 interface NotificationModalProps {
   isOpen: boolean
   onClose: () => void
+  adminId: string
 }
 
-export function NotificationModal({ isOpen, onClose }: NotificationModalProps) {
-  const router = useRouter()
+export function NotificationModal({ isOpen, onClose, adminId }: NotificationModalProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
 
-  // Mock notifications - in a real app, these would come from a database
+  // Fetch notifications
   useEffect(() => {
-    const mockNotifications: Notification[] = [
-      {
-        id: "1",
-        title: "Welcome to Skultɛk!",
-        message: "Thank you for using Skultɛk School Management System. We're excited to have you on board!",
-        type: "welcome",
-        timestamp: new Date(),
-        read: false,
-        action: {
-          type: "navigate",
-          value: "/dashboard"
-        }
-      },
-      {
-        id: "2",
-        title: "Password Changed",
-        message: "Your password was recently changed. If this wasn't you, please contact support immediately.",
-        type: "password_change",
-        timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-        read: false,
-        action: {
-          type: "navigate",
-          value: "/profile"
-        }
-      },
-      {
-        id: "3",
-        title: "System Update",
-        message: "New features have been added to the student management module.",
-        type: "system",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-        read: true
-      }
-    ]
-    setNotifications(mockNotifications)
-  }, [])
+    if (isOpen && adminId) {
+      fetchNotifications()
+    }
+  }, [isOpen, adminId])
 
-  const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
-    setNotifications(prev => 
-      prev.map(n => 
-        n.id === notification.id ? { ...n, read: true } : n
+  const fetchNotifications = async () => {
+    setLoading(true)
+    try {
+      const notificationsRef = collection(db, "notifications")
+      const q = query(
+        notificationsRef,
+        where("admin_id", "==", adminId),
+        orderBy("created_at", "desc"),
+        limit(50)
       )
-    )
-
-    // Handle action
-    if (notification.action?.type === "navigate") {
-      router.push(notification.action.value)
-      onClose()
-    } else if (notification.action?.type === "email") {
-      // Handle email action
+      const snapshot = await getDocs(q)
+      const notificationsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Notification[]
+      
+      setNotifications(notificationsList)
+    } catch (error) {
+      console.error("Error fetching notifications:", error)
       toast({
-        title: "Email Sent",
-        description: "An email has been sent to your registered address.",
+        title: "Error",
+        description: "Failed to load notifications",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const markAsRead = async (notificationId: string) => {
+    setMarkingAsRead(notificationId)
+    try {
+      await updateDoc(doc(db, "notifications", notificationId), {
+        read: true
+      })
+      
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif.id === notificationId 
+            ? { ...notif, read: true }
+            : notif
+        )
+      )
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+    } finally {
+      setMarkingAsRead(null)
+    }
+  }
+
+  const markAllAsRead = async () => {
+    try {
+      const unreadNotifications = notifications.filter(n => !n.read)
+      
+      for (const notification of unreadNotifications) {
+        await updateDoc(doc(db, "notifications", notification.id), { read: true })
+      }
+      
+      setNotifications(prev => 
+        prev.map(notif => ({ ...notif, read: true }))
+      )
+      
+      toast({
+        title: "Success",
+        description: "All notifications marked as read",
+      })
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error)
+      toast({
+        title: "Error",
+        description: "Failed to mark notifications as read",
+        variant: "destructive",
       })
     }
   }
 
-  const getNotificationIcon = (type: Notification["type"]) => {
+  const getNotificationIcon = (type: string) => {
     switch (type) {
-      case "welcome":
-        return <User className="h-4 w-4 text-green-500" />
-      case "password_change":
-        return <Shield className="h-4 w-4 text-orange-500" />
-      case "system":
-        return <Bell className="h-4 w-4 text-blue-500" />
+      case 'welcome':
+        return <User className="h-4 w-4 text-green-600" />
+      case 'password_change':
+        return <Shield className="h-4 w-4 text-blue-600" />
+      case 'system':
+        return <Bell className="h-4 w-4 text-orange-600" />
       default:
-        return <Mail className="h-4 w-4 text-gray-500" />
+        return <Mail className="h-4 w-4 text-gray-600" />
     }
   }
 
-  const getNotificationBadge = (type: Notification["type"]) => {
+  const getNotificationBadge = (type: string) => {
     switch (type) {
-      case "welcome":
-        return <Badge variant="default" className="bg-green-500">Welcome</Badge>
-      case "password_change":
-        return <Badge variant="destructive">Security</Badge>
-      case "system":
-        return <Badge variant="secondary">System</Badge>
+      case 'welcome':
+        return <Badge variant="default" className="bg-green-100 text-green-800">Welcome</Badge>
+      case 'password_change':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Security</Badge>
+      case 'system':
+        return <Badge variant="outline" className="bg-orange-100 text-orange-800">System</Badge>
       default:
         return <Badge variant="outline">Info</Badge>
+    }
+  }
+
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.read) {
+      markAsRead(notification.id)
+    }
+    
+    if (notification.action_url) {
+      window.location.href = notification.action_url
     }
   }
 
@@ -122,71 +155,100 @@ export function NotificationModal({ isOpen, onClose }: NotificationModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] w-[90%] max-h-[80vh]">
+      <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notifications
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              <span>Notifications</span>
+              {unreadCount > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  {unreadCount}
+                </Badge>
+              )}
+            </div>
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-2">
-                {unreadCount}
-              </Badge>
+              <Button variant="outline" size="sm" onClick={markAllAsRead}>
+                Mark all as read
+              </Button>
             )}
           </DialogTitle>
         </DialogHeader>
-        
+
         <ScrollArea className="h-[400px] pr-4">
-          <div className="space-y-3">
-            {notifications.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No notifications yet</p>
-                <p className="text-sm">You'll see important updates here</p>
-              </div>
-            ) : (
-              notifications.map((notification) => (
+          {loading ? (
+            <div className="flex justify-center items-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Bell className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p>No notifications yet</p>
+              <p className="text-sm">You'll see important updates here</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notification) => (
                 <div
                   key={notification.id}
                   className={`p-4 rounded-lg border cursor-pointer transition-colors ${
                     notification.read 
-                      ? "bg-muted/30 hover:bg-muted/50" 
-                      : "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                      ? 'bg-gray-50 border-gray-200' 
+                      : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
                   }`}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1">
-                      {getNotificationIcon(notification.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-medium text-sm">{notification.title}</h4>
-                        <div className="flex items-center gap-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="mt-1">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium text-sm">
+                            {notification.title}
+                          </h4>
                           {getNotificationBadge(notification.type)}
                           {!notification.read && (
-                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
                           )}
                         </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        {notification.message}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {notification.timestamp.toLocaleDateString()} at {notification.timestamp.toLocaleTimeString()}
+                        <p className="text-sm text-muted-foreground mb-2">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {notification.created_at?.toDate?.() 
+                            ? notification.created_at.toDate().toLocaleString()
+                            : new Date().toLocaleString()
+                          }
+                        </p>
                       </div>
                     </div>
+                    {!notification.read && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          markAsRead(notification.id)
+                        }}
+                        disabled={markingAsRead === notification.id}
+                        className="text-xs"
+                      >
+                        {markingAsRead === notification.id ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                        ) : (
+                          <X className="h-3 w-3" />
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </ScrollArea>
-        
-        <div className="flex justify-between items-center pt-4 border-t">
-          <Button variant="outline" size="sm" onClick={() => {
-            setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-          }}>
-            Mark all as read
-          </Button>
-          <Button variant="outline" size="sm" onC
+      </DialogContent>
+    </Dialog>
+  )
+}

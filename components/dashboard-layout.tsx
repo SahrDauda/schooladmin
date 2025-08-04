@@ -19,13 +19,31 @@ import {
   Settings,
   LogOut,
   UserCog,
+  X,
+  CheckCheck,
+  User,
+  Shield,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { doc, getDoc } from "firebase/firestore"
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
+import { toast } from "@/hooks/use-toast"
+
+interface Notification {
+  id: string
+  title: string
+  message: string
+  type: 'welcome' | 'password_change' | 'system' | 'info'
+  read: boolean
+  created_at: Timestamp
+  admin_id: string
+  action_url?: string
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -40,6 +58,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [adminGender, setAdminGender] = useState("")
   const [adminImage, setAdminImage] = useState("")
   const [isMobile, setIsMobile] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -50,6 +71,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Timetable", href: "/timetable", icon: Calendar },
     { name: "Grades", href: "/grades", icon: FileText },
     { name: "Subjects", href: "/subjects", icon: BookOpen },
+    { name: "Notifications", href: "/notifications", icon: Bell },
     { name: "Reports", href: "/reports", icon: MessageSquare },
   ]
 
@@ -112,23 +134,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768)
-      if (window.innerWidth >= 768) {
-        setSidebarOpen(false)
-      }
     }
 
     handleResize()
-
     window.addEventListener("resize", handleResize)
-
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem("adminId")
-    localStorage.removeItem("adminName")
-    localStorage.removeItem("adminRole")
-    localStorage.removeItem("adminGender")
+    localStorage.clear()
     router.push("/")
   }
 
@@ -138,24 +152,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }
 
-  // Function to format name with title based on gender
   const getFormattedName = () => {
-    if (!adminName || adminName === "Admin User") return adminName
-    
     let title = ""
     if (adminGender === "Male") {
       title = "Mr "
     } else if (adminGender === "Female") {
       title = "Mrs "
     }
-    
     return title + adminName
   }
 
-  // Function to get initials from name
   const getInitials = (name: string) => {
-    if (!name || name === "Admin User") return "AU"
-    
     return name
       .split(" ")
       .map((n) => n[0])
@@ -163,6 +170,114 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       .toUpperCase()
       .slice(0, 2)
   }
+
+  // Fetch notifications
+  const fetchNotifications = async () => {
+    const adminId = localStorage.getItem("adminId")
+    if (!adminId) return
+
+    setLoadingNotifications(true)
+    try {
+      const notificationsRef = collection(db, "notifications")
+      const q = query(
+        notificationsRef,
+        where("admin_id", "==", adminId),
+        orderBy("created_at", "desc"),
+        limit(10)
+      )
+      const snapshot = await getDocs(q)
+      const notificationsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Notification[]
+      
+      setNotifications(notificationsList)
+    } catch (error) {
+      console.error("Error fetching notifications:", error)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
+
+  const markAsRead = async (notificationId: string) => {
+    setMarkingAsRead(notificationId)
+    try {
+      await updateDoc(doc(db, "notifications", notificationId), {
+        read: true
+      })
+      
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif.id === notificationId 
+            ? { ...notif, read: true }
+            : notif
+        )
+      )
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+    } finally {
+      setMarkingAsRead(null)
+    }
+  }
+
+  const markAllAsRead = async () => {
+    try {
+      const unreadNotifications = notifications.filter(n => !n.read)
+      
+      for (const notification of unreadNotifications) {
+        await updateDoc(doc(db, "notifications", notification.id), { read: true })
+      }
+      
+      setNotifications(prev => 
+        prev.map(notif => ({ ...notif, read: true }))
+      )
+      
+      toast({
+        title: "Success",
+        description: "All notifications marked as read",
+      })
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error)
+    }
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'welcome':
+        return <User className="h-4 w-4 text-green-600" />
+      case 'password_change':
+        return <Shield className="h-4 w-4 text-blue-600" />
+      case 'system':
+        return <Bell className="h-4 w-4 text-orange-600" />
+      default:
+        return <MessageSquare className="h-4 w-4 text-gray-600" />
+    }
+  }
+
+  const getNotificationBadge = (type: string) => {
+    switch (type) {
+      case 'welcome':
+        return <Badge variant="default" className="bg-green-100 text-green-800 text-xs">Welcome</Badge>
+      case 'password_change':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">Security</Badge>
+      case 'system':
+        return <Badge variant="outline" className="bg-orange-100 text-orange-800 text-xs">System</Badge>
+      default:
+        return <Badge variant="outline" className="text-xs">Info</Badge>
+    }
+  }
+
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.read) {
+      markAsRead(notification.id)
+    }
+    
+    if (notification.action_url) {
+      window.location.href = notification.action_url
+    }
+  }
+
+  const unreadCount = notifications.filter(n => !n.read).length
 
   return (
     <div className="min-h-screen bg-background">
@@ -185,10 +300,118 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex-1 md:text-center">
             <h1 className="text-lg font-semibold">School Admin Panel</h1>
           </div>
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
-          </Button>
+          
+          {/* Notifications Dropdown */}
+          <DropdownMenu onOpenChange={(open) => {
+            if (open) {
+              fetchNotifications()
+            }
+          }}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 max-h-96">
+              <div className="flex items-center justify-between p-2 border-b">
+                <h3 className="font-semibold text-sm">Notifications</h3>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={markAllAsRead} className="h-6 px-2">
+                    <CheckCheck className="h-3 w-3 mr-1" />
+                    Mark all read
+                  </Button>
+                )}
+              </div>
+              
+              <ScrollArea className="h-64">
+                {loadingNotifications ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Bell className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">No notifications</p>
+                  </div>
+                ) : (
+                  <div className="p-2 space-y-1">
+                    {notifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          notification.read 
+                            ? 'hover:bg-gray-50' 
+                            : 'bg-blue-50 hover:bg-blue-100'
+                        }`}
+                        onClick={() => handleNotificationClick(notification)}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="mt-1">
+                            {getNotificationIcon(notification.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium text-sm truncate">
+                                {notification.title}
+                              </h4>
+                              {getNotificationBadge(notification.type)}
+                              {!notification.read && (
+                                <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                              {notification.message}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {notification.created_at?.toDate?.() 
+                                ? notification.created_at.toDate().toLocaleDateString()
+                                : new Date().toLocaleDateString()
+                              }
+                            </p>
+                          </div>
+                          {!notification.read && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                markAsRead(notification.id)
+                              }}
+                              disabled={markingAsRead === notification.id}
+                              className="h-6 w-6 p-0"
+                            >
+                              {markingAsRead === notification.id ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+              
+              {notifications.length > 0 && (
+                <div className="p-2 border-t">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full text-xs"
+                    onClick={() => router.push("/notifications")}
+                  >
+                    View all notifications
+                  </Button>
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">
