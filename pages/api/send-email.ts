@@ -107,7 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Email options
     const mailOptions = {
-      from: gmailUser,
+      from: `"Skultɛk" <${gmailUser}>`,
       to: email,
       subject: subject,
       text: message,

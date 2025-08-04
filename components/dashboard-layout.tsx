@@ -195,7 +195,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       const q = query(
         notificationsRef,
         where("admin_id", "==", adminId),
-        orderBy("created_at", "desc"),
         limit(10)
       )
       const snapshot = await getDocs(q)
@@ -203,6 +202,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         id: doc.id,
         ...doc.data()
       })) as Notification[]
+      
+      // Sort by created_at in descending order (newest first)
+      notificationsList.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(a.created_at?.seconds * 1000 || 0)
+        const dateB = b.created_at?.toDate?.() || new Date(b.created_at?.seconds * 1000 || 0)
+        return dateB.getTime() - dateA.getTime()
+      })
       
       console.log("Fetched notifications:", notificationsList)
       setNotifications(notificationsList)
@@ -286,9 +292,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       markAsRead(notification.id)
     }
     
-    if (notification.action_url) {
-      window.location.href = notification.action_url
-    }
+    // Navigate to notifications page with the selected notification ID
+    router.push(`/notifications?selected=${notification.id}`)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length

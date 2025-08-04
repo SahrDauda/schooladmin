@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast"
 import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import DashboardLayout from "@/components/dashboard-layout"
+import { useSearchParams } from "next/navigation"
 
 interface Notification {
   id: string
@@ -27,6 +28,9 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true)
   const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
   const [adminId, setAdminId] = useState("")
+  const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const notificationRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
   useEffect(() => {
     const adminIdFromStorage = localStorage.getItem("adminId")
@@ -36,6 +40,26 @@ export default function NotificationsPage() {
     }
   }, [])
 
+  // Handle selected notification from URL parameter
+  useEffect(() => {
+    const selected = searchParams?.get('selected')
+    if (selected) {
+      setSelectedNotificationId(selected)
+      // Scroll to the selected notification after a short delay
+      setTimeout(() => {
+        const element = notificationRefs.current[selected]
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          element.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
+          // Remove highlight after 3 seconds
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
+          }, 3000)
+        }
+      }, 500)
+    }
+  }, [searchParams, notifications])
+
   const fetchNotifications = async (adminId: string) => {
     setLoading(true)
     try {
@@ -43,7 +67,6 @@ export default function NotificationsPage() {
       const q = query(
         notificationsRef,
         where("admin_id", "==", adminId),
-        orderBy("created_at", "desc"),
         limit(100)
       )
       const snapshot = await getDocs(q)
@@ -51,6 +74,13 @@ export default function NotificationsPage() {
         id: doc.id,
         ...doc.data()
       })) as Notification[]
+      
+      // Sort by created_at in descending order (newest first)
+      notificationsList.sort((a, b) => {
+        const dateA = a.created_at?.toDate?.() || new Date(a.created_at?.seconds * 1000 || 0)
+        const dateB = b.created_at?.toDate?.() || new Date(b.created_at?.seconds * 1000 || 0)
+        return dateB.getTime() - dateA.getTime()
+      })
       
       setNotifications(notificationsList)
     } catch (error) {
@@ -198,11 +228,12 @@ export default function NotificationsPage() {
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
+                      ref={(el) => { notificationRefs.current[notification.id] = el }}
                       className={`p-4 rounded-lg border cursor-pointer transition-colors ${
                         notification.read 
                           ? 'bg-gray-50 border-gray-200' 
                           : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                      }`}
+                      } ${selectedNotificationId === notification.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}
                       onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start justify-between">

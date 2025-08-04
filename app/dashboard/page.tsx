@@ -178,6 +178,87 @@ export default function Dashboard() {
     }
   }
 
+  // Simulate first-time login welcome notification
+  const simulateWelcomeNotification = async () => {
+    try {
+      const adminId = localStorage.getItem("adminId")
+      const adminName = localStorage.getItem("adminName") || "Admin"
+      const adminEmail = localStorage.getItem("adminEmail") || "admin@example.com"
+      
+      if (!adminId) {
+        toast({
+          title: "Error",
+          description: "No admin ID found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      console.log("Simulating welcome notification for:", { adminId, adminName, adminEmail })
+
+      const { sendWelcomeNotification } = await import("@/lib/notification-utils")
+      
+      await sendWelcomeNotification(adminId, adminName, adminEmail)
+
+      console.log("Welcome notification simulated successfully")
+
+      toast({
+        title: "Success",
+        description: "Welcome notification created. Check the bell icon.",
+      })
+
+      // Force refresh notifications in the layout
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
+    } catch (error) {
+      console.error("Error simulating welcome notification:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create welcome notification",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Check existing notifications
+  const checkNotifications = async () => {
+    try {
+      const adminId = localStorage.getItem("adminId")
+      if (!adminId) {
+        toast({
+          title: "Error",
+          description: "No admin ID found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      console.log("Checking notifications for adminId:", adminId)
+
+      const { collection, query, where, getDocs } = await import("firebase/firestore")
+      const { db } = await import("@/lib/firebase")
+      
+      const notificationsRef = collection(db, "notifications")
+      const q = query(notificationsRef, where("admin_id", "==", adminId))
+      const snapshot = await getDocs(q)
+      
+      console.log("Found notifications:", snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+      
+      toast({
+        title: "Notifications Check",
+        description: `Found ${snapshot.docs.length} notifications in database`,
+      })
+    } catch (error) {
+      console.error("Error checking notifications:", error)
+      toast({
+        title: "Error",
+        description: "Failed to check notifications",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Manual notification creation test
   const createTestNotification = async () => {
     try {
@@ -191,20 +272,29 @@ export default function Dashboard() {
         return
       }
 
+      console.log("Creating test notification for adminId:", adminId)
+
       // Import the createNotification function
       const { createNotification } = await import("@/lib/notification-utils")
       
-      await createNotification({
+      const notificationId = await createNotification({
         adminId,
         title: "Test Notification",
         message: "This is a test notification created manually.",
         type: "info"
       })
 
+      console.log("Test notification created with ID:", notificationId)
+
       toast({
         title: "Success",
         description: "Test notification created. Check the bell icon.",
       })
+
+      // Force refresh notifications in the layout
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (error) {
       console.error("Error creating test notification:", error)
       toast({
@@ -450,6 +540,12 @@ export default function Dashboard() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={createTestNotification}>
                   Create Test Notification
+                </Button>
+                <Button variant="outline" size="sm" onClick={checkNotifications}>
+                  Check Notifications
+                </Button>
+                <Button variant="outline" size="sm" onClick={simulateWelcomeNotification}>
+                  Simulate Welcome
                 </Button>
               </div>
             </div>
