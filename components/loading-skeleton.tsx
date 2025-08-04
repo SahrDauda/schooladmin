@@ -1,36 +1,122 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 
-export function StatCardSkeleton() {
+export function ClassMetricsSkeleton() {
   return (
-    <Card className="flex flex-col justify-between">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <div className="h-4 w-24 bg-gray-200 animate-pulse rounded-md"></div>
-        <div className="h-8 w-8 bg-gray-200 animate-pulse rounded-full"></div>
-      </CardHeader>
-      <CardContent>
-        <div className="h-6 w-12 bg-gray-200 animate-pulse rounded-md"></div>
-      </CardContent>
-    </Card>
-  )
-}
-
-export function ChartSkeleton() {
-  return (
-    <div className="h-[250px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center">
-      <p className="text-gray-400">Loading chart data...</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-4" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-8 w-16 mb-2" />
+            <Skeleton className="h-3 w-32" />
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }
 
-export function TableSkeleton({ rows = 5 }: { rows?: number }) {
+export function ClassTableSkeleton() {
   return (
-    <div className="w-full space-y-2">
-      <div className="h-8 w-full bg-gray-200 animate-pulse rounded-md"></div>
-      {Array(rows)
-        .fill(0)
-        .map((_, i) => (
-          <div key={i} className="h-12 w-full bg-gray-100 animate-pulse rounded-md"></div>
+    <div className="space-y-4">
+      {/* Filters skeleton */}
+      <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0">
+        <div className="flex items-center space-x-2">
+          <Skeleton className="h-10 w-[250px]" />
+          <Skeleton className="h-10 w-[180px]" />
+        </div>
+        <Skeleton className="h-4 w-32" />
+      </div>
+
+      {/* Table skeleton */}
+      <div className="overflow-x-auto border rounded-lg">
+        <div className="p-4">
+          <div className="space-y-3">
+            {/* Header */}
+            <div className="grid grid-cols-8 gap-4 pb-2 border-b">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-4 w-full" />
+              ))}
+            </div>
+            
+            {/* Rows */}
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid grid-cols-8 gap-4 py-3">
+                {Array.from({ length: 8 }).map((_, colIndex) => (
+                  <Skeleton key={colIndex} className="h-4 w-full" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ClassFormSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-10 w-full" />
+          </div>
         ))}
+      </div>
+      <div className="flex justify-end space-x-2">
+        <Skeleton className="h-10 w-20" />
+        <Skeleton className="h-10 w-24" />
+      </div>
+    </div>
+  )
+}
+
+export function ClassDialogSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end space-x-2">
+        <Skeleton className="h-10 w-20" />
+        <Skeleton className="h-10 w-24" />
+      </div>
+    </div>
+  )
+}
+
+export function DashboardSkeleton() {
+  return (
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <ClassMetricsSkeleton />
+          <ClassTableSkeleton />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export function PageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background">
+      <DashboardSkeleton />
     </div>
   )
 }
