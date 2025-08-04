@@ -128,6 +128,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       }
 
       fetchAdminData()
+      fetchNotifications()
     }
   }, [pathname, router])
 
@@ -139,6 +140,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     handleResize()
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  // Fetch notifications when adminId is available
+  useEffect(() => {
+    const adminId = localStorage.getItem("adminId")
+    if (adminId) {
+      fetchNotifications()
+    }
   }, [])
 
   const handleLogout = () => {
@@ -174,8 +183,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Fetch notifications
   const fetchNotifications = async () => {
     const adminId = localStorage.getItem("adminId")
-    if (!adminId) return
+    if (!adminId) {
+      console.log("No adminId found, skipping notification fetch")
+      return
+    }
 
+    console.log("Fetching notifications for adminId:", adminId)
     setLoadingNotifications(true)
     try {
       const notificationsRef = collection(db, "notifications")
@@ -191,6 +204,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         ...doc.data()
       })) as Notification[]
       
+      console.log("Fetched notifications:", notificationsList)
       setNotifications(notificationsList)
     } catch (error) {
       console.error("Error fetching notifications:", error)

@@ -9,6 +9,7 @@ interface CreateNotificationParams {
   action_url?: string
 }
 
+// Export the createNotification function for manual testing
 export async function createNotification({
   adminId,
   title,
@@ -17,6 +18,8 @@ export async function createNotification({
   action_url
 }: CreateNotificationParams) {
   try {
+    console.log('Creating notification with data:', { adminId, title, message, type, action_url })
+    
     const notificationId = `NOTIF_${Date.now().toString().slice(-6)}`
     const currentDate = new Date()
     
@@ -31,9 +34,10 @@ export async function createNotification({
       ...(action_url && { action_url })
     }
 
+    console.log('Saving notification to Firestore:', notificationData)
     await setDoc(doc(db, "notifications", notificationId), notificationData)
     
-    console.log('Notification created:', notificationData)
+    console.log('Notification created successfully with ID:', notificationId)
     return notificationId
   } catch (error) {
     console.error('Error creating notification:', error)

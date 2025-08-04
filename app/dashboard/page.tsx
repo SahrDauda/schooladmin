@@ -178,6 +178,43 @@ export default function Dashboard() {
     }
   }
 
+  // Manual notification creation test
+  const createTestNotification = async () => {
+    try {
+      const adminId = localStorage.getItem("adminId")
+      if (!adminId) {
+        toast({
+          title: "Error",
+          description: "No admin ID found",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Import the createNotification function
+      const { createNotification } = await import("@/lib/notification-utils")
+      
+      await createNotification({
+        adminId,
+        title: "Test Notification",
+        message: "This is a test notification created manually.",
+        type: "info"
+      })
+
+      toast({
+        title: "Success",
+        description: "Test notification created. Check the bell icon.",
+      })
+    } catch (error) {
+      console.error("Error creating test notification:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create test notification",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Attendance data for chart
   const attendanceData = [
     { month: "Jan", attendance: 92 },
@@ -407,9 +444,12 @@ export default function Dashboard() {
                     </span>
                   </Card>
                 )}
-                {/* Test button - remove this in production */}
+                {/* Test buttons - remove these in production */}
                 <Button variant="outline" size="sm" onClick={testNotification}>
                   Test Notifications
+                </Button>
+                <Button variant="outline" size="sm" onClick={createTestNotification}>
+                  Create Test Notification
                 </Button>
               </div>
             </div>
