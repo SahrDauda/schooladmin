@@ -10,7 +10,7 @@ import { toast } from "@/hooks/use-toast"
 import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import DashboardLayout from "@/components/dashboard-layout"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 
 interface Notification {
   id: string
@@ -30,6 +30,7 @@ export default function NotificationsPage() {
   const [adminId, setAdminId] = useState("")
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  const router = useRouter()
   const notificationRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
   useEffect(() => {
@@ -183,9 +184,8 @@ export default function NotificationsPage() {
       markAsRead(notification.id)
     }
     
-    if (notification.action_url) {
-      window.location.href = notification.action_url
-    }
+    // Navigate to notification details page
+    router.push(`/notifications/${notification.id}`)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length

@@ -292,8 +292,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       markAsRead(notification.id)
     }
     
-    // Navigate to notifications page with the selected notification ID
-    router.push(`/notifications?selected=${notification.id}`)
+    // Navigate to notification details page
+    router.push(`/notifications/${notification.id}`)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
