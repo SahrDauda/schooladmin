@@ -95,7 +95,7 @@ export default function Dashboard() {
           }
         }
       }
-      
+
       checkFirstTimeLogin()
     }
   }, [])
@@ -160,7 +160,7 @@ export default function Dashboard() {
       const adminId = localStorage.getItem("adminId")
       const adminName = localStorage.getItem("adminName") || "Admin"
       const adminEmail = "test@example.com" // You can change this for testing
-      
+
       if (adminId) {
         await testNotificationSystem(adminId, adminName, adminEmail)
         toast({
@@ -184,7 +184,7 @@ export default function Dashboard() {
       const adminId = localStorage.getItem("adminId")
       const adminName = localStorage.getItem("adminName") || "Admin"
       const adminEmail = localStorage.getItem("adminEmail") || "admin@example.com"
-      
+
       if (!adminId) {
         toast({
           title: "Error",
@@ -197,7 +197,7 @@ export default function Dashboard() {
       console.log("Simulating welcome notification for:", { adminId, adminName, adminEmail })
 
       const { sendWelcomeNotification } = await import("@/lib/notification-utils")
-      
+
       await sendWelcomeNotification(adminId, adminName, adminEmail)
 
       console.log("Welcome notification simulated successfully")
@@ -238,13 +238,13 @@ export default function Dashboard() {
 
       const { collection, query, where, getDocs } = await import("firebase/firestore")
       const { db } = await import("@/lib/firebase")
-      
+
       const notificationsRef = collection(db, "notifications")
       const q = query(notificationsRef, where("admin_id", "==", adminId))
       const snapshot = await getDocs(q)
-      
+
       console.log("Found notifications:", snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-      
+
       toast({
         title: "Notifications Check",
         description: `Found ${snapshot.docs.length} notifications in database`,
@@ -276,7 +276,7 @@ export default function Dashboard() {
 
       // Import the createNotification function
       const { createNotification } = await import("@/lib/notification-utils")
-      
+
       const notificationId = await createNotification({
         adminId,
         title: "Test Notification",
@@ -321,10 +321,11 @@ export default function Dashboard() {
       try {
         setError(null)
         console.log("Fetching dashboard data...")
-        
+        console.log("Admin data:", admin) // Debug: log admin data
+
         const schoolInfo = await getCurrentSchoolInfo()
         console.log("School info:", schoolInfo)
-        
+
         setSchoolName(schoolInfo.schoolName)
         setSchoolStage(schoolInfo.stage)
         const schoolId = schoolInfo.school_id
@@ -372,7 +373,7 @@ export default function Dashboard() {
           // Calculate gender statistics
           const maleStudents = studentsList.filter((student) => student.gender === "Male")
           const femaleStudents = studentsList.filter((student) => student.gender === "Female")
-          
+
           // Calculate gender by class
           const genderByClass: any[] = []
           const classGroups = studentsList.reduce((acc: any, student) => {
@@ -425,9 +426,13 @@ export default function Dashboard() {
             },
             { title: "Attendance Today", value: "96%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
           ])
+        } else {
+          console.error("Invalid school ID:", schoolId)
+          setError(`Invalid school ID: ${schoolId}`)
         }
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
+        setError(error instanceof Error ? error.message : "Unknown error occurred")
         toast({
           title: "Error",
           description: "Failed to load dashboard data",
@@ -453,7 +458,7 @@ export default function Dashboard() {
     const interval = setInterval(checkRefreshFlag, 2000) // Check every 2 seconds
 
     return () => clearInterval(interval)
-  }, [])
+  }, [admin]) // Add admin as dependency
 
 
 
@@ -784,8 +789,8 @@ export default function Dashboard() {
                 {isFirstTimeLogin ? "Setting password for:" : "Changing password for:"}
               </p>
               <p className="font-medium">
-                {typeof window !== "undefined" && localStorage.getItem("adminName") 
-                  ? localStorage.getItem("adminName") 
+                {typeof window !== "undefined" && localStorage.getItem("adminName")
+                  ? localStorage.getItem("adminName")
                   : "Admin"}
               </p>
               {isFirstTimeLogin && (
@@ -794,7 +799,7 @@ export default function Dashboard() {
                 </p>
               )}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">New Password</Label>
               <div className="relative">
@@ -846,9 +851,9 @@ export default function Dashboard() {
             </div>
 
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => setShowPasswordModal(false)}
                 disabled={changingPassword}
               >

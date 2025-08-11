@@ -73,6 +73,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Students", href: "/students", icon: Users },
     { name: "Classes", href: "/classes", icon: BookOpen },
     { name: "Teachers", href: "/teachers", icon: GraduationCap },
+    { name: "Subject Assignments", href: "/subject-assignments", icon: BookOpen },
     { name: "Attendance", href: "/attendance", icon: ClipboardCheck },
     { name: "Timetable", href: "/timetable", icon: Calendar },
     { name: "Grades", href: "/grades", icon: FileText },
@@ -376,8 +377,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       <div
                         key={notification.id}
                         className={`p-3 rounded-lg cursor-pointer transition-colors ${notification.read
-                            ? 'hover:bg-gray-50'
-                            : 'bg-blue-50 hover:bg-blue-100'
+                          ? 'hover:bg-gray-50'
+                          : 'bg-blue-50 hover:bg-blue-100'
                           }`}
                         onClick={() => handleNotificationClick(notification)}
                       >

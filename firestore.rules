@@ -9,7 +9,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         exists(/databases/$(database)/documents/schooladmin/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.role == "Administrator";
+        get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.role in ["Administrator", "Principal"];
     }
     
     function isTeacher() {
@@ -24,9 +24,9 @@ service cloud.firestore {
     
     function getCurrentSchoolId() {
       return isSchoolAdmin() ? 
-        get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.school_id : 
+        (get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.school_id || get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.id) : 
         (isTeacher() ? 
-          get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.school_id : 
+          (get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.school_id || get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.id) : 
           null);
     }
     
@@ -225,6 +225,24 @@ service cloud.firestore {
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
+    }
+    
+    // Subject Assignments Collection - Admins manage, teachers read
+    match /subject_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create, update, delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['student_id', 'subject_id', 'school_id', 'assigned_by']) &&
+        request.resource.data.student_id is string &&
+        request.resource.data.subject_id is string &&
+        request.resource.data.school_id is string &&
+        request.resource.data.assigned_by is string;
     }
     
     // Notifications Collection - Users can read their own notifications

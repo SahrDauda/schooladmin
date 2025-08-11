@@ -17,6 +17,8 @@ interface AdminData {
     school_id: string
     hasLoggedInBefore?: boolean
     firstLoginAt?: any
+    gender?: string
+    admin_images?: string
 }
 
 interface AuthContextType {
@@ -48,10 +50,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     if (!querySnapshot.empty) {
                         const adminDoc = querySnapshot.docs[0]
                         const adminData = adminDoc.data() as AdminData
-                        setAdmin({
+                        const resolvedAdmin: AdminData = {
                             ...adminData,
                             id: adminDoc.id
-                        })
+                        }
+                        setAdmin(resolvedAdmin)
+
+                        // Backward compatibility: populate localStorage for components still using it
+                        try {
+                            localStorage.setItem("adminId", resolvedAdmin.id)
+                            const name = resolvedAdmin.adminname || resolvedAdmin.adminName || resolvedAdmin.name || "Admin User"
+                            localStorage.setItem("adminName", name)
+                            if (resolvedAdmin.gender) localStorage.setItem("adminGender", resolvedAdmin.gender)
+                            localStorage.setItem("adminRole", resolvedAdmin.role || "Principal")
+                            if (user.email) localStorage.setItem("adminEmail", user.email)
+                        } catch { }
                     } else {
                         // Admin document doesn't exist, sign out
                         await firebaseSignOut(auth)
@@ -66,6 +79,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             } else {
                 setAdmin(null)
+                try {
+                    localStorage.removeItem("adminId")
+                    localStorage.removeItem("adminName")
+                    localStorage.removeItem("adminGender")
+                    localStorage.removeItem("adminRole")
+                    localStorage.removeItem("adminEmail")
+                } catch { }
             }
 
             setLoading(false)
@@ -78,6 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             await firebaseSignOut(auth)
             setAdmin(null)
+            try {
+                localStorage.removeItem("adminId")
+                localStorage.removeItem("adminName")
+                localStorage.removeItem("adminGender")
+                localStorage.removeItem("adminRole")
+                localStorage.removeItem("adminEmail")
+            } catch { }
             router.push("/")
         } catch (error) {
             console.error("Error signing out:", error)
@@ -94,10 +121,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!querySnapshot.empty) {
                 const adminDoc = querySnapshot.docs[0]
                 const adminData = adminDoc.data() as AdminData
-                setAdmin({
+                const resolvedAdmin: AdminData = {
                     ...adminData,
                     id: adminDoc.id
-                })
+                }
+                setAdmin(resolvedAdmin)
+                try {
+                    localStorage.setItem("adminId", resolvedAdmin.id)
+                    const name = resolvedAdmin.adminname || resolvedAdmin.adminName || resolvedAdmin.name || "Admin User"
+                    localStorage.setItem("adminName", name)
+                    if (resolvedAdmin.gender) localStorage.setItem("adminGender", resolvedAdmin.gender)
+                    localStorage.setItem("adminRole", resolvedAdmin.role || "Principal")
+                } catch { }
             }
         } catch (error) {
             console.error("Error refreshing admin data:", error)
