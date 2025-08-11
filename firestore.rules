@@ -25,7 +25,9 @@ service cloud.firestore {
     function getCurrentSchoolId() {
       return isSchoolAdmin() ? 
         get(/databases/$(database)/documents/schooladmin/$(request.auth.uid)).data.school_id : 
-        null;
+        (isTeacher() ? 
+          get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.school_id : 
+          null);
     }
     
     function belongsToSameSchool(resourceSchoolId) {
@@ -61,6 +63,7 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(schoolId) ||
+        isTeacher() && belongsToSameSchool(schoolId) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && isAdmin();
@@ -71,6 +74,7 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create: if isAuthenticated() && (
@@ -100,16 +104,17 @@ service cloud.firestore {
     match /teachers/{teacherId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
         isAdmin()
       ) &&
-        request.resource.data.keys().hasAll(['firstname', 'lastname', 'emailaddress', 'school_id']) &&
+        request.resource.data.keys().hasAll(['firstname', 'lastname', 'email', 'school_id']) &&
         request.resource.data.firstname is string &&
         request.resource.data.lastname is string &&
-        isValidEmail(request.resource.data.emailaddress) &&
+        isValidEmail(request.resource.data.email) &&
         request.resource.data.school_id is string;
       allow update: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
@@ -117,7 +122,7 @@ service cloud.firestore {
       ) &&
         (!('firstname' in request.resource.data) || request.resource.data.firstname is string) &&
         (!('lastname' in request.resource.data) || request.resource.data.lastname is string) &&
-        (!('emailaddress' in request.resource.data) || isValidEmail(request.resource.data.emailaddress)) &&
+        (!('email' in request.resource.data) || isValidEmail(request.resource.data.email)) &&
         (!('school_id' in request.resource.data) || request.resource.data.school_id is string);
       allow delete: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
@@ -129,6 +134,7 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && (
@@ -145,6 +151,7 @@ service cloud.firestore {
     match /subjects/{subjectId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && (
@@ -157,14 +164,16 @@ service cloud.firestore {
       );
     }
     
-    // Grades Collection
+    // Grades Collection - Teachers can read/write grades for their school
     match /grades/{gradeId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(request.resource.data.school_id) ||
         isAdmin()
       );
       allow delete: if isAuthenticated() && (
@@ -173,14 +182,78 @@ service cloud.firestore {
       );
     }
     
-    // Attendance Collection
+    // Student Attendance Collection
     match /attendance/{attendanceId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Teacher Sign-in Collection - Teachers can create their own sign-ins
+    match /teacher_sign_in/{signInId} {
+      allow read: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['teacher_id', 'school_id', 'date']) &&
+        request.resource.data.teacher_id is string &&
+        request.resource.data.school_id is string &&
+        request.resource.data.date is string;
+      allow update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isAdmin()
+      );
+    }
+    
+    // Notifications Collection - Users can read their own notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        // Admin can read notifications for their school
+        (isSchoolAdmin() && belongsToSameSchool(resource.data.school_id)) ||
+        // Teacher can read notifications for their school
+        (isTeacher() && belongsToSameSchool(resource.data.school_id)) ||
+        // Admin can read all notifications
+        isAdmin() ||
+        // User can read notifications sent to them
+        (resource.data.recipient_id == request.auth.uid) ||
+        // Legacy support for admin_id/teacher_id
+        (resource.data.admin_id == request.auth.uid) ||
+        (resource.data.teacher_id == request.auth.uid)
+      );
+      allow create: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(request.resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(request.resource.data.school_id) ||
+        isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['title', 'message', 'type', 'school_id']) &&
+        request.resource.data.title is string &&
+        request.resource.data.message is string &&
+        request.resource.data.type is string &&
+        request.resource.data.school_id is string;
+      allow update: if isAuthenticated() && (
+        isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow delete: if isAuthenticated() && (
@@ -193,6 +266,7 @@ service cloud.firestore {
     match /timetable/{timetableId} {
       allow read: if isAuthenticated() && (
         isSchoolAdmin() && belongsToSameSchool(resource.data.school_id) ||
+        isTeacher() && belongsToSameSchool(resource.data.school_id) ||
         isAdmin()
       );
       allow create, update: if isAuthenticated() && (

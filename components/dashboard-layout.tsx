@@ -42,7 +42,10 @@ interface Notification {
   type: 'welcome' | 'password_change' | 'system' | 'info'
   read: boolean
   created_at: Timestamp
-  admin_id: string
+  admin_id?: string
+  // new unified fields
+  recipient_type?: 'admin' | 'teacher' | 'parent' | 'mbsse' | 'system'
+  recipient_id?: string
   action_url?: string
 }
 
@@ -100,26 +103,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
           if (adminDoc.exists()) {
             const adminData = adminDoc.data()
-                      if (adminData.adminname) {
-            setAdminName(adminData.adminname)
-            localStorage.setItem("adminName", adminData.adminname)
-          } else if (adminData.adminName) {
-            setAdminName(adminData.adminName)
-            localStorage.setItem("adminName", adminData.adminName)
-          } else if (adminData.name) {
+            if (adminData.adminname) {
+              setAdminName(adminData.adminname)
+              localStorage.setItem("adminName", adminData.adminname)
+            } else if (adminData.adminName) {
+              setAdminName(adminData.adminName)
+              localStorage.setItem("adminName", adminData.adminName)
+            } else if (adminData.name) {
               setAdminName(adminData.name)
               localStorage.setItem("adminName", adminData.name)
             }
-          
-          // Set gender for title
-          if (adminData.gender) {
-            setAdminGender(adminData.gender)
-            localStorage.setItem("adminGender", adminData.gender)
-          }
+
+            // Set gender for title
+            if (adminData.gender) {
+              setAdminGender(adminData.gender)
+              localStorage.setItem("adminGender", adminData.gender)
+            }
             // Always set role to "Principal" and store it
             setAdminRole("Principal")
             localStorage.setItem("adminRole", "Principal")
-            
+
             // Set admin image
             if (adminData.admin_images) {
               setAdminImage(adminData.admin_images)
@@ -183,7 +186,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       .slice(0, 2)
   }
 
-  // Fetch notifications
+  // Fetch notifications (unified recipient model with legacy fallback)
   const fetchNotifications = async () => {
     const adminId = localStorage.getItem("adminId")
     if (!adminId) {
@@ -191,30 +194,38 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       return
     }
 
-    console.log("Fetching notifications for adminId:", adminId)
     setLoadingNotifications(true)
     try {
       const notificationsRef = collection(db, "notifications")
-      const q = query(
+      // New model
+      const qNew = query(
+        notificationsRef,
+        where("recipient_type", "==", "admin"),
+        where("recipient_id", "==", adminId),
+        limit(20)
+      )
+      // Legacy model
+      const qLegacy = query(
         notificationsRef,
         where("admin_id", "==", adminId),
-        limit(10)
+        limit(20)
       )
-      const snapshot = await getDocs(q)
-      const notificationsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[]
-      
-      // Sort by created_at in descending order (newest first)
-      notificationsList.sort((a, b) => {
-        const dateA = a.created_at?.toDate?.() || new Date(a.created_at?.seconds * 1000 || 0)
-        const dateB = b.created_at?.toDate?.() || new Date(b.created_at?.seconds * 1000 || 0)
+
+      const [snapNew, snapLegacy] = await Promise.all([getDocs(qNew), getDocs(qLegacy)])
+      const merged = new Map<string, Notification>()
+      for (const d of [...snapNew.docs, ...snapLegacy.docs]) {
+        merged.set(d.id, { id: d.id, ...(d.data() as any) })
+      }
+      const list = Array.from(merged.values()) as Notification[]
+
+      // Sort by created_at desc
+      list.sort((a, b) => {
+        const dateA = (a.created_at as any)?.toDate?.() || new Date((a as any).created_at?.seconds * 1000 || 0)
+        const dateB = (b.created_at as any)?.toDate?.() || new Date((b as any).created_at?.seconds * 1000 || 0)
         return dateB.getTime() - dateA.getTime()
       })
-      
-      console.log("Fetched notifications:", notificationsList)
-      setNotifications(notificationsList)
+
+      setNotifications(list)
     } catch (error) {
       console.error("Error fetching notifications:", error)
     } finally {
@@ -228,10 +239,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       await updateDoc(doc(db, "notifications", notificationId), {
         read: true
       })
-      
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
+
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif.id === notificationId
             ? { ...notif, read: true }
             : notif
         )
@@ -246,15 +257,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const markAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(n => !n.read)
-      
+
       for (const notification of unreadNotifications) {
         await updateDoc(doc(db, "notifications", notification.id), { read: true })
       }
-      
-      setNotifications(prev => 
+
+      setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       )
-      
+
       toast({
         title: "Success",
         description: "All notifications marked as read",
@@ -294,7 +305,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (!notification.read) {
       markAsRead(notification.id)
     }
-    
+
     // Open notification details modal
     setSelectedNotification(notification)
     setIsDetailsModalOpen(true)
@@ -323,7 +334,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex-1 md:text-center">
             <h1 className="text-lg font-semibold">School Admin Panel</h1>
           </div>
-          
+
           {/* Notifications Dropdown */}
           <DropdownMenu onOpenChange={(open) => {
             if (open) {
@@ -348,7 +359,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </Button>
                 )}
               </div>
-              
+
               <ScrollArea className="h-64">
                 {loadingNotifications ? (
                   <div className="flex justify-center items-center py-8">
@@ -364,11 +375,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     {notifications.map((notification) => (
                       <div
                         key={notification.id}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          notification.read 
-                            ? 'hover:bg-gray-50' 
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${notification.read
+                            ? 'hover:bg-gray-50'
                             : 'bg-blue-50 hover:bg-blue-100'
-                        }`}
+                          }`}
                         onClick={() => handleNotificationClick(notification)}
                       >
                         <div className="flex items-start gap-2">
@@ -389,7 +399,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                               {notification.message}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {notification.created_at?.toDate?.() 
+                              {notification.created_at?.toDate?.()
                                 ? notification.created_at.toDate().toLocaleDateString()
                                 : new Date().toLocaleDateString()
                               }
@@ -419,12 +429,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </div>
                 )}
               </ScrollArea>
-              
+
               {notifications.length > 0 && (
                 <div className="p-2 border-t">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="w-full text-xs"
                     onClick={() => router.push("/notifications")}
                   >
@@ -516,7 +526,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               Notification Details
             </DialogTitle>
           </DialogHeader>
-          
+
           {selectedNotification && (
             <div className="space-y-6">
               <div className="flex items-start justify-between">
@@ -530,7 +540,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   )}
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Message</h4>
@@ -540,13 +550,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </p>
                   </div>
                 </div>
-                
 
-                
+
+
                 {selectedNotification.action_url && (
                   <div className="border-t pt-4">
                     <h4 className="font-medium text-gray-900 mb-2">Related Action</h4>
-                    <Button 
+                    <Button
                       onClick={() => window.location.href = selectedNotification.action_url!}
                       className="w-full sm:w-auto"
                     >

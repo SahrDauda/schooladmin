@@ -3,12 +3,13 @@ import "@/app/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { AuthProvider } from "@/hooks/use-auth"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
   title: "Skultɛk",
   description: "School Management System",
-  generator: 'v0.dev',
+  generator: 'DigiSal',
   icons: {
     icon: '/schooltech.png',
     apple: '/schooltech.png'
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider attribute="class" defaultTheme="light">
           <ErrorBoundary>
-          {children}
+            <AuthProvider>
+              {children}
+            </AuthProvider>
           </ErrorBoundary>
           <Toaster />
         </ThemeProvider>

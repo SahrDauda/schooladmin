@@ -19,17 +19,15 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2, QrCode, Camera, X } from "lucide-react"
+import { GraduationCap, UserPlus, Search, Mail, Phone, BookOpen, Calendar, Edit, Trash2, Camera, X } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where, getDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { auth, db } from "@/lib/firebase"
 import { z } from "zod"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
-import { TeacherAttendanceQR } from "@/components/teacher-attendance-qr"
-import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { createUserWithEmailAndPassword } from "firebase/auth"
 import { sendEmail } from "@/lib/index"
 import Papa from "papaparse"
 import * as XLSX from "xlsx"
@@ -67,7 +65,6 @@ export default function TeachersPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState("all")
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("personal")
   const [formData, setFormData] = useState({
     // Personal Information
@@ -83,37 +80,37 @@ export default function TeachersPage() {
     address: "",
     phone: "",
     email: "",
-    
+
     // Position Information
     level: "",
     subject: "",
     district_preference: "",
     school_preference: "",
     application_type: "",
-    
+
     // Academic Qualifications
     institution_name: "",
     qualification_obtained: "",
     year_completed: "",
     certificate_number: "",
-    
+
     // Professional Qualifications
     teacher_certificate: "",
     higher_teacher_certificate: "",
     bachelor_education: "",
     pgde: "",
     other_credentials: "",
-    
+
     // Work Experience
     previous_schools: "",
     positions_held: "",
     employment_dates: "",
     responsibilities: "",
-    
+
     // Teaching License
     registration_number: "",
     registration_year: "",
-    
+
     // Referees
     referee1_name: "",
     referee1_position: "",
@@ -125,7 +122,7 @@ export default function TeachersPage() {
     referee2_address: "",
     referee2_phone: "",
     referee2_relationship: "",
-    
+
     // Supporting Documents
     certificates_attached: false,
     birth_certificate_attached: false,
@@ -133,11 +130,11 @@ export default function TeachersPage() {
     photo_attached: false,
     license_attached: false,
     employment_letters_attached: false,
-    
+
     // Declaration
     declaration_signed: false,
     declaration_date: "",
-    
+
     // System Fields
     qualification: "",
     joining_date: "",
@@ -177,7 +174,7 @@ export default function TeachersPage() {
         })
         return
       }
-      
+
       if (!file.type.startsWith('image/')) {
         toast({
           title: "Invalid file type",
@@ -186,7 +183,7 @@ export default function TeachersPage() {
         })
         return
       }
-      
+
       setPassportPicture(file)
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -214,7 +211,7 @@ export default function TeachersPage() {
     setIsSearchingNin(true)
     try {
       console.log('Searching for teacher NIN:', nin)
-      
+
       const response = await fetch('/api/nin-verification', {
         method: 'POST',
         headers: {
@@ -246,23 +243,23 @@ export default function TeachersPage() {
         nationality: data.nationality || prev.nationality,
         dob: data.dateOfBirth || prev.dob,
       }))
-      
+
       console.log('Form updated with teacher data')
-      
+
       toast({
         title: "Success",
         description: `Teacher information retrieved for ${data.firstName} ${data.lastName}`,
       })
     } catch (error) {
       console.error('Teacher NIN search failed:', error)
-      
+
       let errorMessage = "Teacher search failed"
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
           errorMessage = `Teacher NIN "${nin}" not found in the database`
         }
       }
-      
+
       toast({
         title: "Teacher Not Found",
         description: errorMessage,
@@ -379,7 +376,7 @@ export default function TeachersPage() {
 
       // Use the Firebase Auth UID as the document ID
       const teacherId = userCredential.user.uid
-      
+
       // Handle passport picture upload
       let passportPictureUrl = ""
       if (passportPicture) {
@@ -400,7 +397,7 @@ export default function TeachersPage() {
           })
         }
       }
-      
+
       // Add timestamp and metadata
       const currentDate = new Date()
       const teacherData = {
@@ -422,11 +419,11 @@ export default function TeachersPage() {
       // Send email with login credentials
       const emailSubject = "Welcome to SchoolTech – Your Account Credentials"
       const emailBody = `Dear ${formData.firstname} ${formData.lastname},\n\nWelcome to SchoolTech! We are excited to have you join us.\n\nYour account has been created. Please find your login credentials below:\n\nUsername: ${formData.email}\nPassword: ${password}\n\nFor security, we recommend logging in and changing your password as soon as possible.\n\nIf you have any questions or need assistance, feel free to reach out to the admin team.\n\nBest regards,\nSchoolTech Administration`
-      
+
       console.log('Attempting to send email to:', formData.email)
       const emailResult = await sendEmail(formData.email, emailSubject, emailBody)
       console.log('Email result:', emailResult)
-      
+
       if (!emailResult.success) {
         toast({
           title: "Warning",
@@ -464,37 +461,37 @@ export default function TeachersPage() {
         address: "",
         phone: "",
         email: "",
-        
+
         // Position Information
         level: "",
         subject: "",
         district_preference: "",
         school_preference: "",
         application_type: "",
-        
+
         // Academic Qualifications
         institution_name: "",
         qualification_obtained: "",
         year_completed: "",
         certificate_number: "",
-        
+
         // Professional Qualifications
         teacher_certificate: "",
         higher_teacher_certificate: "",
         bachelor_education: "",
         pgde: "",
         other_credentials: "",
-        
+
         // Work Experience
         previous_schools: "",
         positions_held: "",
         employment_dates: "",
         responsibilities: "",
-        
+
         // Teaching License
         registration_number: "",
         registration_year: "",
-        
+
         // Referees
         referee1_name: "",
         referee1_position: "",
@@ -506,7 +503,7 @@ export default function TeachersPage() {
         referee2_address: "",
         referee2_phone: "",
         referee2_relationship: "",
-        
+
         // Supporting Documents
         certificates_attached: false,
         birth_certificate_attached: false,
@@ -514,17 +511,17 @@ export default function TeachersPage() {
         photo_attached: false,
         license_attached: false,
         employment_letters_attached: false,
-        
+
         // Declaration
         declaration_signed: false,
         declaration_date: "",
-        
+
         // System Fields
         qualification: "",
         joining_date: "",
         school_id: schoolInfo.school_id,
       })
-      
+
       // Reset passport picture state
       setPassportPicture(null)
       setPassportPicturePreview("")
@@ -582,10 +579,10 @@ export default function TeachersPage() {
         const teacherDoc = await getDoc(doc(db, "teachers", teacherId))
         if (teacherDoc.exists()) {
           const teacherData = teacherDoc.data()
-          
+
           // Delete the Firestore document
-        await deleteDoc(doc(db, "teachers", teacherId))
-          
+          await deleteDoc(doc(db, "teachers", teacherId))
+
           // Try to delete the auth user if firebase_auth_uid exists
           if (teacherData.firebase_auth_uid) {
             try {
@@ -597,7 +594,7 @@ export default function TeachersPage() {
                 },
                 body: JSON.stringify({ authUid: teacherData.firebase_auth_uid })
               })
-              
+
               if (!response.ok) {
                 console.error("Failed to delete auth user")
               } else {
@@ -686,6 +683,10 @@ export default function TeachersPage() {
       return
     }
     setCsvFile(file)
+  }
+
+  const handleQRCodeScanned = async (qrData: string) => {
+    // Remove this function as it's not needed for admin
   }
 
   const handleUploadCSV = async () => {
@@ -790,7 +791,7 @@ export default function TeachersPage() {
                       <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
                       <TabsTrigger value="experience">Experience</TabsTrigger>
                     </TabsList>
-                    
+
                     <TabsContent value="personal" className="space-y-4">
                       <form className="space-y-4">
                         {/* Search by NIN */}
@@ -817,7 +818,7 @@ export default function TeachersPage() {
                           <p className="text-xs text-gray-500 mt-1">
                             Enter the teacher's NIN to automatically fill the form with existing teacher information
                           </p>
-                          
+
                           {/* Available Teacher NINs */}
                           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                             <h4 className="text-sm font-medium text-blue-800 mb-2">Available Teacher NINs for Testing:</h4>
@@ -940,10 +941,10 @@ export default function TeachersPage() {
                             <Input id="email" type="email" value={formData.email} onChange={handleInputChange} />
                           </div>
                         </div>
-                        
+
                         <div className="flex justify-end pt-4">
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             onClick={() => setActiveTab("position")}
                             className="flex items-center gap-2"
                           >
@@ -1039,10 +1040,10 @@ export default function TeachersPage() {
                             </Select>
                           </div>
                         </div>
-                        
+
                         <div className="flex justify-between pt-4">
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             variant="outline"
                             onClick={() => setActiveTab("personal")}
                             className="flex items-center gap-2"
@@ -1052,8 +1053,8 @@ export default function TeachersPage() {
                             </svg>
                             Previous
                           </Button>
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             onClick={() => setActiveTab("qualifications")}
                             className="flex items-center gap-2"
                           >
@@ -1127,10 +1128,10 @@ export default function TeachersPage() {
                             <Input id="registration_year" value={formData.registration_year} onChange={handleInputChange} />
                           </div>
                         </div>
-                        
+
                         <div className="flex justify-between pt-4">
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             variant="outline"
                             onClick={() => setActiveTab("position")}
                             className="flex items-center gap-2"
@@ -1140,8 +1141,8 @@ export default function TeachersPage() {
                             </svg>
                             Previous
                           </Button>
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             onClick={() => setActiveTab("experience")}
                             className="flex items-center gap-2"
                           >
@@ -1277,8 +1278,8 @@ export default function TeachersPage() {
                         </div>
 
                         <div className="flex justify-between pt-4">
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             variant="outline"
                             onClick={() => setActiveTab("qualifications")}
                             className="flex items-center gap-2"
@@ -1289,7 +1290,7 @@ export default function TeachersPage() {
                             Previous
                           </Button>
                         </div>
-                        
+
                         <DialogFooter>
                           <Button type="submit" disabled={isSubmitting}>
                             {isSubmitting ? "Submitting..." : "Add Teacher"}
@@ -1300,11 +1301,6 @@ export default function TeachersPage() {
                   </Tabs>
                 </DialogContent>
               </Dialog>
-
-              <Button onClick={() => setIsQrModalOpen(true)} variant="outline">
-                <QrCode className="w-4 h-4 mr-2" />
-                <span>Sign In</span>
-              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -1608,7 +1604,7 @@ export default function TeachersPage() {
                           />
                         </div>
                       </div>
-                      
+
                       {/* Passport Picture Section for Edit */}
                       <div className="space-y-4">
                         <div>
@@ -1663,7 +1659,7 @@ export default function TeachersPage() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <DialogFooter>
                         <Button type="submit">Save Changes</Button>
                       </DialogFooter>
@@ -1769,28 +1765,6 @@ export default function TeachersPage() {
                 </DialogContent>
               </Dialog>
             )}
-
-            {/* QR Code Modal */}
-            <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-              <DialogContent className="sm:max-w-[600px] md:max-w-[650px] w-[90%]">
-                <DialogHeader>
-                  <DialogTitle>Teacher Attendance QR Code</DialogTitle>
-                  <DialogDescription>Scan this QR code using a mobile device to mark attendance</DialogDescription>
-                </DialogHeader>
-                {schoolInfo.school_id && (
-                  <TeacherAttendanceQR
-                    schoolId={schoolInfo.school_id}
-                    schoolName={schoolInfo.schoolName}
-                    inModal={true}
-                  />
-                )}
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsQrModalOpen(false)}>
-                    Close
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </CardContent>
         </Card>
       </div>

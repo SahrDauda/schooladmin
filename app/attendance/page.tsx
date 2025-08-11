@@ -15,6 +15,7 @@ import { db } from "@/lib/firebase"
 import { format } from "date-fns"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import TeacherAttendanceQR from "@/components/teacher-attendance-qr"
 
 interface Student {
   id: string
@@ -345,13 +346,35 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
-      const attendanceRef = collection(db, "teacher_attendance")
-      const q = query(attendanceRef, where("school_id", "==", schoolInfo.school_id), where("date", "==", date))
+      const attendanceRef = collection(db, "teacher_sign_in")
+      const q = query(
+        attendanceRef,
+        where("school_id", "==", schoolInfo.school_id),
+        where("date", "==", date)
+      )
       const querySnapshot = await getDocs(q)
 
-      const records = querySnapshot.docs.map((doc) => ({
+      // Base records
+      const baseRecords = querySnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
+        ...(doc.data() as any),
+      }))
+
+      // Enrich with teacher names
+      const uniqueTeacherIds = Array.from(new Set(baseRecords.map(r => r.teacher_id).filter(Boolean)))
+      const teacherMap: Record<string, any> = {}
+      await Promise.all(uniqueTeacherIds.map(async (tid) => {
+        try {
+          const tDoc = await getDoc(doc(db, "teachers", tid))
+          if (tDoc.exists()) teacherMap[tid] = tDoc.data()
+        } catch { }
+      }))
+
+      const records = baseRecords.map(r => ({
+        ...r,
+        teacher_name: teacherMap[r.teacher_id]
+          ? `${teacherMap[r.teacher_id].firstname || ''} ${teacherMap[r.teacher_id].lastname || ''}`.trim()
+          : r.teacher_id,
       }))
 
       setTeacherAttendanceRecords(records)
@@ -490,8 +513,8 @@ export default function AttendancePage() {
                       </TableHeader>
                       <TableBody>
                         {filteredStudents.map((student, index) => (
-                          <TableRow 
-                            key={student.id} 
+                          <TableRow
+                            key={student.id}
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => {
                               setSelectedStudent(student)
@@ -540,56 +563,62 @@ export default function AttendancePage() {
               </TabsContent>
 
               <TabsContent value="teachers">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full md:w-auto"
-                    />
-                    <Button variant="outline" onClick={() => fetchTeacherAttendance(selectedDate)}>
-                      View Records
-                    </Button>
-                  </div>
+                <div className="space-y-6">
+                  {/* QR Code Generator */}
+                  <TeacherAttendanceQR />
 
-                  {teacherAttendanceLoading ? (
-                    <div className="flex justify-center items-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  {/* Teacher Attendance Records */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="w-full md:w-auto"
+                      />
+                      <Button variant="outline" onClick={() => fetchTeacherAttendance(selectedDate)}>
+                        View Records
+                      </Button>
                     </div>
-                  ) : teacherAttendanceRecords.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No teacher attendance records found for this date.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-12">#</TableHead>
-                            <TableHead>Teacher Name</TableHead>
-                            <TableHead>Check-in Time</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {teacherAttendanceRecords.map((record, index) => (
-                            <TableRow key={record.id}>
-                              <TableCell>{index + 1}</TableCell>
-                              <TableCell className="font-medium">{record.teacher_name}</TableCell>
-                              <TableCell>{record.check_in_time || "-"}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1 text-green-600">
-                                  <CheckCircle className="h-4 w-4" />
-                                  <span>Present</span>
-                                </div>
-                              </TableCell>
+
+                    {teacherAttendanceLoading ? (
+                      <div className="flex justify-center items-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      </div>
+                    ) : teacherAttendanceRecords.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No teacher attendance records found for this date.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-12">#</TableHead>
+                              <TableHead>Teacher Name</TableHead>
+                              <TableHead>Check-in Time</TableHead>
+                              <TableHead>Status</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
+                          </TableHeader>
+                          <TableBody>
+                            {teacherAttendanceRecords.map((record, index) => (
+                              <TableRow key={record.id}>
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell className="font-medium">{record.teacher_name}</TableCell>
+                                <TableCell>{record.sign_in_time?.toDate?.() ? record.sign_in_time.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1 text-green-600">
+                                    <CheckCircle className="h-4 w-4" />
+                                    <span>{record.status === 'signed_out' ? 'Signed Out' : 'Present'}</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
@@ -623,7 +652,7 @@ export default function AttendancePage() {
                   <p className="text-base">{selectedDate}</p>
                 </div>
               </div>
-              
+
               <div className="border-t pt-4">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">Attendance Status</h3>
                 <div className="flex items-center gap-2">

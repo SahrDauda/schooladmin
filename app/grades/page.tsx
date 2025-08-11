@@ -13,12 +13,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
 import { Plus, Edit, MessageSquare, Users, GraduationCap, TrendingUp, Download, FileText } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
-import { collection, getDocs, addDoc, updateDoc, doc } from "firebase/firestore"
+import { collection, getDocs, addDoc, updateDoc, doc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { useRouter } from "next/navigation"
 import { getPromotionStatus, getStatusStyling } from "@/lib/grade-utils"
 import { exportStudentReportToPDF, exportMultipleStudentReports } from "@/lib/student-report-pdf"
+import RealTimeGradesView from "@/components/real-time-grades-view"
 
 export default function GradesPage() {
   const router = useRouter()
@@ -74,13 +75,19 @@ export default function GradesPage() {
         const info = await getCurrentSchoolInfo()
         setSchoolInfo(info)
 
+        // Fetch data with proper filtering by school
         const [studentsSnapshot, gradesSnapshot, subjectsSnapshot, classesSnapshot, teachersSnapshot] =
           await Promise.all([
-            getDocs(collection(db, "students")),
-            getDocs(collection(db, "grades")),
-            getDocs(collection(db, "subjects")),
-            getDocs(collection(db, "classes")),
-            getDocs(collection(db, "teachers")),
+            // Only fetch students from this school
+            getDocs(query(collection(db, "students"), where("school_id", "==", info.school_id))),
+            // Only fetch grades from this school
+            getDocs(query(collection(db, "grades"), where("school_id", "==", info.school_id))),
+            // Only fetch subjects from this school
+            getDocs(query(collection(db, "subjects"), where("school_id", "==", info.school_id))),
+            // Only fetch classes from this school
+            getDocs(query(collection(db, "classes"), where("school_id", "==", info.school_id))),
+            // Only fetch teachers from this school
+            getDocs(query(collection(db, "teachers"), where("school_id", "==", info.school_id))),
           ])
 
         setStudents(studentsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
@@ -313,6 +320,9 @@ export default function GradesPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Real-Time Grades View */}
+        <RealTimeGradesView schoolId={schoolInfo.school_id} />
 
         {/* Filters */}
         <Card>
