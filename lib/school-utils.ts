@@ -1,5 +1,6 @@
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { auth } from "@/lib/firebase"
 
 export interface SchoolInfo {
   school_id: string
@@ -10,9 +11,12 @@ export interface SchoolInfo {
 export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
   try {
     // Prefer values set by AuthProvider; fallback to existing localStorage keys
-    const adminId = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
+    const adminIdFromStorage = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
+    const uid = auth?.currentUser?.uid || null
 
-    if (!adminId) {
+    const candidateIds = [adminIdFromStorage, uid].filter(Boolean) as string[]
+
+    if (candidateIds.length === 0) {
       return {
         school_id: "unknown",
         schoolName: "",
@@ -20,45 +24,105 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
       }
     }
 
-    const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-    if (adminDoc.exists()) {
-      const adminData: any = adminDoc.data()
-      const schoolId = adminData.school_id
+    let resolvedAdminData: any | null = null
+    let resolvedAdminDocId: string | null = null
+
+    // Try reading admin profile by possible IDs (localStorage and/or UID)
+    for (const candId of candidateIds) {
+      try {
+        const aDoc = await getDoc(doc(db, "schooladmin", candId))
+        if (aDoc.exists()) {
+          resolvedAdminData = aDoc.data()
+          resolvedAdminDocId = candId
+          break
+        }
+      } catch (error) {
+        console.warn(`Failed to read admin document for ID ${candId}:`, error)
+        // Continue to next candidate instead of ignoring
+        continue
+      }
+    }
+
+    // If we couldn't read by ID, try to read by email (this should work with current rules)
+    if (!resolvedAdminData && auth?.currentUser?.email) {
+      try {
+        console.log("Trying to find admin by email:", auth.currentUser.email)
+        const adminQuery = query(
+          collection(db, "schooladmin"),
+          where("emailaddress", "==", auth.currentUser.email)
+        )
+        const adminSnapshot = await getDocs(adminQuery)
+
+        if (adminSnapshot.empty) {
+          // Try email field as fallback
+          const adminQuery2 = query(
+            collection(db, "schooladmin"),
+            where("email", "==", auth.currentUser.email)
+          )
+          const adminSnapshot2 = await getDocs(adminQuery2)
+
+          if (!adminSnapshot2.empty) {
+            const adminDoc = adminSnapshot2.docs[0]
+            resolvedAdminData = adminDoc.data()
+            resolvedAdminDocId = adminDoc.id
+            console.log("Found admin by email field:", resolvedAdminData)
+          }
+        } else {
+          const adminDoc = adminSnapshot.docs[0]
+          resolvedAdminData = adminDoc.data()
+          resolvedAdminDocId = adminDoc.id
+          console.log("Found admin by emailaddress field:", resolvedAdminData)
+        }
+      } catch (error) {
+        console.error("Failed to find admin by email:", error)
+      }
+    }
+
+    if (resolvedAdminData) {
+      const schoolId = resolvedAdminData.school_id
 
       // Fetch school stage and school name from the 'schools' collection via school_id
       let schoolStage = ""
-      let schoolName = adminData.schoolname || adminData.schoolName || ""
+      let schoolName = resolvedAdminData.schoolname || resolvedAdminData.schoolName || ""
 
       if (schoolId) {
         const schoolsRef = collection(db, "schools")
         const schoolsQuery = query(schoolsRef, where("school_id", "==", schoolId))
-        const schoolsSnapshot = await getDocs(schoolsQuery)
-        if (!schoolsSnapshot.empty) {
-          const schoolDoc = schoolsSnapshot.docs[0]
-          const schoolData: any = schoolDoc.data()
-          schoolStage = schoolData.stage || ""
-          if (schoolData.school_name) {
-            schoolName = schoolData.school_name
+        try {
+          const schoolsSnapshot = await getDocs(schoolsQuery)
+          if (!schoolsSnapshot.empty) {
+            const schoolDoc = schoolsSnapshot.docs[0]
+            const schoolData: any = schoolDoc.data()
+            schoolStage = schoolData.stage || ""
+            if (schoolData.school_name) {
+              schoolName = schoolData.school_name
+            }
           }
+        } catch (error) {
+          console.warn("Failed to read schools collection:", error)
+          // If schools read is blocked by rules, still return school_id and whatever name we have
         }
       }
 
       return {
-        school_id: schoolId || adminId,
+        school_id: schoolId || resolvedAdminDocId!,
         schoolName,
         stage: schoolStage,
       }
     }
 
+    // Could not read any admin profile, fallback to first candidateId
+    console.warn("Could not read admin profile, using fallback ID:", candidateIds[0])
     return {
-      school_id: adminId,
+      school_id: candidateIds[0],
       schoolName: "",
       stage: "",
     }
   } catch (error) {
     console.error("Error fetching school admin data:", error)
+    // Do not poison downstream with "error" school_id; return unknown for resilience
     return {
-      school_id: "error",
+      school_id: "unknown",
       schoolName: "",
       stage: "",
     }

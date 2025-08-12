@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, getDocs, query, where, doc, getDoc, updateDoc } from "firebase/firestore"
+import { collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -37,6 +37,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 
 type SchoolAdmin = {
@@ -49,6 +52,7 @@ type SchoolAdmin = {
 }
 
 export default function Dashboard() {
+  const { admin } = useAuth()
   const [schoolName, setSchoolName] = useState("Loading school name...")
   const [academicYear, setAcademicYear] = useState("2023-2024")
   const [stats, setStats] = useState([
@@ -125,7 +129,7 @@ export default function Dashboard() {
       }
 
       // Update password in Firestore
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id || localStorage.getItem("adminId")
       if (adminId) {
         await updateDoc(doc(db, "schooladmin", adminId), {
           password: password
@@ -147,6 +151,62 @@ export default function Dashboard() {
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update password.",
+        variant: "destructive",
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setChangingPassword(true)
+
+    try {
+      const provider = new GoogleAuthProvider()
+      const result = await signInWithPopup(auth, provider)
+      const user = result.user
+      console.log("Google Sign-In successful, user:", user.uid, user.email)
+
+      // Check if admin exists in schooladmin collection by email
+      const adminId = admin?.id || localStorage.getItem("adminId")
+      if (adminId) {
+        // Update the existing admin profile with Google auth info
+        const adminRef = doc(db, "schooladmin", adminId)
+        await updateDoc(adminRef, {
+          googleAuth: true,
+          lastLogin: Timestamp.now(),
+          hasLoggedInBefore: true
+        })
+
+        // Also create/update profile at schooladmin/{uid} for consistency
+        const uidProfileRef = doc(db, "schooladmin", user.uid)
+        await setDoc(uidProfileRef, {
+          emailaddress: user.email,
+          email: user.email,
+          name: admin?.adminname || admin?.adminName || admin?.name || user.displayName || "Admin User",
+          role: admin?.role || "Principal",
+          school_id: admin?.school_id || admin?.id || adminId,
+          googleAuth: true,
+          lastLogin: Timestamp.now(),
+          hasLoggedInBefore: true
+        }, { merge: true })
+
+        // Update localStorage
+        localStorage.setItem("adminId", user.uid)
+        localStorage.setItem("hasLoggedInBefore", "true")
+
+        toast({
+          title: "Google Sign-In Setup Complete",
+          description: "You can now sign in with Google in the future. Welcome to the system!",
+        })
+
+        setShowPasswordModal(false)
+      }
+    } catch (error: any) {
+      console.error("Google Sign-In error:", error)
+      toast({
+        title: "Google Sign-In Failed",
+        description: error.message || "Failed to set up Google Sign-In.",
         variant: "destructive",
       })
     } finally {
@@ -331,134 +391,148 @@ export default function Dashboard() {
         const schoolId = schoolInfo.school_id
 
         if (schoolId && schoolId !== "unknown" && schoolId !== "error") {
-          // Use Promise.all to fetch data in parallel
-          const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
-            getDocs(query(collection(db, "students"), where("school_id", "==", schoolId))),
-            getDocs(query(collection(db, "teachers"), where("school_id", "==", schoolId))),
-            getDocs(query(collection(db, "classes"), where("school_id", "==", schoolId))),
-          ])
+          console.log("Fetching data for school ID:", schoolId)
 
-          const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
-          const teachersList = teachersSnapshot.docs.map((doc) => doc.data())
-          const classesList = classesSnapshot.docs.map((doc) => doc.data())
+          try {
+            // Use Promise.all to fetch data in parallel
+            const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
+              getDocs(query(collection(db, "students"), where("school_id", "==", schoolId))),
+              getDocs(query(collection(db, "teachers"), where("school_id", "==", schoolId))),
+              getDocs(query(collection(db, "classes"), where("school_id", "==", schoolId))),
+            ])
 
-          // Get accurate total student count using utility function
-          const totalStudentCount = await getTotalStudentCount(schoolId)
-
-          // Calculate special needs statistics
-          const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
-          const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
-
-          // Count disability types
-          const disabilityTypes: Record<string, number> = {}
-          studentsWithDisabilities.forEach((student) => {
-            const type = student.disability_type || "Unspecified"
-            disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
-          })
-
-          // Count medical condition types
-          const medicalConditionTypes: Record<string, number> = {}
-          studentsWithMedicalConditions.forEach((student) => {
-            const type = student.sick_type || "Unspecified"
-            medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
-          })
-
-          setSpecialNeedsStats({
-            totalWithDisabilities: studentsWithDisabilities.length,
-            totalWithMedicalConditions: studentsWithMedicalConditions.length,
-            disabilityTypes,
-            medicalConditionTypes,
-          })
-
-          // Calculate gender statistics
-          const maleStudents = studentsList.filter((student) => student.gender === "Male")
-          const femaleStudents = studentsList.filter((student) => student.gender === "Female")
-
-          // Calculate gender by class
-          const genderByClass: any[] = []
-          const classGroups = studentsList.reduce((acc: any, student) => {
-            const className = student.class || "Unknown"
-            if (!acc[className]) {
-              acc[className] = { male: 0, female: 0 }
-            }
-            if (student.gender === "Male") {
-              acc[className].male++
-            } else if (student.gender === "Female") {
-              acc[className].female++
-            }
-            return acc
-          }, {})
-
-          Object.entries(classGroups).forEach(([className, counts]: [string, any]) => {
-            genderByClass.push({
-              class: className,
-              male: counts.male,
-              female: counts.female,
-              total: counts.male + counts.female
+            console.log("Successfully fetched collections:", {
+              students: studentsSnapshot.size,
+              teachers: teachersSnapshot.size,
+              classes: classesSnapshot.size
             })
-          })
 
-          setGenderStats({
-            totalMale: maleStudents.length,
-            totalFemale: femaleStudents.length,
-            genderByClass
-          })
+            const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
+            const teachersList = teachersSnapshot.docs.map((doc) => doc.data())
+            const classesList = classesSnapshot.docs.map((doc) => doc.data())
 
-          // Update stats
-          setStats([
-            {
-              title: "Total Students",
-              value: totalStudentCount.toString(),
-              icon: Users,
-              color: "bg-blue-100 text-blue-700",
-            },
-            {
-              title: "Total Teachers",
-              value: teachersList.length.toString(),
-              icon: GraduationCap,
-              color: "bg-green-100 text-green-700",
-            },
-            {
-              title: "Total Classes",
-              value: classesList.length.toString(),
-              icon: BookOpen,
-              color: "bg-purple-100 text-purple-700",
-            },
-            { title: "Attendance Today", value: "96%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
-          ])
+            // Get accurate total student count using utility function
+            let totalStudentCount = 0
+            try {
+              totalStudentCount = await getTotalStudentCount(schoolId)
+            } catch (error) {
+              console.warn("Failed to get total student count:", error)
+              totalStudentCount = studentsList.length
+            }
+
+            // Calculate special needs statistics
+            const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
+            const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
+
+            // Count disability types
+            const disabilityTypes: Record<string, number> = {}
+            studentsWithDisabilities.forEach((student) => {
+              const type = student.disability_type || "Unspecified"
+              disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
+            })
+
+            // Count medical condition types
+            const medicalConditionTypes: Record<string, number> = {}
+            studentsWithMedicalConditions.forEach((student) => {
+              const type = student.sick_type || "Unspecified"
+              medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
+            })
+
+            setSpecialNeedsStats({
+              totalWithDisabilities: studentsWithDisabilities.length,
+              totalWithMedicalConditions: studentsWithMedicalConditions.length,
+              disabilityTypes,
+              medicalConditionTypes,
+            })
+
+            // Calculate gender statistics
+            const maleStudents = studentsList.filter((student) => student.gender === "Male")
+            const femaleStudents = studentsList.filter((student) => student.gender === "Female")
+
+            // Calculate gender by class
+            const genderByClass: any[] = []
+            const classGroups = studentsList.reduce((acc: any, student) => {
+              const className = student.class || "Unknown"
+              if (!acc[className]) {
+                acc[className] = { male: 0, female: 0 }
+              }
+              if (student.gender === "Male") {
+                acc[className].male++
+              } else if (student.gender === "Female") {
+                acc[className].female++
+              }
+              return acc
+            }, {})
+
+            Object.entries(classGroups).forEach(([className, counts]: [string, any]) => {
+              genderByClass.push({
+                class: className,
+                male: counts.male,
+                female: counts.female,
+                total: counts.male + counts.female
+              })
+            })
+
+            setGenderStats({
+              totalMale: maleStudents.length,
+              totalFemale: femaleStudents.length,
+              genderByClass
+            })
+
+            // Update stats
+            setStats([
+              {
+                title: "Total Students",
+                value: totalStudentCount.toString(),
+                icon: Users,
+                color: "bg-blue-100 text-blue-700",
+              },
+              {
+                title: "Total Teachers",
+                value: teachersList.length.toString(),
+                icon: GraduationCap,
+                color: "bg-green-100 text-green-700",
+              },
+              {
+                title: "Total Classes",
+                value: classesList.length.toString(),
+                icon: BookOpen,
+                color: "bg-purple-100 text-purple-700",
+              },
+              {
+                title: "Attendance Today",
+                value: "0%",
+                icon: ClipboardCheck,
+                color: "bg-amber-100 text-amber-700",
+              },
+            ])
+
+            setSchoolId(schoolId)
+            setLoading(false)
+          } catch (collectionError: any) {
+            console.error("Error fetching collections:", collectionError)
+            setError(`Failed to fetch school data: ${collectionError.message}`)
+            setLoading(false)
+          }
         } else {
-          console.error("Invalid school ID:", schoolId)
-          setError(`Invalid school ID: ${schoolId}`)
+          console.warn("Invalid school ID:", schoolId)
+          setError("Unable to determine school ID. Please check your authentication.")
+          setLoading(false)
         }
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-        setError(error instanceof Error ? error.message : "Unknown error occurred")
-        toast({
-          title: "Error",
-          description: "Failed to load dashboard data",
-          variant: "destructive",
-        })
-      } finally {
+      } catch (error: any) {
+        console.error("Dashboard data fetch error:", error)
+        setError(error.message || "Failed to load dashboard data")
         setLoading(false)
       }
     }
 
-    fetchData()
-
-    // Check for refresh flag from students page
-    const checkRefreshFlag = () => {
-      const refreshFlag = localStorage.getItem("refreshClasses")
-      if (refreshFlag === "true") {
-        localStorage.removeItem("refreshClasses")
-        fetchData()
-      }
+    if (admin) {
+      fetchData()
+    } else {
+      console.log("No admin data available, waiting...")
+      setLoading(false)
     }
-
-    // Set up interval to check for refresh flag
-    const interval = setInterval(checkRefreshFlag, 2000) // Check every 2 seconds
-
-    return () => clearInterval(interval)
-  }, [admin]) // Add admin as dependency
+  }, [admin])
 
 
 
@@ -499,6 +573,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
         {loading ? (
           <div className="flex flex-col space-y-4">
             {/* Skeleton for school info */}
@@ -780,13 +855,13 @@ export default function Dashboard() {
         <DialogContent className="sm:max-w-[500px] w-[90%]">
           <DialogHeader>
             <DialogTitle className="text-center">
-              {isFirstTimeLogin ? "Set Your Password" : "Change Password"}
+              {isFirstTimeLogin ? "Complete Your Account Setup" : "Change Password"}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handlePasswordChange} className="space-y-4">
             <div className="text-center mb-4">
               <p className="text-sm text-muted-foreground">
-                {isFirstTimeLogin ? "Setting password for:" : "Changing password for:"}
+                {isFirstTimeLogin ? "Setting up account for:" : "Changing password for:"}
               </p>
               <p className="font-medium">
                 {typeof window !== "undefined" && localStorage.getItem("adminName")
@@ -795,7 +870,7 @@ export default function Dashboard() {
               </p>
               {isFirstTimeLogin && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  Welcome! Please set your password to complete your account setup.
+                  Welcome! Please complete your account setup by either setting a password or using Google Sign-In.
                 </p>
               )}
             </div>
@@ -849,6 +924,53 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+
+            {isFirstTimeLogin && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-center block">Set up Google Sign-In</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleGoogleSignIn}
+                    disabled={changingPassword}
+                    className="w-full h-10 sm:h-11 text-sm sm:text-base"
+                  >
+                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                      <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        fill="#4285F4"
+                      />
+                      <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853"
+                      />
+                      <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05"
+                      />
+                      <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335"
+                      />
+                    </svg>
+                    {changingPassword ? "Setting up..." : "Sign in with Google"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Choose Google Sign-In to skip password creation and use your Google account for future logins
+                  </p>
+                </div>
+              </>
+            )}
 
             <DialogFooter>
               <Button

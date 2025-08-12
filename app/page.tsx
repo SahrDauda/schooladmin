@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
-import { signInWithEmailAndPassword } from "firebase/auth"
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
@@ -15,6 +15,7 @@ import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
 import type { QuerySnapshot } from "firebase/firestore"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { sendWelcomeNotification } from "@/lib/notification-utils"
+import { setDoc } from "firebase/firestore"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -44,81 +45,138 @@ export default function LoginPage() {
     setErrorMessage("")
 
     try {
-      // Use Firebase Auth for authentication
+      console.log("Attempting login with email:", emailaddress)
       const userCredential = await signInWithEmailAndPassword(auth, emailaddress, password)
       const user = userCredential.user
+      console.log("Firebase Auth successful, user:", user.uid, user.email)
 
-      // Query Firestore for admin by emailaddress field
-      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
-      const querySnapshot = await getDocs(adminQuery)
+      // Check if user exists in schooladmin collection by email
+      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", emailaddress))
+      let querySnapshot = await getDocs(adminQuery)
+
       if (querySnapshot.empty) {
-        throw new Error("No admin record found for this user.")
-      }
-      const adminDoc = querySnapshot.docs[0]
-      const adminData = adminDoc.data()
-
-      // Store admin info in localStorage for session management
-      localStorage.setItem("adminId", adminDoc.id)
-      localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || "Admin User")
-      localStorage.setItem("adminRole", adminData.role || "Administrator")
-
-      // If remember me is checked, store the email in localStorage
-      if (rememberMe) {
-        localStorage.setItem("rememberedEmail", emailaddress)
-      } else {
-        localStorage.removeItem("rememberedEmail")
+        // Try email field
+        const adminQuery2 = query(collection(db, "schooladmin"), where("email", "==", emailaddress))
+        querySnapshot = await getDocs(adminQuery2)
       }
 
-      // Check if this is the first time login
-      const isFirstTimeLogin = !adminData.hasLoggedInBefore
-      
-      if (isFirstTimeLogin) {
-        // Mark as logged in for the first time
-        const adminRef = doc(db, "schooladmin", adminDoc.id)
-        await updateDoc(adminRef, {
-          hasLoggedInBefore: true,
-          firstLoginAt: Timestamp.fromDate(new Date())
-        })
-        
-        // Send welcome notification and email
+      console.log("Admin query results:", querySnapshot.size, "documents found")
+
+      if (!querySnapshot.empty) {
+        const adminDoc = querySnapshot.docs[0]
+        const adminData = adminDoc.data() as any
+        console.log("Admin document data:", adminData)
+
+        // Ensure an admin profile exists at schooladmin/<uid> for security rules to recognize role
         try {
-          const adminName = adminData.adminname || adminData.adminName || adminData.name || "Admin"
-          const adminEmail = adminData.emailaddress || adminData.email || emailaddress
-          
-          console.log("Sending welcome notification for:", { adminId: adminDoc.id, adminName, adminEmail })
-          
-          await sendWelcomeNotification(adminDoc.id, adminName, adminEmail)
-          
-          console.log("Welcome notification sent successfully")
-          
-          toast({
-            title: "Welcome to Skultɛk!",
-            description: "Check your notifications for important information.",
-          })
-        } catch (error) {
-          console.error("Error sending welcome notification:", error)
-          // Don't show error toast to user, just log it
+          const profileDocRef = doc(db, "schooladmin", user.uid)
+          const profileDocSnap = await getDoc(profileDocRef)
+          if (!profileDocSnap.exists()) {
+            const normalizedData = {
+              // Required by rules
+              emailaddress: adminData.emailaddress || adminData.email || user.email || emailaddress,
+              email: adminData.email || adminData.emailaddress || user.email || emailaddress,
+              password: typeof adminData.password === "string" && adminData.password.length >= 6 ? adminData.password : password,
+              name: adminData.name || adminData.adminname || adminData.adminName || "Admin User",
+              role: adminData.role || "Principal",
+              school_id: adminData.school_id || adminData.id || adminDoc.id,
+              // Preserve other fields
+              ...adminData,
+            }
+            await setDoc(profileDocRef, normalizedData, { merge: true })
+            console.log("Synchronized admin profile to UID path")
+          }
+        } catch (syncErr) {
+          console.warn("Could not ensure admin profile under UID:", syncErr)
         }
-        
-        // Set localStorage flag to trigger modal
-        localStorage.setItem("hasLoggedInBefore", "false")
-        
-        // Redirect to dashboard (modal will show)
+
+        // Store admin info in localStorage for backward compatibility - use UID for consistency with rules
+        localStorage.setItem("adminId", user.uid)
+        localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || "Admin User")
+        localStorage.setItem("adminRole", adminData.role || "Principal")
+        localStorage.setItem("adminEmail", emailaddress)
+
+        if (adminData.gender) {
+          localStorage.setItem("adminGender", adminData.gender)
+        }
+
+        // Check if this is first time login
+        const hasLoggedInBefore = localStorage.getItem("hasLoggedInBefore")
+        if (hasLoggedInBefore === "false" || !hasLoggedInBefore) {
+          localStorage.setItem("hasLoggedInBefore", "false")
+          router.push("/dashboard")
+        } else {
+          router.push("/dashboard")
+        }
+      } else {
+        console.error("No admin document found for email:", emailaddress)
+        setErrorMessage("No admin record found for this email address.")
+      }
+    } catch (err: any) {
+      console.error("Login error:", err)
+      setErrorMessage(err.message || "An error occurred during login.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true)
+    setErrorMessage("")
+
+    try {
+      const provider = new GoogleAuthProvider()
+      const result = await signInWithPopup(auth, provider)
+      const user = result.user
+      console.log("Google Sign-In successful, user:", user.uid, user.email)
+
+      // Check if user exists in schooladmin collection by email
+      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
+      let querySnapshot = await getDocs(adminQuery)
+
+      if (querySnapshot.empty) {
+        // Try email field
+        const adminQuery2 = query(collection(db, "schooladmin"), where("email", "==", user.email))
+        querySnapshot = await getDocs(adminQuery2)
+      }
+
+      if (!querySnapshot.empty) {
+        const adminDoc = querySnapshot.docs[0]
+        const adminData = adminDoc.data() as any
+
+        // Create/update admin profile at schooladmin/<uid>
+        const profileDocRef = doc(db, "schooladmin", user.uid)
+        const normalizedData = {
+          emailaddress: user.email,
+          email: user.email,
+          name: adminData.name || adminData.adminname || adminData.adminName || user.displayName || "Admin User",
+          role: adminData.role || "Principal",
+          school_id: adminData.school_id || adminData.id || adminDoc.id,
+          googleAuth: true,
+          lastLogin: Timestamp.now(),
+          ...adminData,
+        }
+        await setDoc(profileDocRef, normalizedData, { merge: true })
+
+        // Store admin info in localStorage
+        localStorage.setItem("adminId", user.uid)
+        localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || user.displayName || "Admin User")
+        localStorage.setItem("adminRole", adminData.role || "Principal")
+        localStorage.setItem("adminEmail", user.email || "")
+        localStorage.setItem("hasLoggedInBefore", "true")
+
+        if (adminData.gender) {
+          localStorage.setItem("adminGender", adminData.gender)
+        }
+
         router.push("/dashboard")
       } else {
-        // Redirect to dashboard
-        router.push("/dashboard")
+        setErrorMessage("No admin record found for this Google account. Please contact your administrator.")
+        await auth.signOut()
       }
-    } catch (err) {
-      const error = err as Error
-      console.error("Login error:", error)
-      setErrorMessage(error.message || "Login failed. Please try again.")
-
-      toast({
-        title: "Login Failed",
-        description: error.message || "Invalid email or password",
-        variant: "destructive",
-      })
+    } catch (err: any) {
+      console.error("Google Sign-In error:", err)
+      setErrorMessage(err.message || "An error occurred during Google Sign-In.")
     } finally {
       setLoading(false)
     }
@@ -201,6 +259,43 @@ export default function LoginPage() {
                 disabled={loading}
               >
                 {loading ? "Logging in..." : "Login"}
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="w-full h-10 sm:h-11 text-sm sm:text-base"
+              >
+                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                  <path
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    fill="#EA4335"
+                  />
+                </svg>
+                {loading ? "Signing in..." : "Sign in with Google"}
               </Button>
             </div>
           </form>
