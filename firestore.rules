@@ -227,9 +227,33 @@ service cloud.firestore {
       );
     }
     
+    // Parents Collection - Allow access for any authenticated user (temporarily permissive for debugging)
+    match /parents/{parentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        isSchoolAdmin() || isTeacher() || isAdmin()
+      ) &&
+        request.resource.data.keys().hasAll(['firstname', 'lastname', 'school_id']) &&
+        request.resource.data.firstname is string &&
+        request.resource.data.lastname is string &&
+        request.resource.data.school_id is string &&
+        (!('email' in request.resource.data) || isValidEmail(request.resource.data.email)) &&
+        (!('phone' in request.resource.data) || request.resource.data.phone is string);
+      allow update: if isAuthenticated() && (
+        isSchoolAdmin() || isTeacher() || isAdmin()
+      ) &&
+        (!('firstname' in request.resource.data) || request.resource.data.firstname is string) &&
+        (!('lastname' in request.resource.data) || request.resource.data.lastname is string) &&
+        (!('school_id' in request.resource.data) || request.resource.data.school_id is string) &&
+        (!('email' in request.resource.data) || isValidEmail(request.resource.data.email)) &&
+        (!('phone' in request.resource.data) || request.resource.data.phone is string);
+      allow delete: if isAuthenticated() && (
+        isSchoolAdmin() || isAdmin()
+      );
+    }
+    
     // Password Reset Codes Collection
     match /passwordResetCodes/{codeId} {
-      allow create: if true;
       allow read, update, delete: if isAuthenticated() && (
         request.auth.token.email == resource.data.email ||
         isAdmin()

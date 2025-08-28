@@ -7,7 +7,7 @@ import { AuthProvider } from "@/hooks/use-auth"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Skultɛk",
+  title: "Skultɛk - School Admin",
   description: "School Management System",
   generator: 'DigiSal',
   icons: {
