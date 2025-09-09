@@ -8,7 +8,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const { type, email, name, adminId } = req.body
-    
+
     console.log('Email API received request:', { type, email, name, adminId })
 
     if (!email || !type) {
@@ -86,6 +86,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         `
         break
 
+      case 'teacher_unassignment':
+        const { subjectName: unassignSubjectName, subjectCode: unassignSubjectCode } = req.body
+        subject = 'Subject Unassignment - Skultɛk School Management System'
+        message = `
+          Dear ${name || 'Teacher'},
+
+          You have been unassigned from teaching ${unassignSubjectName} (${unassignSubjectCode}) in the Skultɛk School Management System.
+
+          If you have any questions about this change, please contact the school administration.
+
+          Best regards,
+          The Skultɛk School Administration Team
+        `
+        break
+
       case 'teacher_class_assignment':
         const { className, classLevel } = req.body
         subject = 'Class Assignment - Skultɛk School Management System'
@@ -116,7 +131,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Check if Gmail credentials are configured
     const gmailUser = process.env.GMAIL_USER
     const gmailPassword = process.env.GMAIL_APP_PASSWORD
-    
+
     if (!gmailUser || !gmailPassword) {
       console.log('Gmail credentials not configured, simulating email send...')
       console.log('Email would be sent:', {
@@ -124,12 +139,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         subject,
         message: message.substring(0, 100) + '...'
       })
-      
+
       // Simulate email sending delay
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      return res.status(200).json({ 
-        success: true, 
+
+      return res.status(200).json({
+        success: true,
         message: 'Email simulated (Gmail not configured)',
         data: { email, subject, type },
         warning: 'Email was simulated because Gmail credentials are not configured'
@@ -162,24 +177,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Send the email
     const info = await transporter.sendMail(mailOptions)
-    
+
     console.log('Email sent successfully:', info.messageId)
-    
-    return res.status(200).json({ 
-      success: true, 
+
+    return res.status(200).json({
+      success: true,
       message: 'Email sent successfully',
       data: { email, subject, type, messageId: info.messageId }
     })
 
   } catch (error) {
     console.error('Email sending error:', error)
-    
+
     // If email sending fails, still return success but log the error
     // This prevents the notification system from breaking if email fails
     console.log('Email sending failed, but continuing with notification...')
-    
-    return res.status(200).json({ 
-      success: true, 
+
+    return res.status(200).json({
+      success: true,
       message: 'Notification created successfully (email may have failed)',
       data: { email: req.body.email, type: req.body.type },
       warning: 'Email sending failed but notification was created'

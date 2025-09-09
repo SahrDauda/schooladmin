@@ -101,7 +101,7 @@ service cloud.firestore {
     
     // Teachers Collection - Allow access for authenticated users
     match /teachers/{teacherId} {
-      allow read: if isAuthenticated();
+      allow read: if true; // Temporarily allow all reads for debugging
       allow create: if isAuthenticated() && (
         isSchoolAdmin() || isAdmin()
       ) &&

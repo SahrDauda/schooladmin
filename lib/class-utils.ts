@@ -65,29 +65,33 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
   const warnings: string[] = []
 
   try {
-    // Validate schema
-    const validatedData = classSchema.parse(data)
-    
-    // Check for duplicate class names
-    const classesRef = collection(db, "classes")
-    const duplicateQuery = query(
-      classesRef, 
-      where("school_id", "==", schoolId),
-      where("name", "==", data.name),
-      where("level", "==", data.level)
-    )
-    const duplicateSnapshot = await getDocs(duplicateQuery)
-    
-    const duplicateClasses = duplicateSnapshot.docs.filter(doc => doc.id !== existingClassId)
-    if (duplicateClasses.length > 0) {
-      errors.push("A class with this name and level already exists")
+    // Validate schema (full for create, partial for update)
+    const isUpdate = Boolean(existingClassId)
+    const validatedData = isUpdate ? classUpdateSchema.parse(data) : classSchema.parse(data)
+
+    // Check for duplicate class names only when both fields are present
+    if ((!isUpdate) || (validatedData.name && validatedData.level)) {
+      const classesRef = collection(db, "classes")
+      const duplicateQuery = query(
+        classesRef,
+        where("school_id", "==", schoolId),
+        where("name", "==", validatedData.name || data.name),
+        where("level", "==", validatedData.level || data.level)
+      )
+      const duplicateSnapshot = await getDocs(duplicateQuery)
+
+      const duplicateClasses = duplicateSnapshot.docs.filter(doc => doc.id !== existingClassId)
+      if (duplicateClasses.length > 0) {
+        errors.push("A class with this name and level already exists")
+      }
     }
 
     // Validate teacher assignment
-    if (data.teacher_id) {
-      const teacherRef = doc(db, "teachers", data.teacher_id)
+    if (validatedData.teacher_id || data.teacher_id) {
+      const teacherId = validatedData.teacher_id || data.teacher_id
+      const teacherRef = doc(db, "teachers", teacherId as string)
       const teacherDoc = await getDoc(teacherRef)
-      
+
       if (!teacherDoc.exists()) {
         errors.push("Selected teacher does not exist")
       } else {
@@ -95,25 +99,29 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
         if (teacherData.school_id !== schoolId) {
           errors.push("Selected teacher does not belong to this school")
         }
-        
+
         // Check if teacher is already assigned to another class
+        const classesRef = collection(db, "classes")
         const teacherClassesQuery = query(
           classesRef,
           where("school_id", "==", schoolId),
-          where("teacher_id", "==", data.teacher_id)
+          where("teacher_id", "==", teacherId)
         )
         const teacherClassesSnapshot = await getDocs(teacherClassesQuery)
         const teacherClasses = teacherClassesSnapshot.docs.filter(doc => doc.id !== existingClassId)
-        
+
         if (teacherClasses.length > 0) {
           warnings.push("This teacher is already assigned to another class")
         }
       }
     }
 
-    // Validate capacity
-    if (data.capacity < 1) {
-      errors.push("Class capacity must be at least 1")
+    // Validate capacity when provided (or always for creates)
+    if ((!isUpdate && (validatedData as any).capacity !== undefined) || (isUpdate && (data.capacity !== undefined))) {
+      const cap = isUpdate ? Number(data.capacity) : Number((validatedData as any).capacity)
+      if (Number.isNaN(cap) || cap < 1) {
+        errors.push("Class capacity must be at least 1")
+      }
     }
 
     return {
@@ -123,7 +131,7 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      errors.push(...error.errors.map(e => e.message))
+      errors.push(...error.errors.map(e => e.message || "Required"))
     } else {
       errors.push("Validation failed")
     }
@@ -151,9 +159,9 @@ export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWi
     const teachersRef = collection(db, "teachers")
     const teachersQuery = query(teachersRef, where("school_id", "==", schoolId))
     const teachersSnapshot = await getDocs(teachersQuery)
-    const teachers = teachersSnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
+    const teachers = teachersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
     } as any))
 
     // Fetch students count efficiently using aggregation
@@ -175,7 +183,7 @@ export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWi
     const classesWithDetails: ClassWithDetails[] = classesList.map((cls) => {
       const studentCount = studentCounts[cls.name] || 0
       const teacher = teachers.find(t => t.id === cls.teacher_id)
-      
+
       return {
         ...cls,
         students_count: studentCount,
@@ -221,7 +229,7 @@ export const fetchTeachers = async (schoolId: string) => {
 
 // CRUD operations
 export const createClass = async (
-  classData: any, 
+  classData: any,
   schoolInfo: { school_id: string; schoolName: string },
   userId?: string,
   userName?: string
@@ -265,8 +273,8 @@ export const createClass = async (
 }
 
 export const updateClass = async (
-  classId: string, 
-  updateData: any, 
+  classId: string,
+  updateData: any,
   schoolInfo: { school_id: string; schoolName: string },
   previousTeacherId?: string
 ): Promise<{ previousTeacherId?: string; newTeacherId?: string; hasTeacherChanged: boolean }> => {
@@ -307,7 +315,7 @@ export const deleteClass = async (classId: string): Promise<void> => {
     const studentsRef = collection(db, "students")
     const studentsQuery = query(studentsRef, where("class_id", "==", classId))
     const studentsSnapshot = await getDocs(studentsQuery)
-    
+
     if (!studentsSnapshot.empty) {
       throw new Error("Cannot delete class with enrolled students. Please reassign students first.")
     }

@@ -32,8 +32,8 @@ interface Subject {
   department?: string
   description?: string
   level?: string
-  assigned_teacher?: string
-  assigned_teacher_name?: string
+  assigned_teacher?: string | null
+  assigned_teacher_name?: string | null
   created_at?: Timestamp
   updated_at?: Timestamp
 }
@@ -73,7 +73,7 @@ const getLevelOptions = (stage: string) => {
       return [
         "All",
         "Prep 1",
-        "Prep 2", 
+        "Prep 2",
         "Prep 3",
         "Prep 4",
         "Prep 5",
@@ -90,7 +90,7 @@ const getLevelOptions = (stage: string) => {
       return [
         "All",
         "SSS 1",
-        "SSS 2", 
+        "SSS 2",
         "SSS 3"
       ]
     default:
@@ -120,7 +120,7 @@ export default function SubjectsPage() {
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
   const [selectedTeacher, setSelectedTeacher] = useState<string>("")
-  
+
   // State for department dialogs
   const [isAddDepartmentDialogOpen, setIsAddDepartmentDialogOpen] = useState(false)
   const [departmentFormData, setDepartmentFormData] = useState({
@@ -160,7 +160,8 @@ export default function SubjectsPage() {
   useEffect(() => {
     const loadSchoolInfo = async () => {
       const info = await getCurrentSchoolInfo()
-      console.log("School info loaded:", info)
+      console.log("🏫 School info loaded:", info)
+      
       setSchoolInfo(info)
       setFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
     }
@@ -209,25 +210,53 @@ export default function SubjectsPage() {
           setDepartments(departmentsList)
         }
 
-        // Fetch teachers
-        const teachersRef = collection(db, "teachers")
-        const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
-        const teachersSnapshot = await getDocs(teachersQuery)
-        const teachersList: Teacher[] = teachersSnapshot.docs.map(
-          (doc) =>
-          ({
-            id: doc.id,
-            ...doc.data(),
-          } as Teacher),
-        )
+        // Fetch teachers with proper error handling for permissions
+        console.log('Fetching teachers for school_id:', schoolInfo.school_id)
+        try {
+          const teachersRef = collection(db, "teachers")
+          const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
+          const teachersSnapshot = await getDocs(teachersQuery)
+          console.log('Teachers snapshot size:', teachersSnapshot.size)
+          
+          const teachersList: Teacher[] = teachersSnapshot.docs.map(
+            (doc) => {
+              const teacherData = doc.data()
+              console.log('Teacher data:', { id: doc.id, ...teacherData })
+              return {
+                id: doc.id,
+                ...teacherData,
+              } as Teacher
+            }
+          )
 
-        // Sort teachers by name
-        teachersList.sort((a, b) => {
-          const nameA = a.firstname && a.lastname ? `${a.firstname} ${a.lastname}` : a.name || ""
-          const nameB = b.firstname && b.lastname ? `${b.firstname} ${b.lastname}` : b.name || ""
-          return nameA.localeCompare(nameB)
-        })
-        setTeachers(teachersList)
+          console.log('Teachers list before sorting:', teachersList)
+          // Sort teachers by name
+          teachersList.sort((a, b) => {
+            const nameA = a.firstname && a.lastname ? `${a.firstname} ${a.lastname}` : a.name || ""
+            const nameB = b.firstname && b.lastname ? `${b.firstname} ${b.lastname}` : b.name || ""
+            return nameA.localeCompare(nameB)
+          })
+          console.log('Teachers list after sorting:', teachersList)
+          setTeachers(teachersList)
+        } catch (teacherError: any) {
+          console.error('Error fetching teachers:', teacherError)
+          if (teacherError?.code === 'permission-denied') {
+            console.error('❌ Permission denied when fetching teachers. Check Firebase security rules.')
+            toast({
+              title: "Permission Error",
+              description: "Unable to access teachers data. Please contact your administrator.",
+              variant: "destructive",
+            })
+          } else {
+            console.error('❌ Unknown error when fetching teachers:', teacherError.message)
+            toast({
+              title: "Error",
+              description: "Failed to load teachers data",
+              variant: "destructive",
+            })
+          }
+          setTeachers([]) // Set empty array so UI shows "no teachers"
+        }
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -259,7 +288,7 @@ export default function SubjectsPage() {
   const generateSubjectCode = () => {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     const numbers = '0123456789'
-    
+
     let code = ''
     // Generate 3 random letters
     for (let i = 0; i < 3; i++) {
@@ -269,7 +298,7 @@ export default function SubjectsPage() {
     for (let i = 0; i < 3; i++) {
       code += numbers.charAt(Math.floor(Math.random() * numbers.length))
     }
-    
+
     setFormData((prev) => ({ ...prev, code }))
   }
 
@@ -287,12 +316,12 @@ export default function SubjectsPage() {
     setIsSearchingSubjectCode(true)
     try {
       console.log('Searching for subject code:', subjectCodeSearchQuery)
-      
+
       // Search in the local subjects array
-      const foundSubject = subjects.find(subject => 
+      const foundSubject = subjects.find(subject =>
         subject.code.toLowerCase() === subjectCodeSearchQuery.toLowerCase()
       )
-      
+
       if (foundSubject) {
         // Auto-populate form with subject data
         setFormData((prev) => ({
@@ -303,9 +332,9 @@ export default function SubjectsPage() {
           description: foundSubject.description || prev.description,
           level: foundSubject.level || prev.level,
         }))
-        
+
         console.log('Form updated with subject data')
-        
+
         toast({
           title: "Success",
           description: `Subject information retrieved for ${foundSubject.name}`,
@@ -315,14 +344,14 @@ export default function SubjectsPage() {
       }
     } catch (error) {
       console.error('Subject search failed:', error)
-      
+
       let errorMessage = "Subject search failed"
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
           errorMessage = `Subject code "${subjectCodeSearchQuery}" not found in the database`
         }
       }
-      
+
       toast({
         title: "Subject Not Found",
         description: errorMessage,
@@ -565,8 +594,8 @@ export default function SubjectsPage() {
         return
       }
 
-      const teacherName = teacher.firstname && teacher.lastname 
-        ? `${teacher.firstname} ${teacher.lastname}` 
+      const teacherName = teacher.firstname && teacher.lastname
+        ? `${teacher.firstname} ${teacher.lastname}`
         : teacher.name || "Teacher"
       const teacherEmail = teacher.email || teacher.emailaddress || ""
 
@@ -577,6 +606,15 @@ export default function SubjectsPage() {
         assigned_teacher_name: teacherName,
         updated_at: Timestamp.fromDate(new Date())
       }, { merge: true })
+
+      // Update teacher document with assigned subject
+      console.log("🔄 Updating teacher document:", selectedTeacher, "with subject:", selectedSubject.name)
+      await setDoc(doc(db, "teachers", selectedTeacher), {
+        subject: selectedSubject.name,
+        subject_id: selectedSubject.id,
+        updated_at: Timestamp.fromDate(new Date())
+      }, { merge: true })
+      console.log("✅ Teacher document updated successfully")
 
       // Send notification to teacher
       try {
@@ -594,8 +632,8 @@ export default function SubjectsPage() {
       }
 
       // Update local state
-      setSubjects(subjects.map(subject => 
-        subject.id === selectedSubject.id 
+      setSubjects(subjects.map(subject =>
+        subject.id === selectedSubject.id
           ? { ...subject, assigned_teacher: selectedTeacher, assigned_teacher_name: teacherName }
           : subject
       ))
@@ -613,6 +651,70 @@ export default function SubjectsPage() {
       toast({
         title: "Error",
         description: "Failed to assign teacher",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUnassignTeacher = async (subject: Subject) => {
+    if (!subject.assigned_teacher) return
+
+    try {
+      // Get teacher details for notification
+      const teacher = teachers.find(t => t.id === subject.assigned_teacher)
+      const teacherName = teacher?.firstname && teacher?.lastname
+        ? `${teacher.firstname} ${teacher.lastname}`
+        : teacher?.name || "Teacher"
+      const teacherEmail = teacher?.email || teacher?.emailaddress || ""
+
+      // Update subject to remove assigned teacher
+      await setDoc(doc(db, "subjects", subject.id), {
+        ...subject,
+        assigned_teacher: null,
+        assigned_teacher_name: null,
+        updated_at: Timestamp.fromDate(new Date())
+      }, { merge: true })
+
+      // Update teacher document to remove assigned subject
+      await setDoc(doc(db, "teachers", subject.assigned_teacher), {
+        subject: null,
+        subject_id: null,
+        updated_at: Timestamp.fromDate(new Date())
+      }, { merge: true })
+
+      // Send notification to teacher about unassignment
+      if (teacherName && teacherEmail) {
+        try {
+          const { sendTeacherSubjectUnassignmentNotification } = await import("@/lib/notification-utils")
+          await sendTeacherSubjectUnassignmentNotification(
+            subject.assigned_teacher,
+            teacherName,
+            teacherEmail,
+            subject.name,
+            subject.code
+          )
+        } catch (error) {
+          console.error("Error sending teacher unassignment notification:", error)
+          // Don't fail the unassignment if notification fails
+        }
+      }
+
+      // Update local state
+      setSubjects(subjects.map(s =>
+        s.id === subject.id
+          ? { ...s, assigned_teacher: null, assigned_teacher_name: null } as Subject
+          : s
+      ))
+
+      toast({
+        title: "Success",
+        description: `Teacher unassigned from ${subject.name}`,
+      })
+    } catch (error) {
+      console.error("Error unassigning teacher:", error)
+      toast({
+        title: "Error",
+        description: "Failed to unassign teacher",
         variant: "destructive",
       })
     }
@@ -638,12 +740,12 @@ export default function SubjectsPage() {
   const levelOptions = getLevelOptions(schoolInfo.stage || "")
   const isSeniorSecondary = schoolInfo.stage === "Senior Secondary"
   console.log("School stage:", schoolInfo.stage, "Level options:", levelOptions, "Is Senior Secondary:", isSeniorSecondary)
-  
+
   // Debug: Check if stage matches exactly
   console.log("Stage comparison:", {
     stage: schoolInfo.stage,
     isPrimary: schoolInfo.stage === "Primary",
-    isJuniorSecondary: schoolInfo.stage === "Junior Secondary", 
+    isJuniorSecondary: schoolInfo.stage === "Junior Secondary",
     isSeniorSecondary: schoolInfo.stage === "Senior Secondary"
   })
 
@@ -736,27 +838,27 @@ export default function SubjectsPage() {
                           key={subject.id}
                           className="hover:bg-muted/50"
                         >
-                          <TableCell 
+                          <TableCell
                             className="font-medium cursor-pointer"
                             onClick={() => handleOpenDetailsDialog(subject)}
                           >
                             {subject.code}
                           </TableCell>
-                          <TableCell 
+                          <TableCell
                             className="cursor-pointer"
                             onClick={() => handleOpenDetailsDialog(subject)}
                           >
                             {subject.name}
                           </TableCell>
                           {isSeniorSecondary && (
-                            <TableCell 
+                            <TableCell
                               className="cursor-pointer"
                               onClick={() => handleOpenDetailsDialog(subject)}
                             >
                               {subject.department || "—"}
                             </TableCell>
                           )}
-                          <TableCell 
+                          <TableCell
                             className="cursor-pointer"
                             onClick={() => handleOpenDetailsDialog(subject)}
                           >
@@ -766,13 +868,35 @@ export default function SubjectsPage() {
                             {subject.assigned_teacher_name || "Not Assigned"}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenAssignTeacherDialog(subject)}
-                            >
-                              Assign Teacher
-                            </Button>
+                            <div className="flex gap-2">
+                              {subject.assigned_teacher ? (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleUnassignTeacher(subject)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    Unassign
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenAssignTeacherDialog(subject)}
+                                  >
+                                    Reassign
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenAssignTeacherDialog(subject)}
+                                >
+                                  Assign Teacher
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1041,12 +1165,12 @@ export default function SubjectsPage() {
             <form onSubmit={handleSubmitDepartment} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Department Name *</Label>
-                <Input 
-                  id="name" 
-                  value={departmentFormData.name} 
-                  onChange={handleDepartmentInputChange} 
+                <Input
+                  id="name"
+                  value={departmentFormData.name}
+                  onChange={handleDepartmentInputChange}
                   placeholder="e.g., Science, Commercial, Arts"
-                  required 
+                  required
                 />
               </div>
               <DialogFooter>
@@ -1067,27 +1191,43 @@ export default function SubjectsPage() {
                 Select a teacher to assign to {selectedSubject?.name} ({selectedSubject?.code})
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="teacher">Select Teacher</Label>
                 <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a teacher" />
+                    <SelectValue placeholder={isLoading ? "Loading teachers..." : teachers.length === 0 ? "No teachers found" : "Choose a teacher"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {teachers.map((teacher) => {
-                      const teacherName = teacher.firstname && teacher.lastname 
-                        ? `${teacher.firstname} ${teacher.lastname}` 
-                        : teacher.name || "Unknown Teacher"
-                      return (
-                        <SelectItem key={teacher.id} value={teacher.id}>
-                          {teacherName}
-                        </SelectItem>
-                      )
-                    })}
+                    {isLoading ? (
+                      <SelectItem value="loading" disabled>
+                        Loading teachers...
+                      </SelectItem>
+                    ) : teachers.length === 0 ? (
+                      <SelectItem value="no-teachers" disabled>
+                        No teachers available. Please add teachers first.
+                      </SelectItem>
+                    ) : (
+                      teachers.map((teacher) => {
+                        const teacherName = teacher.firstname && teacher.lastname
+                          ? `${teacher.firstname} ${teacher.lastname}`
+                          : teacher.name || "Unknown Teacher"
+                        console.log('Rendering teacher option:', { id: teacher.id, name: teacherName })
+                        return (
+                          <SelectItem key={teacher.id} value={teacher.id}>
+                            {teacherName}
+                          </SelectItem>
+                        )
+                      })
+                    )}
                   </SelectContent>
                 </Select>
+                {!isLoading && (
+                  <p className="text-xs text-gray-500">
+                    Found {teachers.length} teacher{teachers.length !== 1 ? 's' : ''} in your school
+                  </p>
+                )}
               </div>
             </div>
 

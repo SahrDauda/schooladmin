@@ -29,7 +29,7 @@ export default function TeacherAttendanceQR() {
       // Get admin info from localStorage
       const adminId = localStorage.getItem("adminId")
       const adminName = localStorage.getItem("adminName") || "Principal"
-      
+
       if (!adminId) {
         toast({
           title: "Error",
@@ -42,7 +42,7 @@ export default function TeacherAttendanceQR() {
       // Get school info dynamically
       const schoolInfo = await getCurrentSchoolInfo()
       console.log("Debug - schoolInfo:", schoolInfo)
-      
+
       if (!schoolInfo.school_id || schoolInfo.school_id === "unknown" || schoolInfo.school_id === "error") {
         toast({
           title: "Error",
@@ -52,7 +52,7 @@ export default function TeacherAttendanceQR() {
         return
       }
 
-          const qrCodeId = `QR_${Date.now().toString().slice(-6)}`
+      const qrCodeId = `QR_${Date.now().toString().slice(-6)}`
       const location = "School Main Gate" // This could be made configurable
       const timestamp = new Date().toISOString()
 
@@ -164,22 +164,10 @@ export default function TeacherAttendanceQR() {
               <div className="p-4 border rounded-lg bg-white relative">
                 <QRCodeSVG
                   value={JSON.stringify(qrData)}
-                  size={200}
-                  level="M"
+                  size={220}
+                  level="H"
                   includeMargin={true}
                 />
-                {/* Logo overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="bg-white rounded-full p-2 shadow-lg">
-                    <Image
-                      src="/schooltech.png"
-                      alt="School Logo"
-                      width={40}
-                      height={40}
-                      className="rounded-full"
-                    />
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -214,7 +202,7 @@ export default function TeacherAttendanceQR() {
             {/* Instructions */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-800">
-                <strong>Instructions:</strong> Teachers should scan this QR code using their mobile device 
+                <strong>Instructions:</strong> Teachers should scan this QR code using their mobile device
                 to sign in for the day. The code refreshes automatically every 15 seconds for security.
               </p>
             </div>

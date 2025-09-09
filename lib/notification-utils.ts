@@ -196,6 +196,47 @@ export async function sendTeacherSubjectAssignmentNotification(
   }
 }
 
+// Admin-originated notification to a teacher about subject unassignment
+export async function sendTeacherSubjectUnassignmentNotification(
+  teacherId: string,
+  teacherName: string,
+  teacherEmail: string,
+  subjectName: string,
+  subjectCode: string
+) {
+  try {
+    const notificationId = await createNotification({
+      recipient_type: "teacher",
+      recipient_id: teacherId,
+      title: "Subject Unassignment",
+      message: `You have been unassigned from teaching ${subjectName} (${subjectCode}). Please contact the administration if you have any questions.`,
+      type: NotificationType.System,
+      action_url: "/subjects",
+      sender_type: "admin",
+    })
+
+    const emailResponse = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'teacher_unassignment',
+        email: teacherEmail,
+        name: teacherName,
+        teacherId,
+        subjectName,
+        subjectCode,
+      }),
+    })
+
+    try { await emailResponse.json() } catch { }
+
+    return notificationId
+  } catch (error) {
+    console.error('Error sending teacher subject unassignment notification:', error)
+    throw error
+  }
+}
+
 // Admin-originated notification to a teacher about class assignment
 export async function sendTeacherClassAssignmentNotification(
   teacherId: string,

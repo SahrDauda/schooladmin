@@ -57,6 +57,17 @@ interface Class {
   section?: string
 }
 
+interface SchoolStage {
+  id: string
+  name: string
+  forms: Array<{
+    id: string
+    name: string
+    level: string
+    sections?: string[]
+  }>
+}
+
 // Validation schemas
 const timetableEntrySchema = z.object({
   class_id: z.string().min(1, "Class is required"),
@@ -79,16 +90,18 @@ const examEntrySchema = z.object({
   examiner: z.string().optional(),
 })
 
-// Default time periods for class timetable
+// Enhanced time periods based on the school template
 const DEFAULT_TIME_PERIODS = [
-  { start: "08:00", end: "09:00" },
-  { start: "09:00", end: "10:00" },
-  { start: "10:00", end: "11:00" },
-  { start: "11:00", end: "12:00" },
-  { start: "12:00", end: "13:00" },
-  { start: "13:00", end: "14:00" },
-  { start: "14:00", end: "15:00" },
-  { start: "15:00", end: "16:00" },
+  { start: "08:00", end: "08:20", label: "8:00 - 8:20", type: "devotion" },
+  { start: "08:20", end: "08:30", label: "8:20 - 8:30", type: "break" },
+  { start: "08:30", end: "09:15", label: "8:30AM - 9:15AM", type: "class", duration: "45MINUTES" },
+  { start: "09:15", end: "10:00", label: "9:15AM - 10:00AM", type: "class", duration: "45MINUTES" },
+  { start: "10:00", end: "10:45", label: "10:00AM - 10:45AM", type: "class", duration: "45MINUTES" },
+  { start: "10:45", end: "11:30", label: "10:45AM - 11:30AM", type: "class", duration: "45MINUTES" },
+  { start: "11:30", end: "12:00", label: "11:30 - 12:00PM", type: "break", duration: "30M" },
+  { start: "12:00", end: "12:40", label: "12:00PM - 12:40PM", type: "class", duration: "40MINUTES" },
+  { start: "12:40", end: "13:20", label: "12:40PM - 1:20PM", type: "class", duration: "40MINUTES" },
+  { start: "13:20", end: "14:00", label: "1:20PM - 2:00PM", type: "class", duration: "40MINUTES" },
 ]
 
 // Helper function to format time
@@ -125,9 +138,48 @@ const isCurrentTimePeriod = (day: string, period: { start: string; end: string }
   return currentTime >= startTime && currentTime < endTime
 }
 
+// Define school stages with their respective forms
+const SCHOOL_STAGES: SchoolStage[] = [
+  {
+    id: "primary",
+    name: "Primary School",
+    forms: [
+      { id: "class-1", name: "Class 1", level: "1", sections: ["A", "B"] },
+      { id: "class-2", name: "Class 2", level: "2", sections: ["A", "B"] },
+      { id: "class-3", name: "Class 3", level: "3", sections: ["A", "B"] },
+      { id: "class-4", name: "Class 4", level: "4", sections: ["A", "B"] },
+      { id: "class-5", name: "Class 5", level: "5", sections: ["A", "B"] },
+      { id: "class-6", name: "Class 6", level: "6", sections: ["A", "B"] },
+    ],
+  },
+  {
+    id: "junior-secondary",
+    name: "Junior Secondary School",
+    forms: [
+      { id: "jss-1", name: "JSS 1", level: "JSS 1", sections: ["A", "B", "C"] },
+      { id: "jss-2", name: "JSS 2", level: "JSS 2", sections: ["A", "B", "C"] },
+      { id: "jss-3", name: "JSS 3", level: "JSS 3", sections: ["A", "B", "C"] },
+    ],
+  },
+  {
+    id: "senior-secondary",
+    name: "Senior Secondary School",
+    forms: [
+      { id: "sss-1", name: "SSS 1", level: "SSS 1", sections: ["Science A", "Science B", "Arts A", "Arts B", "Commercial A", "Commercial B"] },
+      { id: "sss-2", name: "SSS 2", level: "SSS 2", sections: ["Science A", "Science B", "Arts A", "Arts B", "Commercial A", "Commercial B"] },
+      { id: "sss-3", name: "SSS 3", level: "SSS 3", sections: ["Science A", "Science B", "Arts A", "Arts B", "Commercial A", "Commercial B"] },
+    ],
+  },
+]
+
 export default function TimetablePage() {
   // State for tabs
   const [activeTab, setActiveTab] = useState("class")
+
+  // State for school stages
+  const [selectedStageId, setSelectedStageId] = useState("primary")
+  const [selectedFormId, setSelectedFormId] = useState("")
+  const [selectedSection, setSelectedSection] = useState("")
 
   // State for classes and teachers
   const [classes, setClasses] = useState<Class[]>([])
@@ -150,7 +202,7 @@ export default function TimetablePage() {
   const [selectedEntry, setSelectedEntry] = useState<any>(null)
 
   // State for school info
-  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
+  const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "", stage: "" })
 
   // State for form data
   const [classTimetableFormData, setClassTimetableFormData] = useState({
@@ -181,6 +233,62 @@ export default function TimetablePage() {
 
   // State for submission
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Derived values for current form selection
+  const currentStage = SCHOOL_STAGES.find(stage => stage.id === selectedStageId)
+  const currentForm = currentStage?.forms.find(form => form.id === selectedFormId)
+  const currentFormDisplay = currentForm ? `${currentForm.name}${selectedSection ? ` ${selectedSection}` : ''}` : ''
+
+  // Set default form selection when stage changes
+  useEffect(() => {
+    if (selectedStageId) {
+      const stage = SCHOOL_STAGES.find(s => s.id === selectedStageId)
+      if (stage && stage.forms.length > 0 && !selectedFormId) {
+        setSelectedFormId(stage.forms[0].id)
+      }
+    }
+  }, [selectedStageId, selectedFormId])
+
+  // Set default section when form changes
+  useEffect(() => {
+    if (selectedFormId) {
+      const stage = SCHOOL_STAGES.find(s => s.id === selectedStageId)
+      const form = stage?.forms.find(f => f.id === selectedFormId)
+      if (form && form.sections && form.sections.length > 0 && !selectedSection) {
+        setSelectedSection(form.sections[0])
+      }
+    }
+  }, [selectedStageId, selectedFormId, selectedSection])
+
+  // Create or find matching class when form/section is selected
+  useEffect(() => {
+    if (selectedFormId && currentForm && schoolInfo.school_id) {
+      const classIdentifier = selectedSection ? 
+        `${currentForm.level}_${selectedSection}` : 
+        currentForm.level
+      
+      // Try to find existing class
+      const existingClass = classes.find(cls => 
+        cls.name === currentForm.name && 
+        cls.level === currentForm.level &&
+        (selectedSection ? cls.section === selectedSection : !cls.section)
+      )
+
+      if (existingClass) {
+        setSelectedClassId(existingClass.id)
+        setSelectedClassName(`${currentForm.name}${selectedSection ? ` ${selectedSection}` : ''}`)
+        setClassTimetableFormData((prev) => ({ ...prev, class_id: existingClass.id }))
+        setExamTimetableFormData((prev) => ({ ...prev, class_id: existingClass.id }))
+      } else {
+        // Create virtual class ID for timetable purposes
+        const virtualClassId = `${selectedStageId}_${selectedFormId}${selectedSection ? `_${selectedSection}` : ''}`
+        setSelectedClassId(virtualClassId)
+        setSelectedClassName(currentFormDisplay)
+        setClassTimetableFormData((prev) => ({ ...prev, class_id: virtualClassId }))
+        setExamTimetableFormData((prev) => ({ ...prev, class_id: virtualClassId }))
+      }
+    }
+  }, [selectedFormId, selectedSection, currentForm, classes, schoolInfo.school_id])
 
   useEffect(() => {
     const loadSchoolInfo = async () => {
@@ -268,25 +376,24 @@ export default function TimetablePage() {
     }
   }, [schoolInfo.school_id])
 
-  // Fetch timetable entries when selected class changes
+  // Fetch all timetable entries when school info is available
   useEffect(() => {
-    if (selectedClassId && schoolInfo.school_id) {
-      fetchTimetableEntries(selectedClassId)
+    if (schoolInfo.school_id) {
+      fetchAllTimetableEntries()
     }
-  }, [selectedClassId, schoolInfo.school_id])
+  }, [schoolInfo.school_id])
 
-  // Fetch timetable entries
-  const fetchTimetableEntries = async (classId: string) => {
+  // Fetch all timetable entries for the school
+  const fetchAllTimetableEntries = async () => {
     if (!schoolInfo.school_id) return
 
     setIsLoading(true)
     try {
-      // Fetch class timetable entries
+      // Fetch all class timetable entries for the school
       const classTimetableRef = collection(db, "timetable")
       const classTimetableQuery = query(
         classTimetableRef,
         where("school_id", "==", schoolInfo.school_id),
-        where("class_id", "==", classId),
         where("type", "==", "class"),
       )
       const classTimetableSnapshot = await getDocs(classTimetableQuery)
@@ -298,12 +405,11 @@ export default function TimetablePage() {
         } as TimetableEntry),
       )
 
-      // Fetch exam timetable entries
+      // Fetch all exam timetable entries for the school
       const examTimetableRef = collection(db, "timetable")
       const examTimetableQuery = query(
         examTimetableRef,
         where("school_id", "==", schoolInfo.school_id),
-        where("class_id", "==", classId),
         where("type", "==", "exam"),
       )
       const examTimetableSnapshot = await getDocs(examTimetableQuery)
@@ -388,7 +494,7 @@ export default function TimetablePage() {
       })
 
       // Refresh timetable entries
-      fetchTimetableEntries(selectedClassId)
+      fetchAllTimetableEntries()
 
       // Reset form and close dialog
       setClassTimetableFormData({
@@ -457,7 +563,7 @@ export default function TimetablePage() {
       })
 
       // Refresh timetable entries
-      fetchTimetableEntries(selectedClassId)
+      fetchAllTimetableEntries()
 
       // Reset form and close dialog
       setExamTimetableFormData({
@@ -537,6 +643,20 @@ export default function TimetablePage() {
   // Days of the week in order
   const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+  // Get form range based on school stage
+  const getFormRange = (stage: string) => {
+    switch (stage) {
+      case "primary":
+        return "Primary 1 - 6"
+      case "junior-secondary":
+        return "JSS 1 - 3"
+      case "senior-secondary":
+        return "SSS 1 - 3"
+      default:
+        return "All Classes"
+    }
+  }
+
   // Add a new function to handle adding a new entry from the draft timetable
   const handleAddFromDraft = (day: string, period: { start: string; end: string }) => {
     setClassTimetableFormData({
@@ -612,22 +732,8 @@ export default function TimetablePage() {
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-2xl font-semibold">Timetable</CardTitle>
-            <div className="flex items-center gap-2">
-              <Select value={selectedClassId} onValueChange={handleClassChange}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select class" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name} - {cls.level} {cls.section}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <CardHeader>
+            <CardTitle className="text-2xl font-semibold">Master Timetable - All Classes</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="class" onValueChange={setActiveTab}>
@@ -646,96 +752,53 @@ export default function TimetablePage() {
                   <div className="flex justify-center items-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                ) : !selectedClassId ? (
-                  <div className="text-center py-8 text-muted-foreground">Please select a class to view timetable.</div>
-                ) : sortedClassTimetable.length === 0 ? (
-                  <div className="space-y-4">
-                    <div className="text-center py-2 text-muted-foreground">
-                      No timetable entries found for this class. Use the draft timetable below to add subjects.
-                    </div>
-                    <div className="overflow-x-auto">
-                      <Table className="border">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-[100px]">Time</TableHead>
-                            {daysOfWeek.slice(0, 5).map((day) => (
-                              <TableHead key={day}>{day}</TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {DEFAULT_TIME_PERIODS.map((period) => (
-                            <TableRow key={`${period.start}-${period.end}`}>
-                              <TableCell className="font-medium">
-                                {formatTime(period.start)} - {formatTime(period.end)}
-                              </TableCell>
-                              {daysOfWeek.slice(0, 5).map((day) => (
-                                <TableCell key={day} className="h-16 align-middle">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="w-full h-full flex items-center justify-center"
-                                    onClick={() => handleAddFromDraft(day, period)}
-                                  >
-                                    <Plus className="h-5 w-5 text-muted-foreground" />
-                                    <span className="sr-only">
-                                      Add {day} {period.start} class
-                                    </span>
-                                  </Button>
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                ) : !selectedFormId ? (
+                  <div className="text-center py-8 text-muted-foreground">Please select a form to view timetable.</div>
                 ) : (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     <div className="overflow-x-auto">
                       <Table className="border">
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-[100px]">Time</TableHead>
-                            {daysOfWeek.slice(0, 5).map((day) => (
-                              <TableHead key={day}>{day}</TableHead>
+                            <TableHead className="w-[80px]">Day</TableHead>
+                            <TableHead className="w-[120px]">Form</TableHead>
+                            {DEFAULT_TIME_PERIODS.filter(p => p.type === "class").map((period) => (
+                              <TableHead key={`${period.start}-${period.end}`} className="text-center min-w-[120px]">
+                                {formatTime(period.start)}<br />-<br />{formatTime(period.end)}
+                              </TableHead>
                             ))}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {DEFAULT_TIME_PERIODS.map((period) => (
-                            <TableRow key={`${period.start}-${period.end}`}>
-                              <TableCell className="font-medium">
-                                {formatTime(period.start)} - {formatTime(period.end)}
+                          {daysOfWeek.slice(0, 5).map((day) => (
+                            <TableRow key={day}>
+                              <TableCell className="font-medium">{day}</TableCell>
+                              <TableCell className="font-medium text-sm">
+                                {schoolInfo.stage ? getFormRange(schoolInfo.stage) : "All Classes"}
                               </TableCell>
-                              {daysOfWeek.slice(0, 5).map((day) => {
+                              {DEFAULT_TIME_PERIODS.filter(p => p.type === "class").map((period) => {
                                 // Find if there's an entry for this day and time period
                                 const entry = sortedClassTimetable.find(
                                   (e) => e.day === day && e.start_time === period.start && e.end_time === period.end,
                                 )
 
                                 return (
-                                  <TableCell
-                                    key={day}
-                                    className={`h-16 align-middle ${isCurrentTimePeriod(day, period) ? "bg-yellow-50" : ""}`}
-                                  >
+                                  <TableCell key={`${day}-${period.start}-${period.end}`} className="h-16 align-middle text-center">
                                     {entry ? (
-                                      <div className="p-1 bg-blue-50 rounded-md border border-blue-100">
-                                        <div className="font-medium text-sm">{entry.subject}</div>
-                                        <div className="text-xs text-muted-foreground flex justify-between">
-                                          <span>
-                                            {entry.teacher_id ? getTeacherName(entry.teacher_id) : "Not Assigned"}
-                                          </span>
-                                          <span>{entry.room || "N/A"}</span>
+                                      <div className="p-1 bg-gray-50 rounded-md border border-gray-200 text-xs">
+                                        <div className="font-medium">{entry.subject}</div>
+                                        <div className="text-muted-foreground truncate">
+                                          {entry.teacher_id ? getTeacherName(entry.teacher_id) : "Not Assigned"}
                                         </div>
-                                        <div className="mt-1 flex justify-end">
+                                        <div className="text-muted-foreground">{entry.room || "N/A"}</div>
+                                        <div className="mt-1 flex justify-center">
                                           <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-5 w-5"
+                                            className="h-4 w-4"
                                             onClick={() => handleDeleteEntry(entry.id)}
                                           >
-                                            <Trash2 className="h-3 w-3" />
+                                            <Trash2 className="h-2 w-2" />
                                           </Button>
                                         </div>
                                       </div>
@@ -746,7 +809,7 @@ export default function TimetablePage() {
                                         className="w-full h-full flex items-center justify-center"
                                         onClick={() => handleAddFromDraft(day, period)}
                                       >
-                                        <Plus className="h-5 w-5 text-muted-foreground" />
+                                        <Plus className="h-4 w-4 text-muted-foreground" />
                                         <span className="sr-only">
                                           Add {day} {period.start} class
                                         </span>
