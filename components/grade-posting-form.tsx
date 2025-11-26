@@ -11,8 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { toast } from "@/hooks/use-toast"
 import { Plus, Edit, Save, X, CheckCircle, AlertCircle } from "lucide-react"
-import { collection, addDoc, query, where, getDocs, updateDoc, doc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 
 interface GradePostingFormProps {
   teacherId: string
@@ -42,11 +41,11 @@ interface GradeData {
   updated_at: Date
 }
 
-export default function GradePostingForm({ 
-  teacherId, 
-  teacherSubject, 
-  schoolId, 
-  onGradePosted 
+export default function GradePostingForm({
+  teacherId,
+  teacherSubject,
+  schoolId,
+  onGradePosted
 }: GradePostingFormProps) {
   const [students, setStudents] = useState<Student[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
@@ -72,22 +71,25 @@ export default function GradePostingForm({
   const fetchData = async () => {
     try {
       // Fetch teacher's assigned classes
-      const classesQuery = query(
-        collection(db, "classes"),
-        where("teacher_id", "==", teacherId)
-      )
-      const classesSnapshot = await getDocs(classesQuery)
-      const teacherClasses = classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setClasses(teacherClasses)
+      const { data: teacherClasses, error: classesError } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('teacher_id', teacherId)
+
+      if (classesError) throw classesError
+      setClasses(teacherClasses || [])
 
       // Fetch subjects
-      const subjectsSnapshot = await getDocs(collection(db, "subjects"))
-      const subjectsData = subjectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setSubjects(subjectsData)
+      const { data: subjectsData, error: subjectsError } = await supabase
+        .from('subjects')
+        .select('*')
+
+      if (subjectsError) throw subjectsError
+      setSubjects(subjectsData || [])
 
       // Set default subject to teacher's subject
-      if (teacherSubject) {
-        const teacherSubjectObj = subjectsData.find(s => s.name === teacherSubject)
+      if (teacherSubject && subjectsData) {
+        const teacherSubjectObj = subjectsData.find((s: any) => s.name === teacherSubject)
         if (teacherSubjectObj) {
           setSelectedSubject(teacherSubjectObj.id)
         }
@@ -104,20 +106,22 @@ export default function GradePostingForm({
 
   const fetchStudentsByClass = async (classId: string) => {
     try {
-      const studentsQuery = query(
-        collection(db, "students"),
-        where("class", "==", classId),
-        where("school_id", "==", schoolId)
-      )
-      const studentsSnapshot = await getDocs(studentsQuery)
-      const studentsData = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setStudents(studentsData)
+      const { data: studentsData, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('class', classId)
+        .eq('school_id', schoolId)
+
+      if (error) throw error
+      setStudents(studentsData || [])
 
       // Initialize bulk grades
       const initialBulkGrades: { [studentId: string]: { score: string; comment: string } } = {}
-      studentsData.forEach(student => {
-        initialBulkGrades[student.id] = { score: "", comment: "" }
-      })
+      if (studentsData) {
+        studentsData.forEach((student: any) => {
+          initialBulkGrades[student.id] = { score: "", comment: "" }
+        })
+      }
       setBulkGrades(initialBulkGrades)
 
       // Check for existing grades
@@ -136,27 +140,29 @@ export default function GradePostingForm({
     if (!selectedSubject || !selectedTerm || !selectedYear) return
 
     try {
-      const gradesQuery = query(
-        collection(db, "grades"),
-        where("subject_id", "==", selectedSubject),
-        where("term", "==", selectedTerm),
-        where("year", "==", selectedYear),
-        where("teacher_id", "==", teacherId)
-      )
-      const gradesSnapshot = await getDocs(gradesQuery)
-      const existingGradesData = gradesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setExistingGrades(existingGradesData)
+      const { data: existingGradesData, error } = await supabase
+        .from('grades')
+        .select('*')
+        .eq('subject_id', selectedSubject)
+        .eq('term', selectedTerm)
+        .eq('year', selectedYear)
+        .eq('teacher_id', teacherId)
+
+      if (error) throw error
+      setExistingGrades(existingGradesData || [])
 
       // Pre-fill existing grades in bulk form
       const updatedBulkGrades = { ...bulkGrades }
-      existingGradesData.forEach(grade => {
-        if (updatedBulkGrades[grade.student_id]) {
-          updatedBulkGrades[grade.student_id] = {
-            score: grade.score.toString(),
-            comment: grade.comment || ""
+      if (existingGradesData) {
+        existingGradesData.forEach((grade: any) => {
+          if (updatedBulkGrades[grade.student_id]) {
+            updatedBulkGrades[grade.student_id] = {
+              score: grade.score.toString(),
+              comment: grade.comment || ""
+            }
           }
-        }
-      })
+        })
+      }
       setBulkGrades(updatedBulkGrades)
     } catch (error) {
       console.error("Error checking existing grades:", error)
@@ -187,12 +193,12 @@ export default function GradePostingForm({
 
     setIsBulkPosting(true)
     try {
-      const gradesToPost: GradeData[] = []
+      const gradesToPost: any[] = []
       const gradesToUpdate: { id: string; data: Partial<GradeData> }[] = []
 
       for (const [studentId, gradeData] of Object.entries(bulkGrades)) {
         if (gradeData.score.trim()) {
-          const gradeInfo: GradeData = {
+          const gradeInfo: any = {
             student_id: studentId,
             subject_id: selectedSubject,
             term: selectedTerm,
@@ -201,8 +207,7 @@ export default function GradePostingForm({
             comment: gradeData.comment.trim() || undefined,
             teacher_id: teacherId,
             school_id: schoolId,
-            created_at: new Date(),
-            updated_at: new Date(),
+            updated_at: new Date().toISOString(),
           }
 
           // Check if grade already exists
@@ -217,19 +222,29 @@ export default function GradePostingForm({
               }
             })
           } else {
+            gradeInfo.created_at = new Date().toISOString()
             gradesToPost.push(gradeInfo)
           }
         }
       }
 
       // Post new grades
-      for (const grade of gradesToPost) {
-        await addDoc(collection(db, "grades"), grade)
+      if (gradesToPost.length > 0) {
+        const { error: insertError } = await supabase
+          .from('grades')
+          .insert(gradesToPost)
+
+        if (insertError) throw insertError
       }
 
       // Update existing grades
       for (const gradeUpdate of gradesToUpdate) {
-        await updateDoc(doc(db, "grades", gradeUpdate.id), gradeUpdate.data)
+        const { error: updateError } = await supabase
+          .from('grades')
+          .update(gradeUpdate.data)
+          .eq('id', gradeUpdate.id)
+
+        if (updateError) throw updateError
       }
 
       toast({
@@ -364,15 +379,15 @@ export default function GradePostingForm({
               Post Grades - {getClassName(selectedClass)} - {getSubjectName(selectedSubject)}
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{selectedTerm}</Badge>
                 <Badge variant="outline">{selectedYear}</Badge>
               </div>
-              <Button 
-                onClick={handleBulkGradePost} 
+              <Button
+                onClick={handleBulkGradePost}
                 disabled={isBulkPosting}
                 className="flex items-center gap-2"
               >
@@ -403,7 +418,7 @@ export default function GradePostingForm({
                 {students.map((student) => {
                   const existingGrade = existingGrades.find(g => g.student_id === student.id)
                   const gradeData = bulkGrades[student.id] || { score: "", comment: "" }
-                  
+
                   return (
                     <TableRow key={student.id}>
                       <TableCell className="font-medium">
@@ -457,4 +472,4 @@ export default function GradePostingForm({
       </Dialog>
     </div>
   )
-} 
+}

@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Users,
@@ -32,14 +31,9 @@ import {
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
-import { sendWelcomeNotification, testNotificationSystem } from "@/lib/notification-utils"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Eye, EyeOff } from "lucide-react"
+import { sendWelcomeNotification, testNotificationSystem, createNotification } from "@/lib/notification-utils"
 import { useAuth } from "@/hooks/use-auth"
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import FirstLoginModal from "@/components/first-login-modal"
 
 
 type SchoolAdmin = {
@@ -76,143 +70,45 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [schoolId, setSchoolId] = useState("")
   const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [isFirstTimeLogin, setIsFirstTimeLogin] = useState(false)
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [changingPassword, setChangingPassword] = useState(false)
+
+  // First Login State
+  const [showFirstLoginModal, setShowFirstLoginModal] = useState(false)
 
   // Check if this is first time login
   useEffect(() => {
-    // Only run on client side
-    if (typeof window !== "undefined") {
-      const checkFirstTimeLogin = () => {
-        const adminId = localStorage.getItem("adminId")
-        if (adminId) {
-          // Check if this is the first time login by checking if password was just set
-          const hasLoggedInBefore = localStorage.getItem("hasLoggedInBefore")
-          if (hasLoggedInBefore === "false") {
-            setIsFirstTimeLogin(true)
-            setShowPasswordModal(true)
-          }
-        }
-      }
+    const checkFirstTimeLogin = async () => {
+      if (!admin?.id) return
 
+      try {
+        const { data, error } = await supabase
+          .from('schooladmin')
+          .select('hasloggedinbefore')
+          .eq('id', admin.id)
+          .single()
+
+        if (error) {
+          // Ignore "Row not found" error, it means the admin profile might not exist yet or RLS is blocking
+          if (error.code === 'PGRST116') {
+            console.warn("Admin profile not found for first login check.")
+            return
+          }
+          console.error("Error checking first login status:", JSON.stringify(error, null, 2))
+          return
+        }
+
+        // If hasloggedinbefore is false (or null), show the modal
+        if (data && !data.hasloggedinbefore) {
+          setShowFirstLoginModal(true)
+        }
+      } catch (err) {
+        console.error("Failed to check login status:", err)
+      }
+    }
+
+    if (admin) {
       checkFirstTimeLogin()
     }
-  }, [])
-
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setChangingPassword(true)
-
-    try {
-      // Validate passwords
-      if (password.length < 6) {
-        toast({
-          title: "Password Too Short",
-          description: "Password must be at least 6 characters long.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (password !== confirmPassword) {
-        toast({
-          title: "Passwords Don't Match",
-          description: "Please make sure both passwords are the same.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Update password in Firestore
-      const adminId = admin?.id || localStorage.getItem("adminId")
-      if (adminId) {
-        await updateDoc(doc(db, "schooladmin", adminId), {
-          password: password
-        })
-
-        // Mark as logged in for the first time
-        localStorage.setItem("hasLoggedInBefore", "true")
-
-        toast({
-          title: "Password Set Successfully",
-          description: "Your password has been set. Welcome to the system!",
-        })
-
-        setShowPasswordModal(false)
-        setPassword("")
-        setConfirmPassword("")
-      }
-    } catch (error: any) {
-      toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update password.",
-        variant: "destructive",
-      })
-    } finally {
-      setChangingPassword(false)
-    }
-  }
-
-  const handleGoogleSignIn = async () => {
-    setChangingPassword(true)
-
-    try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
-      const user = result.user
-      console.log("Google Sign-In successful, user:", user.uid, user.email)
-
-      // Check if admin exists in schooladmin collection by email
-      const adminId = admin?.id || localStorage.getItem("adminId")
-      if (adminId) {
-        // Update the existing admin profile with Google auth info
-        const adminRef = doc(db, "schooladmin", adminId)
-        await updateDoc(adminRef, {
-          googleAuth: true,
-          lastLogin: Timestamp.now(),
-          hasLoggedInBefore: true
-        })
-
-        // Also create/update profile at schooladmin/{uid} for consistency
-        const uidProfileRef = doc(db, "schooladmin", user.uid)
-        await setDoc(uidProfileRef, {
-          emailaddress: user.email,
-          email: user.email,
-          name: admin?.adminname || admin?.adminName || admin?.name || user.displayName || "Admin User",
-          role: admin?.role || "Principal",
-          school_id: admin?.school_id || admin?.id || adminId,
-          googleAuth: true,
-          lastLogin: Timestamp.now(),
-          hasLoggedInBefore: true
-        }, { merge: true })
-
-        // Update localStorage
-        localStorage.setItem("adminId", user.uid)
-        localStorage.setItem("hasLoggedInBefore", "true")
-
-        toast({
-          title: "Google Sign-In Setup Complete",
-          description: "You can now sign in with Google in the future. Welcome to the system!",
-        })
-
-        setShowPasswordModal(false)
-      }
-    } catch (error: any) {
-      console.error("Google Sign-In error:", error)
-      toast({
-        title: "Google Sign-In Failed",
-        description: error.message || "Failed to set up Google Sign-In.",
-        variant: "destructive",
-      })
-    } finally {
-      setChangingPassword(false)
-    }
-  }
+  }, [admin])
 
   // Test function for notification system
   const testNotification = async () => {
@@ -281,90 +177,6 @@ export default function Dashboard() {
     }
   }
 
-  // Check existing notifications
-  const checkNotifications = async () => {
-    try {
-      const adminId = localStorage.getItem("adminId")
-      if (!adminId) {
-        toast({
-          title: "Error",
-          description: "No admin ID found",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("Checking notifications for adminId:", adminId)
-
-      const { collection, query, where, getDocs } = await import("firebase/firestore")
-      const { db } = await import("@/lib/firebase")
-
-      const notificationsRef = collection(db, "notifications")
-      const q = query(notificationsRef, where("admin_id", "==", adminId))
-      const snapshot = await getDocs(q)
-
-      console.log("Found notifications:", snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-
-      toast({
-        title: "Notifications Check",
-        description: `Found ${snapshot.docs.length} notifications in database`,
-      })
-    } catch (error) {
-      console.error("Error checking notifications:", error)
-      toast({
-        title: "Error",
-        description: "Failed to check notifications",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Manual notification creation test
-  const createTestNotification = async () => {
-    try {
-      const adminId = localStorage.getItem("adminId")
-      if (!adminId) {
-        toast({
-          title: "Error",
-          description: "No admin ID found",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("Creating test notification for adminId:", adminId)
-
-      // Import the createNotification function
-      const { createNotification } = await import("@/lib/notification-utils")
-
-      const notificationId = await createNotification({
-        adminId,
-        title: "Test Notification",
-        message: "This is a test notification created manually.",
-        type: "info"
-      })
-
-      console.log("Test notification created with ID:", notificationId)
-
-      toast({
-        title: "Success",
-        description: "Test notification created. Check the bell icon.",
-      })
-
-      // Force refresh notifications in the layout
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
-    } catch (error) {
-      console.error("Error creating test notification:", error)
-      toast({
-        title: "Error",
-        description: "Failed to create test notification",
-        variant: "destructive",
-      })
-    }
-  }
-
   // Attendance data for chart
   const attendanceData = [
     { month: "Jan", attendance: 92 },
@@ -395,21 +207,25 @@ export default function Dashboard() {
 
           try {
             // Use Promise.all to fetch data in parallel
-            const [studentsSnapshot, teachersSnapshot, classesSnapshot] = await Promise.all([
-              getDocs(query(collection(db, "students"), where("school_id", "==", schoolId))),
-              getDocs(query(collection(db, "teachers"), where("school_id", "==", schoolId))),
-              getDocs(query(collection(db, "classes"), where("school_id", "==", schoolId))),
+            const [studentsResponse, teachersResponse, classesResponse] = await Promise.all([
+              supabase.from("students").select("*").eq("school_id", schoolId),
+              supabase.from("teachers").select("*").eq("school_id", schoolId),
+              supabase.from("classes").select("*").eq("school_id", schoolId),
             ])
 
-            console.log("Successfully fetched collections:", {
-              students: studentsSnapshot.size,
-              teachers: teachersSnapshot.size,
-              classes: classesSnapshot.size
-            })
+            if (studentsResponse.error) throw studentsResponse.error
+            if (teachersResponse.error) throw teachersResponse.error
+            if (classesResponse.error) throw classesResponse.error
 
-            const studentsList = studentsSnapshot.docs.map((doc) => doc.data())
-            const teachersList = teachersSnapshot.docs.map((doc) => doc.data())
-            const classesList = classesSnapshot.docs.map((doc) => doc.data())
+            const studentsList = studentsResponse.data || []
+            const teachersList = teachersResponse.data || []
+            const classesList = classesResponse.data || []
+
+            console.log("Successfully fetched collections:", {
+              students: studentsList.length,
+              teachers: teachersList.length,
+              classes: classesList.length
+            })
 
             // Get accurate total student count using utility function
             let totalStudentCount = 0
@@ -850,144 +666,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Password Change Modal */}
-      <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
-        <DialogContent className="sm:max-w-[500px] w-[90%]">
-          <DialogHeader>
-            <DialogTitle className="text-center">
-              {isFirstTimeLogin ? "Complete Your Account Setup" : "Change Password"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div className="text-center mb-4">
-              <p className="text-sm text-muted-foreground">
-                {isFirstTimeLogin ? "Setting up account for:" : "Changing password for:"}
-              </p>
-              <p className="font-medium">
-                {typeof window !== "undefined" && localStorage.getItem("adminName")
-                  ? localStorage.getItem("adminName")
-                  : "Admin"}
-              </p>
-              {isFirstTimeLogin && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Welcome! Please complete your account setup by either setting a password or using Google Sign-In.
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">New Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter new password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  disabled={changingPassword}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Confirm new password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  disabled={changingPassword}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                >
-                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-            </div>
-
-            {isFirstTimeLogin && (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-muted-foreground">Or</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-center block">Set up Google Sign-In</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleGoogleSignIn}
-                    disabled={changingPassword}
-                    className="w-full h-10 sm:h-11 text-sm sm:text-base"
-                  >
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                      <path
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        fill="#4285F4"
-                      />
-                      <path
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        fill="#34A853"
-                      />
-                      <path
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                        fill="#FBBC05"
-                      />
-                      <path
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                        fill="#EA4335"
-                      />
-                    </svg>
-                    {changingPassword ? "Setting up..." : "Sign in with Google"}
-                  </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Choose Google Sign-In to skip password creation and use your Google account for future logins
-                  </p>
-                </div>
-              </>
-            )}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowPasswordModal(false)}
-                disabled={changingPassword}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={changingPassword}>
-                {changingPassword ? (isFirstTimeLogin ? "Setting..." : "Changing...") : (isFirstTimeLogin ? "Set Password" : "Change Password")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* First Login Modal */}
+      <FirstLoginModal
+        isOpen={showFirstLoginModal}
+        onClose={() => setShowFirstLoginModal(false)}
+        userId={admin?.id || ""}
+        userEmail={admin?.email || ""}
+      />
     </DashboardLayout>
   )
 }

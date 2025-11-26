@@ -13,8 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
 import { Plus, Edit, MessageSquare, Users, GraduationCap, TrendingUp, Download, FileText } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
-import { collection, getDocs, addDoc, updateDoc, doc, query, where } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { useRouter } from "next/navigation"
 import { getPromotionStatus, getStatusStyling } from "@/lib/grade-utils"
@@ -46,7 +45,7 @@ export default function GradesPage() {
     comment: "",
   })
 
-  // Helper functions (moved to top)
+  // Helper functions
   const getSubjectName = (subjectId: string) => {
     const subject = subjects.find((s) => s.id === subjectId)
     return subject ? subject.name : "Unknown Subject"
@@ -75,26 +74,27 @@ export default function GradesPage() {
         const info = await getCurrentSchoolInfo()
         setSchoolInfo(info)
 
-        // Fetch data with proper filtering by school
-        const [studentsSnapshot, gradesSnapshot, subjectsSnapshot, classesSnapshot, teachersSnapshot] =
-          await Promise.all([
-            // Only fetch students from this school
-            getDocs(query(collection(db, "students"), where("school_id", "==", info.school_id))),
-            // Only fetch grades from this school
-            getDocs(query(collection(db, "grades"), where("school_id", "==", info.school_id))),
-            // Only fetch subjects from this school
-            getDocs(query(collection(db, "subjects"), where("school_id", "==", info.school_id))),
-            // Only fetch classes from this school
-            getDocs(query(collection(db, "classes"), where("school_id", "==", info.school_id))),
-            // Only fetch teachers from this school
-            getDocs(query(collection(db, "teachers"), where("school_id", "==", info.school_id))),
+        if (info.school_id) {
+          const [
+            { data: studentsData },
+            { data: gradesData },
+            { data: subjectsData },
+            { data: classesData },
+            { data: teachersData }
+          ] = await Promise.all([
+            supabase.from('students').select('*').eq('school_id', info.school_id),
+            supabase.from('grades').select('*').eq('school_id', info.school_id),
+            supabase.from('subjects').select('*').eq('school_id', info.school_id),
+            supabase.from('classes').select('*').eq('school_id', info.school_id),
+            supabase.from('teachers').select('*').eq('school_id', info.school_id)
           ])
 
-        setStudents(studentsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        setGrades(gradesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        setSubjects(subjectsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        setClasses(classesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        setTeachers(teachersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+          if (studentsData) setStudents(studentsData)
+          if (gradesData) setGrades(gradesData)
+          if (subjectsData) setSubjects(subjectsData)
+          if (classesData) setClasses(classesData)
+          if (teachersData) setTeachers(teachersData)
+        }
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -131,11 +131,16 @@ export default function GradesPage() {
   // Handle add grade
   const handleAddGrade = async () => {
     try {
-      await addDoc(collection(db, "grades"), {
+      if (!schoolInfo.school_id) throw new Error("School ID not found")
+
+      const { data, error } = await supabase.from('grades').insert({
         ...newGrade,
         score: Number.parseInt(newGrade.score),
-        created_at: new Date(),
-      })
+        school_id: schoolInfo.school_id,
+        year: new Date().getFullYear().toString()
+      }).select()
+
+      if (error) throw error
 
       toast({
         title: "Success",
@@ -146,8 +151,9 @@ export default function GradesPage() {
       setNewGrade({ student_id: "", subject_id: "", term: "", score: "", comment: "" })
 
       // Refresh grades
-      const gradesSnapshot = await getDocs(collection(db, "grades"))
-      setGrades(gradesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+      if (data) {
+        setGrades(prev => [...prev, ...data])
+      }
     } catch (error) {
       console.error("Error adding grade:", error)
       toast({
@@ -163,10 +169,15 @@ export default function GradesPage() {
     if (!selectedGrade) return
 
     try {
-      await updateDoc(doc(db, "grades", selectedGrade.id), {
-        comment: comment,
-        updated_at: new Date(),
-      })
+      const { error } = await supabase
+        .from('grades')
+        .update({
+          comment: comment,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedGrade.id)
+
+      if (error) throw error
 
       toast({
         title: "Success",
@@ -175,11 +186,10 @@ export default function GradesPage() {
 
       setIsCommentOpen(false)
       setComment("")
-      setSelectedGrade(null)
 
-      // Refresh grades
-      const gradesSnapshot = await getDocs(collection(db, "grades"))
-      setGrades(gradesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+      // Update local state
+      setGrades(prev => prev.map(g => g.id === selectedGrade.id ? { ...g, comment } : g))
+      setSelectedGrade(null)
     } catch (error) {
       console.error("Error updating comment:", error)
       toast({

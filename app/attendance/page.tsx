@@ -9,19 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ClipboardCheck, Calendar, Search, Users, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, where, Timestamp, orderBy, getDoc } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { db } from "@/lib/firebase"
 import { format } from "date-fns"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import TeacherAttendanceQR from "@/components/teacher-attendance-qr"
+import { supabase } from "@/lib/supabase"
 
 interface Student {
   id: string
   firstname?: string
   lastname?: string
-  class?: string
+  class_id?: string
   school_id?: string
   [key: string]: any
 }
@@ -78,16 +77,14 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
-      const classesRef = collection(db, "classes")
-      const q = query(classesRef, where("school_id", "==", schoolInfo.school_id))
-      const querySnapshot = await getDocs(q)
+      const { data, error } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('school_id', schoolInfo.school_id)
 
-      const classesList = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
+      if (error) throw error
 
-      setClasses(classesList)
+      setClasses(data || [])
     } catch (error) {
       console.error("Error fetching classes:", error)
     }
@@ -98,36 +95,17 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
-      // First get the class name from the class ID
-      const classDoc = await getDoc(doc(db, "classes", classId))
-      if (!classDoc.exists()) {
-        console.error("Class not found:", classId)
-        toast({
-          title: "Error",
-          description: "Selected class not found",
-          variant: "destructive",
-        })
-        return
-      }
+      // Fetch students by class_id directly
+      const { data: studentsList, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('school_id', schoolInfo.school_id)
+        .eq('class_id', classId)
 
-      const className = classDoc.data().name
-      console.log("Fetching students for class:", className)
-
-      const studentsRef = collection(db, "students")
-      const q = query(
-        studentsRef,
-        where("school_id", "==", schoolInfo.school_id),
-        where("class", "==", className),
-      )
-      const querySnapshot = await getDocs(q)
-
-      const studentsList = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Student[]
+      if (error) throw error
 
       // Sort students by lastname client-side
-      const sortedStudentsList = studentsList.sort((a, b) => {
+      const sortedStudentsList = (studentsList || []).sort((a: any, b: any) => {
         const lastNameA = (a.lastname || "").toLowerCase()
         const lastNameB = (b.lastname || "").toLowerCase()
         return lastNameA.localeCompare(lastNameB)
@@ -137,13 +115,13 @@ export default function AttendancePage() {
 
       // Initialize attendance data
       const initialAttendanceData: { [key: string]: string } = {}
-      studentsList.forEach((student) => {
+      sortedStudentsList.forEach((student: any) => {
         initialAttendanceData[student.id] = "present"
       })
       setAttendanceData(initialAttendanceData)
 
       // Update summary
-      updateAttendanceSummary(initialAttendanceData, studentsList.length)
+      updateAttendanceSummary(initialAttendanceData, sortedStudentsList.length)
     } catch (error) {
       console.error("Error fetching students:", error)
       toast({
@@ -161,33 +139,18 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
-      // Get class name from class ID
-      const classDoc = await getDoc(doc(db, "classes", classId))
-      if (!classDoc.exists()) {
-        console.error("Class not found for attendance:", classId)
-        return
-      }
+      const { data: records, error } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('school_id', schoolInfo.school_id)
+        .eq('class_id', classId)
+        .eq('date', date)
 
-      const className = classDoc.data().name
-      console.log("Fetching attendance for class:", className)
+      if (error) throw error
 
-      const attendanceRef = collection(db, "attendance")
-      const q = query(
-        attendanceRef,
-        where("school_id", "==", schoolInfo.school_id),
-        where("class_name", "==", className),
-        where("date", "==", date),
-      )
-      const querySnapshot = await getDocs(q)
-
-      if (!querySnapshot.empty) {
-        const record = querySnapshot.docs[0].data()
-        setAttendanceRecords([
-          {
-            id: querySnapshot.docs[0].id,
-            ...record,
-          },
-        ])
+      if (records && records.length > 0) {
+        const record = records[0]
+        setAttendanceRecords([record])
 
         // Set attendance data from record
         if (record.students) {
@@ -232,12 +195,6 @@ export default function AttendancePage() {
     })
   }
 
-  useEffect(() => {
-    if (schoolInfo.school_id) {
-      fetchClasses()
-    }
-  }, [schoolInfo.school_id])
-
   const handleAttendanceChange = (studentId: string, status: string) => {
     setAttendanceData((prev) => {
       const newData = { ...prev, [studentId]: status }
@@ -258,18 +215,9 @@ export default function AttendancePage() {
 
     setIsSubmitting(true)
     try {
-      // Generate a unique ID
-      const attendanceId = `ATT_${selectedClass}_${selectedDate.replace(/-/g, "")}`
-
-      // Get class name
-      const classObj = classes.find((c) => c.id === selectedClass)
-      const className = classObj ? classObj.name : ""
-
       // Create attendance record
       const attendanceRecord = {
-        id: attendanceId,
         class_id: selectedClass,
-        class_name: className,
         date: selectedDate,
         students: attendanceData,
         present_count: attendanceSummary.present,
@@ -277,13 +225,15 @@ export default function AttendancePage() {
         late_count: attendanceSummary.late,
         total_students: attendanceSummary.total,
         attendance_percentage: attendanceSummary.percentage,
-        created_at: Timestamp.fromDate(new Date()),
         school_id: schoolInfo.school_id,
-        schoolname: schoolInfo.schoolName,
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "attendance", attendanceId), attendanceRecord)
+      // Save to Supabase with upsert based on (class_id, date) unique constraint
+      const { error } = await supabase
+        .from('attendance')
+        .upsert(attendanceRecord, { onConflict: 'class_id, date' })
+
+      if (error) throw error
 
       // Show success message
       toast({
@@ -293,6 +243,7 @@ export default function AttendancePage() {
 
       // Refresh attendance records
       fetchAttendanceRecords(selectedClass, selectedDate)
+      setIsMarkingAttendance(false)
     } catch (error) {
       console.error("Error recording attendance:", error)
       toast({
@@ -346,38 +297,23 @@ export default function AttendancePage() {
     try {
       if (!schoolInfo.school_id) return
 
-      const attendanceRef = collection(db, "teacher_sign_in")
-      const q = query(
-        attendanceRef,
-        where("school_id", "==", schoolInfo.school_id),
-        where("date", "==", date)
-      )
-      const querySnapshot = await getDocs(q)
+      // Fetch teacher attendance with teacher details
+      const { data: records, error } = await supabase
+        .from('teacher_attendance')
+        .select('*, teachers(firstname, lastname)')
+        .eq('school_id', schoolInfo.school_id)
+        .eq('date', date)
 
-      // Base records
-      const baseRecords = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as any),
-      }))
+      if (error) throw error
 
-      // Enrich with teacher names
-      const uniqueTeacherIds = Array.from(new Set(baseRecords.map(r => r.teacher_id).filter(Boolean)))
-      const teacherMap: Record<string, any> = {}
-      await Promise.all(uniqueTeacherIds.map(async (tid) => {
-        try {
-          const tDoc = await getDoc(doc(db, "teachers", tid))
-          if (tDoc.exists()) teacherMap[tid] = tDoc.data()
-        } catch { }
-      }))
-
-      const records = baseRecords.map(r => ({
+      const formattedRecords = records.map((r: any) => ({
         ...r,
-        teacher_name: teacherMap[r.teacher_id]
-          ? `${teacherMap[r.teacher_id].firstname || ''} ${teacherMap[r.teacher_id].lastname || ''}`.trim()
-          : r.teacher_id,
+        teacher_name: r.teachers
+          ? `${r.teachers.firstname} ${r.teachers.lastname}`
+          : 'Unknown Teacher'
       }))
 
-      setTeacherAttendanceRecords(records)
+      setTeacherAttendanceRecords(formattedRecords)
     } catch (error) {
       console.error("Error fetching teacher attendance:", error)
       toast({
@@ -522,7 +458,7 @@ export default function AttendancePage() {
                             }}
                           >
                             <TableCell>{index + 1}</TableCell>
-                            <TableCell className="font-medium">{student.id}</TableCell>
+                            <TableCell className="font-medium">{student.admission_number || student.id.substring(0, 8)}</TableCell>
                             <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
                             <TableCell>
                               {isMarkingAttendance ? (
@@ -605,7 +541,7 @@ export default function AttendancePage() {
                               <TableRow key={record.id}>
                                 <TableCell>{index + 1}</TableCell>
                                 <TableCell className="font-medium">{record.teacher_name}</TableCell>
-                                <TableCell>{record.sign_in_time?.toDate?.() ? record.sign_in_time.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
+                                <TableCell>{record.sign_in_time ? new Date(record.sign_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-1 text-green-600">
                                     <CheckCircle className="h-4 w-4" />
@@ -637,7 +573,7 @@ export default function AttendancePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Student ID</h3>
-                  <p className="text-base font-medium">{selectedStudent.id}</p>
+                  <p className="text-base font-medium">{selectedStudent.admission_number || selectedStudent.id.substring(0, 8)}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Full Name</h3>
@@ -645,7 +581,7 @@ export default function AttendancePage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Class</h3>
-                  <p className="text-base">{selectedStudent.class || "—"}</p>
+                  <p className="text-base">{classes.find(c => c.id === selectedClass)?.name || "—"}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Date</h3>

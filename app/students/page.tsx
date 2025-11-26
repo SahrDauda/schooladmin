@@ -37,21 +37,7 @@ import {
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import {
-  doc,
-  setDoc,
-  collection,
-  getDocs,
-  query,
-  Timestamp,
-  getDoc,
-  where,
-  Query,
-  DocumentData,
-  CollectionReference,
-  updateDoc,
-} from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { z } from "zod"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -69,7 +55,7 @@ const getLevelOptions = (stage: string) => {
     case "Primary":
       return [
         "Prep 1",
-        "Prep 2", 
+        "Prep 2",
         "Prep 3",
         "Prep 4",
         "Prep 5",
@@ -84,7 +70,7 @@ const getLevelOptions = (stage: string) => {
     case "Senior Secondary":
       return [
         "SSS 1",
-        "SSS 2", 
+        "SSS 2",
         "SSS 3"
       ]
     default:
@@ -294,7 +280,7 @@ const nationalityOptions = [
 
 interface Student {
   id: string
-  created_at?: Timestamp
+  created_at?: string
   firstname?: string
   lastname?: string
   class?: string
@@ -442,31 +428,31 @@ export default function StudentsPage() {
     setIsSearchingNIN(true)
     try {
       console.log('Searching for NIN:', nin)
-          const response = await fetch('/api/nin-verification', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ nin: nin })
-    })
-    
-    console.log('Response status:', response.status)
-    console.log('Response ok:', response.ok)
-    console.log('Response headers:', response.headers)
-      
+      const response = await fetch('/api/nin-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nin: nin })
+      })
+
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+      console.log('Response headers:', response.headers)
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: NIN not found`)
       }
-      
+
       const data = await response.json()
       console.log('API response data:', data)
-      
+
       // Check if the API returned valid data
       if (!data || !data.firstName || !data.lastName) {
         console.log('Invalid data structure:', data)
         throw new Error('Invalid NIN data received')
       }
-      
+
       // Auto-populate form with NIN data
       setFormData((prev) => ({
         ...prev,
@@ -481,16 +467,16 @@ export default function StudentsPage() {
         level: data.level || prev.level,
         faculty: data.faculty || prev.faculty
       }))
-      
+
       console.log('Form updated with NIN data')
-      
+
       toast({
         title: "Success",
         description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
       })
     } catch (error) {
       console.error('NIN search failed:', error)
-      
+
       // Show specific error message based on the error
       let errorMessage = "NIN verification failed"
       if (error instanceof Error) {
@@ -502,7 +488,7 @@ export default function StudentsPage() {
           errorMessage = "Network error - please check your connection"
         }
       }
-      
+
       toast({
         title: "NIN Not Found",
         description: errorMessage,
@@ -526,7 +512,7 @@ export default function StudentsPage() {
         })
         return
       }
-      
+
       if (!file.type.startsWith('image/')) {
         toast({
           title: "Invalid file type",
@@ -535,7 +521,7 @@ export default function StudentsPage() {
         })
         return
       }
-      
+
       setPassportPicture(file)
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -556,7 +542,7 @@ export default function StudentsPage() {
         })
         return
       }
-      
+
       if (!file.type.startsWith('image/')) {
         toast({
           title: "Invalid file type",
@@ -565,7 +551,7 @@ export default function StudentsPage() {
         })
         return
       }
-      
+
       setEditPassportPicture(file)
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -603,7 +589,7 @@ export default function StudentsPage() {
     setIsSearchingParentNin(true)
     try {
       console.log('Searching for parent NIN:', nin)
-      
+
       const response = await fetch('/api/nin-verification', {
         method: 'POST',
         headers: {
@@ -630,23 +616,23 @@ export default function StudentsPage() {
         occupation: data.occupation || prev.occupation,
         relationship_with_student: data.relationshipWithStudent || prev.relationship_with_student,
       }))
-      
+
       console.log('Parent form updated with data')
-      
+
       toast({
         title: "Success",
         description: `Parent information retrieved for ${data.firstName} ${data.lastName}`,
       })
     } catch (error) {
       console.error('Parent NIN search failed:', error)
-      
+
       let errorMessage = "Parent search failed"
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
           errorMessage = `Parent NIN "${nin}" not found in the database`
         }
       }
-      
+
       toast({
         title: "Parent Not Found",
         description: errorMessage,
@@ -666,9 +652,13 @@ export default function StudentsPage() {
       let currentSchoolName = ""
 
       if (adminId) {
-        const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-        if (adminDoc.exists()) {
-          const adminData = adminDoc.data()
+        const { data: adminData, error } = await supabase
+          .from('schooladmin')
+          .select('*')
+          .eq('id', adminId)
+          .single()
+
+        if (adminData) {
           currentSchoolId = adminData.school_id || adminId
           currentSchoolName = adminData.schoolName || "Holy Family Junior Secondary School"
           setSchoolId(currentSchoolId)
@@ -676,25 +666,20 @@ export default function StudentsPage() {
         }
       }
 
-      // Create query with school ID filter only (no ordering)
-      let studentsQuery: Query<DocumentData> = query(collection(db, "students"))
+      let query = supabase.from('students').select('*')
 
       if (currentSchoolId) {
-        studentsQuery = query(collection(db, "students"), where("school_id", "==", currentSchoolId))
+        query = query.eq('school_id', currentSchoolId)
       }
 
-      const querySnapshot = await getDocs(studentsQuery)
+      const { data: studentsList, error } = await query
 
-      // Sort students by created_at client-side
-      const studentsList: Student[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
+      if (error) throw error
 
       // Sort by created_at in descending order (newest first)
-      const sortedStudents = studentsList.sort((a, b) => {
-        const dateA = a.created_at?.toDate?.() || new Date(0)
-        const dateB = b.created_at?.toDate?.() || new Date(0)
+      const sortedStudents = (studentsList || []).sort((a, b) => {
+        const dateA = new Date(a.created_at || 0)
+        const dateB = new Date(b.created_at || 0)
         return dateB.getTime() - dateA.getTime()
       })
 
@@ -722,26 +707,29 @@ export default function StudentsPage() {
         let currentSchoolId = ""
 
         if (adminId) {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
+          const { data: adminData } = await supabase
+            .from('schooladmin')
+            .select('school_id')
+            .eq('id', adminId)
+            .single()
+
+          if (adminData) {
             currentSchoolId = adminData.school_id || adminId
           }
         }
 
         // Create query with school ID filter
-        let classesQuery: Query<DocumentData> | CollectionReference<DocumentData> = collection(db, "classes")
+        let query = supabase.from('classes').select('*')
 
         if (currentSchoolId) {
-          classesQuery = query(collection(db, "classes"), where("school_id", "==", currentSchoolId))
+          query = query.eq('school_id', currentSchoolId)
         }
 
-        const classesSnapshot = await getDocs(classesQuery)
-        const classesList = classesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setClasses(classesList)
+        const { data: classesList, error } = await query
+
+        if (error) throw error
+
+        setClasses(classesList || [])
       } catch (error) {
         console.error("Error fetching classes:", error)
       }
@@ -752,25 +740,29 @@ export default function StudentsPage() {
       try {
         const adminId = localStorage.getItem("adminId")
         if (adminId) {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
+          const { data: adminData } = await supabase
+            .from('schooladmin')
+            .select('*')
+            .eq('id', adminId)
+            .single()
+
+          if (adminData) {
             const schoolId = adminData.school_id || adminId
-            
+
             // Get school stage from schools collection
             let schoolStage = ""
             if (schoolId) {
-              const schoolsRef = collection(db, "schools")
-              const schoolsQuery = query(schoolsRef, where("school_id", "==", schoolId))
-              const schoolsSnapshot = await getDocs(schoolsQuery)
-              
-              if (!schoolsSnapshot.empty) {
-                const schoolDoc = schoolsSnapshot.docs[0]
-                const schoolData = schoolDoc.data()
+              const { data: schools } = await supabase
+                .from('schools')
+                .select('*')
+                .eq('school_id', schoolId)
+
+              if (schools && schools.length > 0) {
+                const schoolData = schools[0]
                 schoolStage = schoolData.stage || ""
               }
             }
-            
+
             setSchoolStage(schoolStage)
             setFormData((prev) => ({
               ...prev,
@@ -800,24 +792,20 @@ export default function StudentsPage() {
   // Refresh students list after adding a new student
   const refreshStudents = async () => {
     try {
-      let q: Query<DocumentData> = query(collection(db, "students"))
+      let query = supabase.from('students').select('*')
 
       if (schoolId) {
-        q = query(collection(db, "students"), where("school_id", "==", schoolId))
+        query = query.eq('school_id', schoolId)
       }
 
-      const querySnapshot = await getDocs(q)
+      const { data: studentsList, error } = await query
 
-      // Sort students by created_at client-side
-      const studentsList: Student[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
+      if (error) throw error
 
       // Sort by created_at in descending order (newest first)
-      const sortedStudents = studentsList.sort((a, b) => {
-        const dateA = a.created_at?.toDate?.() || new Date(0)
-        const dateB = b.created_at?.toDate?.() || new Date(0)
+      const sortedStudents = (studentsList || []).sort((a, b) => {
+        const dateA = new Date(a.created_at || 0)
+        const dateB = new Date(b.created_at || 0)
         return dateB.getTime() - dateA.getTime()
       })
 
@@ -913,58 +901,58 @@ export default function StudentsPage() {
 
   const checkForDuplicateStudent = async (studentData: any) => {
     try {
-      const studentsRef = collection(db, "students")
-      
       // Check by NIN first (if provided)
       if (studentData.nin && studentData.nin.trim()) {
-        const ninQuery = query(studentsRef, where("nin", "==", studentData.nin.trim()))
-        const ninSnapshot = await getDocs(ninQuery)
-        
-        if (!ninSnapshot.empty) {
-          const duplicate = ninSnapshot.docs[0].data()
+        const { data: ninDuplicates } = await supabase
+          .from('students')
+          .select('*')
+          .eq('nin', studentData.nin.trim())
+
+        if (ninDuplicates && ninDuplicates.length > 0) {
+          const duplicate = ninDuplicates[0]
           setDuplicateStudent({
             ...duplicate,
-            id: ninSnapshot.docs[0].id,
+            id: duplicate.id,
             reason: "NIN"
           })
           setIsDuplicateModalOpen(true)
           return true
         }
       }
-      
+
       // Check by combination of name, dob, address, email (if NIN not provided)
       if (!studentData.nin || !studentData.nin.trim()) {
         const name = `${studentData.firstname} ${studentData.lastname}`.toLowerCase().trim()
         const dob = studentData.dob
         const address = studentData.homeaddress?.toLowerCase().trim()
         const email = studentData.emailaddress?.toLowerCase().trim()
-        
+
         if (name && dob && address && email) {
-          const allStudentsQuery = query(studentsRef)
-          const allStudentsSnapshot = await getDocs(allStudentsQuery)
-          
-          for (const doc of allStudentsSnapshot.docs) {
-            const existingStudent = doc.data()
-            const existingName = `${existingStudent.firstname} ${existingStudent.lastname}`.toLowerCase().trim()
-            const existingAddress = existingStudent.homeaddress?.toLowerCase().trim()
-            const existingEmail = existingStudent.emailaddress?.toLowerCase().trim()
-            
-            if (existingName === name && 
-                existingStudent.dob === dob && 
-                existingAddress === address && 
+          const { data: allStudents } = await supabase.from('students').select('*')
+
+          if (allStudents) {
+            for (const existingStudent of allStudents) {
+              const existingName = `${existingStudent.firstname} ${existingStudent.lastname}`.toLowerCase().trim()
+              const existingAddress = existingStudent.homeaddress?.toLowerCase().trim()
+              const existingEmail = existingStudent.emailaddress?.toLowerCase().trim()
+
+              if (existingName === name &&
+                existingStudent.dob === dob &&
+                existingAddress === address &&
                 existingEmail === email) {
-              setDuplicateStudent({
-                ...existingStudent,
-                id: doc.id,
-                reason: "Personal Information"
-              })
-              setIsDuplicateModalOpen(true)
-              return true
+                setDuplicateStudent({
+                  ...existingStudent,
+                  id: existingStudent.id,
+                  reason: "Personal Information"
+                })
+                setIsDuplicateModalOpen(true)
+                return true
+              }
             }
           }
         }
       }
-      
+
       return false
     } catch (error) {
       console.error("Error checking for duplicate student:", error)
@@ -993,9 +981,13 @@ export default function StudentsPage() {
       if (!formData.school_id || !formData.schoolname) {
         try {
           if (adminId) {
-            const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-            if (adminDoc.exists()) {
-              const adminData = adminDoc.data()
+            const { data: adminData } = await supabase
+              .from('schooladmin')
+              .select('*')
+              .eq('id', adminId)
+              .single()
+
+            if (adminData) {
               schoolData = {
                 school_id: adminData.school_id || adminId,
                 schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
@@ -1044,7 +1036,7 @@ export default function StudentsPage() {
         parent_id: "", // Always blank for new students
         status: "Active",
         passport_picture: passportPictureUrl,
-        created_at: Timestamp.fromDate(currentDate),
+        created_at: currentDate.toISOString(),
         date: currentDate.toLocaleDateString(),
         month: currentDate.toLocaleString("default", { month: "long" }),
         year: currentDate.getFullYear().toString(),
@@ -1057,8 +1049,12 @@ export default function StudentsPage() {
         return
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "students", studentId), studentData)
+      // Save to Supabase
+      const { error } = await supabase
+        .from('students')
+        .insert(studentData)
+
+      if (error) throw error
 
       // Show success message
       toast({
@@ -1068,7 +1064,7 @@ export default function StudentsPage() {
 
       // Refresh the students list
       await refreshStudents()
-      
+
       // Trigger classes page refresh by setting a flag
       localStorage.setItem("refreshClasses", "true")
 
@@ -1102,7 +1098,7 @@ export default function StudentsPage() {
         sick_type: "",
         passport_picture: "",
       })
-      
+
       // Reset passport picture state
       setPassportPicture(null)
       setPassportPicturePreview("")
@@ -1216,12 +1212,15 @@ export default function StudentsPage() {
             ...row,
             id: studentId,
             status: "Active",
-            created_at: Timestamp.fromDate(currentDate),
+            created_at: currentDate.toISOString(),
             date: currentDate.toLocaleDateString(),
             month: currentDate.toLocaleString("default", { month: "long" }),
             year: currentDate.getFullYear().toString(),
           }
-          await setDoc(doc(db, "students", studentId), studentData)
+
+          const { error } = await supabase.from('students').insert(studentData)
+          if (error) throw error
+
           successCount++
         } catch (err) {
           errorCount++
@@ -1312,10 +1311,15 @@ export default function StudentsPage() {
         school_id: editFormData.school_id || schoolId,
         schoolname: editFormData.schoolname || schoolName,
         passport_picture: passportPictureUrl,
-        updated_at: Timestamp.fromDate(new Date()),
+        updated_at: new Date().toISOString(),
       }
 
-      await setDoc(doc(db, "students", selectedStudent!.id), updatedData)
+      const { error } = await supabase
+        .from('students')
+        .update(updatedData)
+        .eq('id', selectedStudent!.id)
+
+      if (error) throw error
 
       toast({
         title: "Success",
@@ -1323,10 +1327,10 @@ export default function StudentsPage() {
       })
 
       await refreshStudents()
-      
+
       // Trigger classes page refresh by setting a flag
       localStorage.setItem("refreshClasses", "true")
-      
+
       setIsViewStudentOpen(false)
       setIsEditing(false)
     } catch (error) {
@@ -1367,7 +1371,7 @@ export default function StudentsPage() {
     setIsSearchingNIN(true)
     try {
       console.log('Searching for NIN:', ninSearchQuery)
-      
+
       const response = await fetch('/api/nin-verification', {
         method: 'POST',
         headers: {
@@ -1375,23 +1379,23 @@ export default function StudentsPage() {
         },
         body: JSON.stringify({ nin: ninSearchQuery })
       })
-      
+
       console.log('Response status:', response.status)
       console.log('Response ok:', response.ok)
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: NIN not found`)
       }
-      
+
       const data = await response.json()
       console.log('API response data:', data)
-      
+
       // Check if the API returned valid data
       if (!data || !data.firstName || !data.lastName) {
         console.log('Invalid data structure:', data)
         throw new Error('Invalid NIN data received')
       }
-      
+
       // Auto-populate form with NIN data
       setFormData((prev) => ({
         ...prev,
@@ -1407,16 +1411,16 @@ export default function StudentsPage() {
         faculty: data.faculty || prev.faculty,
         nin: ninSearchQuery
       }))
-      
+
       console.log('Form updated with NIN data')
-      
+
       toast({
         title: "Success",
         description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
       })
     } catch (error) {
       console.error('NIN search failed:', error)
-      
+
       // Show specific error message based on the error
       let errorMessage = "NIN verification failed"
       if (error instanceof Error) {
@@ -1428,7 +1432,7 @@ export default function StudentsPage() {
           errorMessage = "Network error - please check your connection"
         }
       }
-      
+
       toast({
         title: "NIN Not Found",
         description: errorMessage,
@@ -1599,9 +1603,13 @@ export default function StudentsPage() {
 
       if (adminId && (!schoolId || !schoolName)) {
         try {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
+          const { data: adminData } = await supabase
+            .from('schooladmin')
+            .select('*')
+            .eq('id', adminId)
+            .single()
+
+          if (adminData) {
             schoolData = {
               school_id: adminData.school_id || adminId,
               schoolname: adminData.schoolName || "Holy Family Junior Secondary School",
@@ -1619,24 +1627,32 @@ export default function StudentsPage() {
         id: parentId,
         ...schoolData,
         status: "Active",
-        created_at: Timestamp.fromDate(currentDate),
+        created_at: currentDate.toISOString(),
         date: currentDate.toLocaleDateString(),
         month: currentDate.toLocaleString("default", { month: "long" }),
         year: currentDate.getFullYear().toString(),
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "parents", parentId), parentData)
+      // Save to Supabase
+      const { error: parentError } = await supabase
+        .from('parents')
+        .insert(parentData)
+
+      if (parentError) throw parentError
 
       // Update student record with parent information
-      const studentRef = doc(db, "students", studentId)
-      await updateDoc(studentRef, {
-        parent_id: parentId,
-        parent_name: `${parentFormData.firstname} ${parentFormData.lastname}`,
-        parent_relationship: parentFormData.relationship_with_student || "Parent",
-        parent_phone: parentFormData.phonenumber,
-        parent_email: parentFormData.emailaddress
-      })
+      const { error: studentError } = await supabase
+        .from('students')
+        .update({
+          parent_id: parentId,
+          parent_name: `${parentFormData.firstname} ${parentFormData.lastname}`,
+          parent_relationship: parentFormData.relationship_with_student || "Parent",
+          parent_phone: parentFormData.phonenumber,
+          parent_email: parentFormData.emailaddress
+        })
+        .eq('id', studentId)
+
+      if (studentError) throw studentError
 
       toast({
         title: "Success",
@@ -1770,10 +1786,10 @@ export default function StudentsPage() {
                         <input type="hidden" id="schoolname" value={formData.schoolname} />
                         <div>
                           <Label htmlFor="adm_no">Admission Number</Label>
-                          <Input 
-                            id="adm_no" 
-                            value={formData.adm_no} 
-                            readOnly 
+                          <Input
+                            id="adm_no"
+                            value={formData.adm_no}
+                            readOnly
                             className="bg-gray-50"
                             placeholder="Will be auto-generated"
                           />
@@ -1931,9 +1947,9 @@ export default function StudentsPage() {
                           <Label htmlFor="nin">NIN</Label>
                           <div className="flex gap-2">
                             <Input id="nin" value={formData.nin} onChange={handleInputChange} placeholder="Enter NIN to search" />
-                            <Button 
-                              type="button" 
-                              variant="outline" 
+                            <Button
+                              type="button"
+                              variant="outline"
                               onClick={() => searchNINFromAPI(formData.nin)}
                               disabled={isSearchingNIN || !formData.nin}
                               className="whitespace-nowrap"
@@ -1951,7 +1967,7 @@ export default function StudentsPage() {
                           <p className="text-xs text-muted-foreground mt-1">
                             Test NINs: SL12345678, SL87654321, SL11223344, SL11112222, SL22223333
                           </p>
-                          
+
                           {/* Available Student NINs */}
                           <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-md">
                             <h4 className="text-sm font-medium text-purple-800 mb-2">Available Student NINs for Testing:</h4>
@@ -2032,7 +2048,7 @@ export default function StudentsPage() {
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Passport Picture Section */}
                       <div className="space-y-4">
                         <div>
@@ -2075,7 +2091,7 @@ export default function StudentsPage() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <DialogFooter>
                         <Button type="submit" disabled={isSubmitting}>
                           {isSubmitting ? "Submitting..." : "Add Student"}
@@ -2295,240 +2311,240 @@ export default function StudentsPage() {
                               Add Parent
                             </Button>
                           </DialogTrigger>
-                        <DialogContent className="sm:max-w-[500px] md:max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle>
-                              Add Parent for {student.firstname} {student.lastname}
-                            </DialogTitle>
-                            <DialogDescription>
-                              Fill out the form below to add a parent for this student.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <form
-                            onSubmit={(e) =>
-                              handleSubmitParent(e, student.id, `${student.firstname} ${student.lastname}`)
-                            }
-                            className="space-y-4"
-                          >
-                            {/* Search by NIN */}
-                            <div className="mb-6 p-4 border rounded-md bg-gray-50">
-                              <h3 className="text-sm font-medium mb-2">Search by NIN</h3>
-                              <div className="flex gap-2">
-                                <Input
-                                  placeholder="Enter parent NIN"
-                                  value={parentNinSearchQuery}
-                                  onChange={(e) => setParentNinSearchQuery(e.target.value)}
-                                />
-                                <Button variant="secondary" onClick={() => searchParentNINFromAPI(parentNinSearchQuery)} disabled={isSearchingParentNin}>
-                                  {isSearchingParentNin ? (
-                                    <span className="flex items-center">
-                                      <span className="animate-spin mr-2">⏳</span> Searching...
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-center">
-                                      <Search className="w-4 h-4 mr-2" /> Search
-                                    </span>
-                                  )}
-                                </Button>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Enter the parent's NIN to automatically fill the form with existing parent information
-                              </p>
-                              
-                              {/* Available Parent NINs */}
-                              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-                                <h4 className="text-sm font-medium text-green-800 mb-2">Available Parent NINs for Testing:</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL12345678</span>
-                                    <br />
-                                    <span className="text-gray-600">Alhaji Koroma</span>
-                                  </div>
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL87654321</span>
-                                    <br />
-                                    <span className="text-gray-600">Fatmata Sesay</span>
-                                  </div>
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL11223344</span>
-                                    <br />
-                                    <span className="text-gray-600">Mohamed Bangura</span>
-                                  </div>
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL55667788</span>
-                                    <br />
-                                    <span className="text-gray-600">Aminata Turay</span>
-                                  </div>
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL99887766</span>
-                                    <br />
-                                    <span className="text-gray-600">Ibrahim Kamara</span>
-                                  </div>
-                                  <div className="bg-white p-2 rounded border">
-                                    <span className="font-mono text-green-600">PL33445566</span>
-                                    <br />
-                                    <span className="text-gray-600">Hawa Conteh</span>
-                                  </div>
+                          <DialogContent className="sm:max-w-[500px] md:max-w-[700px] w-[90%] max-h-[85vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>
+                                Add Parent for {student.firstname} {student.lastname}
+                              </DialogTitle>
+                              <DialogDescription>
+                                Fill out the form below to add a parent for this student.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <form
+                              onSubmit={(e) =>
+                                handleSubmitParent(e, student.id, `${student.firstname} ${student.lastname}`)
+                              }
+                              className="space-y-4"
+                            >
+                              {/* Search by NIN */}
+                              <div className="mb-6 p-4 border rounded-md bg-gray-50">
+                                <h3 className="text-sm font-medium mb-2">Search by NIN</h3>
+                                <div className="flex gap-2">
+                                  <Input
+                                    placeholder="Enter parent NIN"
+                                    value={parentNinSearchQuery}
+                                    onChange={(e) => setParentNinSearchQuery(e.target.value)}
+                                  />
+                                  <Button variant="secondary" onClick={() => searchParentNINFromAPI(parentNinSearchQuery)} disabled={isSearchingParentNin}>
+                                    {isSearchingParentNin ? (
+                                      <span className="flex items-center">
+                                        <span className="animate-spin mr-2">⏳</span> Searching...
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center">
+                                        <Search className="w-4 h-4 mr-2" /> Search
+                                      </span>
+                                    )}
+                                  </Button>
                                 </div>
-                                <p className="text-xs text-green-600 mt-2">Click any NIN to copy to clipboard</p>
-                              </div>
-                            </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Enter the parent's NIN to automatically fill the form with existing parent information
+                                </p>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <Label htmlFor="parent_firstname">First Name</Label>
-                                <Input
-                                  id="parent_firstname"
-                                  value={parentFormData.firstname}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      firstname: e.target.value,
-                                    }))
-                                  }
-                                />
+                                {/* Available Parent NINs */}
+                                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                                  <h4 className="text-sm font-medium text-green-800 mb-2">Available Parent NINs for Testing:</h4>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL12345678</span>
+                                      <br />
+                                      <span className="text-gray-600">Alhaji Koroma</span>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL87654321</span>
+                                      <br />
+                                      <span className="text-gray-600">Fatmata Sesay</span>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL11223344</span>
+                                      <br />
+                                      <span className="text-gray-600">Mohamed Bangura</span>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL55667788</span>
+                                      <br />
+                                      <span className="text-gray-600">Aminata Turay</span>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL99887766</span>
+                                      <br />
+                                      <span className="text-gray-600">Ibrahim Kamara</span>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border">
+                                      <span className="font-mono text-green-600">PL33445566</span>
+                                      <br />
+                                      <span className="text-gray-600">Hawa Conteh</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-green-600 mt-2">Click any NIN to copy to clipboard</p>
+                                </div>
                               </div>
-                              <div>
-                                <Label htmlFor="parent_lastname">Last Name</Label>
-                                <Input
-                                  id="parent_lastname"
-                                  value={parentFormData.lastname}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      lastname: e.target.value,
-                                    }))
-                                  }
-                                />
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <Label htmlFor="parent_firstname">First Name</Label>
+                                  <Input
+                                    id="parent_firstname"
+                                    value={parentFormData.firstname}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        firstname: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_lastname">Last Name</Label>
+                                  <Input
+                                    id="parent_lastname"
+                                    value={parentFormData.lastname}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        lastname: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_gender">Gender</Label>
+                                  <Select
+                                    onValueChange={(value) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        gender: value,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select gender" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Male">Male</SelectItem>
+                                      <SelectItem value="Female">Female</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_relationship">Relationship</Label>
+                                  <Select
+                                    onValueChange={(value) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        relationship_with_student: value,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select relationship" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Father">Father</SelectItem>
+                                      <SelectItem value="Mother">Mother</SelectItem>
+                                      <SelectItem value="Guardian">Guardian</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_phone">Phone Number</Label>
+                                  <Input
+                                    id="parent_phone"
+                                    value={parentFormData.phonenumber}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        phonenumber: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_email">Email</Label>
+                                  <Input
+                                    type="email"
+                                    id="parent_email"
+                                    value={parentFormData.emailaddress}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        emailaddress: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_dob">Date of Birth</Label>
+                                  <Input
+                                    type="date"
+                                    id="parent_dob"
+                                    value={parentFormData.dob}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        dob: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_occupation">Occupation</Label>
+                                  <Input
+                                    id="parent_occupation"
+                                    value={parentFormData.occupation}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        occupation: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_address">Home Address</Label>
+                                  <Input
+                                    id="parent_address"
+                                    value={parentFormData.homeaddress}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        homeaddress: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="parent_nin">NIN</Label>
+                                  <Input
+                                    id="parent_nin"
+                                    value={parentFormData.nin}
+                                    onChange={(e) =>
+                                      setParentFormData((prev) => ({
+                                        ...prev,
+                                        nin: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
                               </div>
-                              <div>
-                                <Label htmlFor="parent_gender">Gender</Label>
-                                <Select
-                                  onValueChange={(value) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      gender: value,
-                                    }))
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select gender" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Male">Male</SelectItem>
-                                    <SelectItem value="Female">Female</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_relationship">Relationship</Label>
-                                <Select
-                                  onValueChange={(value) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      relationship_with_student: value,
-                                    }))
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select relationship" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Father">Father</SelectItem>
-                                    <SelectItem value="Mother">Mother</SelectItem>
-                                    <SelectItem value="Guardian">Guardian</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_phone">Phone Number</Label>
-                                <Input
-                                  id="parent_phone"
-                                  value={parentFormData.phonenumber}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      phonenumber: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_email">Email</Label>
-                                <Input
-                                  type="email"
-                                  id="parent_email"
-                                  value={parentFormData.emailaddress}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      emailaddress: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_dob">Date of Birth</Label>
-                                <Input
-                                  type="date"
-                                  id="parent_dob"
-                                  value={parentFormData.dob}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      dob: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_occupation">Occupation</Label>
-                                <Input
-                                  id="parent_occupation"
-                                  value={parentFormData.occupation}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      occupation: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_address">Home Address</Label>
-                                <Input
-                                  id="parent_address"
-                                  value={parentFormData.homeaddress}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      homeaddress: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="parent_nin">NIN</Label>
-                                <Input
-                                  id="parent_nin"
-                                  value={parentFormData.nin}
-                                  onChange={(e) =>
-                                    setParentFormData((prev) => ({
-                                      ...prev,
-                                      nin: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <Button type="submit" disabled={isSubmittingParent}>
-                                {isSubmittingParent ? "Adding Parent..." : "Add Parent"}
-                              </Button>
-                            </DialogFooter>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
+                              <DialogFooter>
+                                <Button type="submit" disabled={isSubmittingParent}>
+                                  {isSubmittingParent ? "Adding Parent..." : "Add Parent"}
+                                </Button>
+                              </DialogFooter>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
                       )}
                     </TableCell>
                   </TableRow>
@@ -2700,7 +2716,7 @@ export default function StudentsPage() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Passport Picture Section for Edit */}
                   <div className="space-y-4">
                     <div>
@@ -2743,7 +2759,7 @@ export default function StudentsPage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <DialogFooter>
                     <Button type="submit">Save Changes</Button>
                   </DialogFooter>
@@ -2902,18 +2918,18 @@ export default function StudentsPage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="text-sm text-muted-foreground">
-                  <p><strong>Reason for detection:</strong> {duplicateStudent.reason === "NIN" ? 
-                    "Same NIN number found in the system" : 
+                  <p><strong>Reason for detection:</strong> {duplicateStudent.reason === "NIN" ?
+                    "Same NIN number found in the system" :
                     "Same name, date of birth, address, and email combination found"
                   }</p>
                 </div>
               </div>
             )}
             <DialogFooter>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setIsDuplicateModalOpen(false)}
               >
                 Close

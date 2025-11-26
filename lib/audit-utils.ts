@@ -1,8 +1,7 @@
-import { doc, setDoc, collection, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 
 export interface AuditLog {
-  id: string
+  id?: string
   action: "create" | "update" | "delete" | "view"
   entity_type: "class" | "student" | "teacher" | "subject"
   entity_id: string
@@ -17,29 +16,19 @@ export interface AuditLog {
   metadata?: {
     ip_address?: string
     user_agent?: string
-    session_id?: string
+    [key: string]: any
   }
-  timestamp: any
 }
 
-export const createAuditLog = async (logData: Omit<AuditLog, "id" | "timestamp">) => {
-  try {
-    const auditId = `AUDIT_${Date.now().toString().slice(-6)}_${Math.random().toString(36).substr(2, 9)}`
-    
-    const auditLog: AuditLog = {
-      ...logData,
-      id: auditId,
-      timestamp: Timestamp.fromDate(new Date()),
-    }
+export const createAuditLog = async (log: Omit<AuditLog, "id" | "created_at">) => {
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .insert(log)
+    .select()
+    .single()
 
-    await setDoc(doc(db, "audit_logs", auditId), auditLog)
-    
-    console.log("Audit log created:", auditId)
-    return auditId
-  } catch (error) {
-    console.error("Error creating audit log:", error)
-    // Don't throw error to avoid breaking main functionality
-  }
+  if (error) throw error
+  return data
 }
 
 export const logClassAction = async (
@@ -77,4 +66,4 @@ export const getChangesBetweenObjects = (before: any, after: any): string[] => {
   }
 
   return changes
-} 
+}

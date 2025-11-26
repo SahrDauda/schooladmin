@@ -7,8 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Printer, Download } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
-import { collection, doc, getDoc, getDocs, query, where, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -26,7 +25,7 @@ import { toast } from "@/hooks/use-toast"
 export default function StudentResultPage() {
   const params = useParams()
   const router = useRouter()
-  
+
   if (!params?.id) {
     return (
       <DashboardLayout>
@@ -39,7 +38,7 @@ export default function StudentResultPage() {
       </DashboardLayout>
     )
   }
-  
+
   const studentId = params.id as string
   const [student, setStudent] = useState<any>(null)
   const [grades, setGrades] = useState<any[]>([])
@@ -61,45 +60,47 @@ export default function StudentResultPage() {
         setSchoolInfo(info)
 
         // Get student data
-        const studentDoc = await getDoc(doc(db, "students", studentId))
-        if (studentDoc.exists()) {
-          setStudent({ id: studentDoc.id, ...studentDoc.data() })
-        } else {
-          throw new Error("Student not found")
-        }
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('*')
+          .eq('id', studentId)
+          .single()
+
+        if (studentError) throw studentError
+        setStudent(studentData)
 
         // Get grades
-        const gradesQuery = query(collection(db, "grades"), where("student_id", "==", studentId))
-        const gradesSnapshot = await getDocs(gradesQuery)
-        const gradesList = gradesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setGrades(gradesList)
+        const { data: gradesList, error: gradesError } = await supabase
+          .from('grades')
+          .select('*')
+          .eq('student_id', studentId)
+
+        if (gradesError) throw gradesError
+        setGrades(gradesList || [])
 
         // Get subjects
-        const subjectsSnapshot = await getDocs(collection(db, "subjects"))
-        const subjectsList = subjectsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setSubjects(subjectsList)
+        const { data: subjectsList, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('*')
+
+        if (subjectsError) throw subjectsError
+        setSubjects(subjectsList || [])
 
         // Get classes
-        const classesSnapshot = await getDocs(collection(db, "classes"))
-        const classesList = classesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setClasses(classesList)
+        const { data: classesList, error: classesError } = await supabase
+          .from('classes')
+          .select('*')
+
+        if (classesError) throw classesError
+        setClasses(classesList || [])
 
         // Get teachers
-        const teachersSnapshot = await getDocs(collection(db, "teachers"))
-        const teachersList = teachersSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setTeachers(teachersList)
+        const { data: teachersList, error: teachersError } = await supabase
+          .from('teachers')
+          .select('*')
+
+        if (teachersError) throw teachersError
+        setTeachers(teachersList || [])
       } catch (error) {
         console.error("Error fetching data:", error)
       } finally {
@@ -294,10 +295,15 @@ export default function StudentResultPage() {
     if (!student || !principalComment.trim()) return
 
     try {
-      await updateDoc(doc(db, "students", student.id), {
-        principal_comment: principalComment.trim(),
-        updated_at: new Date(),
-      })
+      const { error } = await supabase
+        .from('students')
+        .update({
+          principal_comment: principalComment.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', student.id)
+
+      if (error) throw error
 
       // Update local state
       setStudent({ ...student, principal_comment: principalComment.trim() })
@@ -500,29 +506,29 @@ export default function StudentResultPage() {
                         // Generate mock data for missing terms
                         const term1Data = term1Grade
                           ? {
-                              score1: term1Grade.score,
-                              score2: generateRandomGrade(),
-                              mean: term1Grade.score,
-                              rank: term1Grade.rank || generateRandomRank(),
-                            }
+                            score1: term1Grade.score,
+                            score2: generateRandomGrade(),
+                            mean: term1Grade.score,
+                            rank: term1Grade.rank || generateRandomRank(),
+                          }
                           : generateMockGradeData()
 
                         const term2Data = term2Grade
                           ? {
-                              score1: term2Grade.score,
-                              score2: generateRandomGrade(),
-                              mean: term2Grade.score,
-                              rank: term2Grade.rank || generateRandomRank(),
-                            }
+                            score1: term2Grade.score,
+                            score2: generateRandomGrade(),
+                            mean: term2Grade.score,
+                            rank: term2Grade.rank || generateRandomRank(),
+                          }
                           : generateMockGradeData()
 
                         const term3Data = term3Grade
                           ? {
-                              score1: term3Grade.score,
-                              score2: generateRandomGrade(),
-                              mean: term3Grade.score,
-                              rank: term3Grade.rank || generateRandomRank(),
-                            }
+                            score1: term3Grade.score,
+                            score2: generateRandomGrade(),
+                            mean: term3Grade.score,
+                            rank: term3Grade.rank || generateRandomRank(),
+                          }
                           : generateMockGradeData()
 
                         // Calculate year average

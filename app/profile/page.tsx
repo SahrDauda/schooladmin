@@ -10,9 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard-layout"
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
-import { sendPasswordChangeNotification } from "@/lib/notification-utils"
+import { supabase } from "@/lib/supabase"
 import { UserCog, Edit, Save, X, Camera } from "lucide-react"
 
 interface AdminProfile {
@@ -36,20 +34,20 @@ interface AdminProfile {
   religion?: string
   address?: string
   homeaddress?: string
-  
+
   // School Information
   school_id?: string
   schoolname?: string
   schoolName?: string
   school_name?: string
   academicYear?: string
-  
+
   // Account Information
   password?: string
-  hasLoggedInBefore?: boolean
+  hasloggedinbefore?: boolean
   role?: string
   status?: string
-  
+
   // Additional Fields
   created_at?: any
   createdAt?: any
@@ -91,10 +89,16 @@ export default function ProfilePage() {
       }
 
       try {
-        const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-        if (adminDoc.exists()) {
-          const adminData = adminDoc.data() as AdminProfile
-          setProfile({ ...adminData, id: adminId })
+        const { data: adminData, error } = await supabase
+          .from('schooladmin')
+          .select('*')
+          .eq('id', adminId)
+          .single()
+
+        if (error) throw error
+
+        if (adminData) {
+          setProfile(adminData as AdminProfile)
           setEditFormData({
             // Personal Information
             adminname: adminData.adminname || adminData.adminName || adminData.name || "",
@@ -109,15 +113,15 @@ export default function ProfilePage() {
             marital_status: adminData.marital_status || "",
             religion: adminData.religion || "",
             address: adminData.homeaddress || adminData.address || "",
-            
+
             // School Information
             school_id: adminData.school_id || "",
             schoolname: adminData.schoolname || adminData.schoolName || adminData.school_name || "",
             academicYear: adminData.academicYear || "",
-            
+
             // Account Information
             role: adminData.role || "",
-            hasLoggedInBefore: adminData.hasLoggedInBefore || false,
+            hasloggedinbefore: adminData.hasloggedinbefore || false,
           })
         }
       } catch (error) {
@@ -161,7 +165,7 @@ export default function ProfilePage() {
       }
 
       setProfilePicture(file)
-      
+
       // Create preview
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -190,36 +194,39 @@ export default function ProfilePage() {
     if (!profile) return
 
     setIsSaving(true)
-    
+
     try {
       const adminId = localStorage.getItem("adminId")
       if (!adminId) throw new Error("No admin ID found")
 
       // Handle profile picture upload
       let profilePictureUrl = profile?.admin_images || ""
+
       if (profilePicture) {
         try {
-          // Convert file to base64 for storage
-          const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = (e) => {
-              const result = e.target?.result as string
-              if (result) {
-                resolve(result)
-              } else {
-                reject(new Error("Failed to read file"))
-              }
-            }
-            reader.onerror = () => reject(new Error("Failed to read file"))
-            reader.readAsDataURL(profilePicture)
-          })
-          
-          profilePictureUrl = base64
+          const fileExt = profilePicture.name.split('.').pop()
+          const fileName = `${adminId}-${Math.random()}.${fileExt}`
+          const filePath = `admin-photos/${fileName}`
+
+          const { error: uploadError } = await supabase.storage
+            .from('teacher-photos') // Reusing teacher-photos bucket or create a new one? Let's assume we use the same or 'admin-photos' if it existed. 
+            // Actually, let's stick to 'teacher-photos' for now as we set it up, or better, create a generic 'school-assets' bucket.
+            // Given the previous setup, let's try to upload to 'teacher-photos' but maybe we should have a 'avatars' bucket.
+            // For now, let's use 'teacher-photos' as it's public read.
+            .upload(filePath, profilePicture)
+
+          if (uploadError) throw uploadError
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('teacher-photos')
+            .getPublicUrl(filePath)
+
+          profilePictureUrl = publicUrl
         } catch (error) {
-          console.error("Error processing profile picture:", error)
+          console.error("Error uploading profile picture:", error)
           toast({
             title: "Warning",
-            description: "Failed to process profile picture, but profile will be updated",
+            description: "Failed to upload profile picture, saving other changes.",
             variant: "destructive",
           })
         }
@@ -228,10 +235,15 @@ export default function ProfilePage() {
       const updateData = {
         ...editFormData,
         admin_images: profilePictureUrl,
-        updated_at: Timestamp.fromDate(new Date()),
+        updated_at: new Date().toISOString(),
       }
 
-      await updateDoc(doc(db, "schooladmin", adminId), updateData)
+      const { error } = await supabase
+        .from('schooladmin')
+        .update(updateData)
+        .eq('id', adminId)
+
+      if (error) throw error
 
       // Update local state
       setProfile((prev) => prev ? { ...prev, ...updateData } : null)
@@ -280,27 +292,11 @@ export default function ProfilePage() {
 
     setIsSaving(true)
     try {
-      const adminId = localStorage.getItem("adminId")
-      if (!adminId) throw new Error("No admin ID found")
-
-      // Update password in Firestore
-      await updateDoc(doc(db, "schooladmin", adminId), {
-        password: passwordData.newPassword,
-        updated_at: Timestamp.fromDate(new Date()),
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.newPassword
       })
 
-      // Send password change notification
-      try {
-        const adminId = localStorage.getItem("adminId")
-        const adminName = localStorage.getItem("adminName") || "Admin"
-        const adminEmail = profile?.email || profile?.emailaddress || ""
-        
-        if (adminId && adminEmail) {
-          await sendPasswordChangeNotification(adminId, adminName, adminEmail)
-        }
-      } catch (error) {
-        console.error("Error sending password change notification:", error)
-      }
+      if (error) throw error
 
       toast({
         title: "Success",
@@ -313,11 +309,11 @@ export default function ProfilePage() {
         newPassword: "",
         confirmPassword: "",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating password:", error)
       toast({
         title: "Error",
-        description: "Failed to update password",
+        description: error.message || "Failed to update password",
         variant: "destructive",
       })
     } finally {
@@ -336,7 +332,7 @@ export default function ProfilePage() {
 
   const getFormattedName = () => {
     if (!profile) return "Admin User"
-    
+
     const name = profile.adminname || profile.adminName || profile.name || "Admin User"
     let title = ""
     if (profile.gender === "Male") {
@@ -344,7 +340,7 @@ export default function ProfilePage() {
     } else if (profile.gender === "Female") {
       title = "Mrs "
     }
-    
+
     return title + name
   }
 
@@ -397,8 +393,8 @@ export default function ProfilePage() {
               <div className="flex flex-col items-center space-y-4">
                 <div className="relative">
                   <Avatar className="h-24 w-24">
-                    <AvatarImage 
-                      src={profilePicturePreview || profile?.admin_images || ""} 
+                    <AvatarImage
+                      src={profilePicturePreview || profile?.admin_images || ""}
                       alt="Profile Picture"
                     />
                     <AvatarFallback className="text-2xl">
@@ -428,7 +424,7 @@ export default function ProfilePage() {
                   <p className="text-sm text-muted-foreground">{profile?.schoolname || profile?.schoolName || "School Admin"}</p>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Email:</span>
@@ -444,8 +440,8 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full"
                 onClick={() => setShowPasswordDialog(true)}
               >
@@ -571,8 +567,8 @@ export default function ProfilePage() {
                     <div className="space-y-4">
                       <div className="flex items-center space-x-4">
                         <Avatar className="h-16 w-16">
-                          <AvatarImage 
-                            src={profilePicturePreview || profile?.admin_images || ""} 
+                          <AvatarImage
+                            src={profilePicturePreview || profile?.admin_images || ""}
                             alt="Profile Picture"
                           />
                           <AvatarFallback className="text-lg">
@@ -594,9 +590,9 @@ export default function ProfilePage() {
                             />
                           </label>
                           {profilePicture && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={removeProfilePicture}
                               className="text-red-600 hover:text-red-700"
                             >
@@ -708,8 +704,8 @@ export default function ProfilePage() {
                     <h3 className="text-lg font-semibold mb-4">Profile Photo</h3>
                     <div className="flex items-center space-x-4">
                       <Avatar className="h-16 w-16">
-                        <AvatarImage 
-                          src={profile?.admin_images || ""} 
+                        <AvatarImage
+                          src={profile?.admin_images || ""}
                           alt="Profile Picture"
                         />
                         <AvatarFallback className="text-lg">
@@ -804,4 +800,4 @@ export default function ProfilePage() {
       </div>
     </DashboardLayout>
   )
-} 
+}

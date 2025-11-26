@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bell, Mail, Shield, User, X } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
-import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 
 interface Notification {
   id: string
@@ -16,7 +15,7 @@ interface Notification {
   message: string
   type: 'welcome' | 'password_change' | 'system' | 'info'
   read: boolean
-  created_at: Timestamp
+  created_at: any // Supabase returns ISO string
   admin_id: string
   action_url?: string
 }
@@ -42,20 +41,17 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
   const fetchNotifications = async () => {
     setLoading(true)
     try {
-      const notificationsRef = collection(db, "notifications")
-      const q = query(
-        notificationsRef,
-        where("admin_id", "==", adminId),
-        orderBy("created_at", "desc"),
-        limit(50)
-      )
-      const snapshot = await getDocs(q)
-      const notificationsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[]
-      
-      setNotifications(notificationsList)
+      // Fetch notifications for this admin (checking both new recipient_id and legacy admin_id)
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .or(`recipient_id.eq.${adminId},admin_id.eq.${adminId}`)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) throw error
+
+      setNotifications(data as Notification[])
     } catch (error) {
       console.error("Error fetching notifications:", error)
       toast({
@@ -71,13 +67,16 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
   const markAsRead = async (notificationId: string) => {
     setMarkingAsRead(notificationId)
     try {
-      await updateDoc(doc(db, "notifications", notificationId), {
-        read: true
-      })
-      
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId)
+
+      if (error) throw error
+
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif.id === notificationId
             ? { ...notif, read: true }
             : notif
         )
@@ -92,15 +91,21 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
   const markAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(n => !n.read)
-      
-      for (const notification of unreadNotifications) {
-        await updateDoc(doc(db, "notifications", notification.id), { read: true })
-      }
-      
-      setNotifications(prev => 
+      const unreadIds = unreadNotifications.map(n => n.id)
+
+      if (unreadIds.length === 0) return
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .in('id', unreadIds)
+
+      if (error) throw error
+
+      setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       )
-      
+
       toast({
         title: "Success",
         description: "All notifications marked as read",
@@ -145,7 +150,7 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
     if (!notification.read) {
       markAsRead(notification.id)
     }
-    
+
     if (notification.action_url) {
       window.location.href = notification.action_url
     }
@@ -191,11 +196,10 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
               {notifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 rounded-lg border cursor-pointer transition-colors ${
-                    notification.read 
-                      ? 'bg-gray-50 border-gray-200' 
+                  className={`p-4 rounded-lg border cursor-pointer transition-colors ${notification.read
+                      ? 'bg-gray-50 border-gray-200'
                       : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                  }`}
+                    }`}
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start justify-between">
@@ -217,10 +221,7 @@ export function NotificationModal({ isOpen, onClose, adminId }: NotificationModa
                           {notification.message}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {notification.created_at?.toDate?.() 
-                            ? notification.created_at.toDate().toLocaleString()
-                            : new Date().toLocaleString()
-                          }
+                          {new Date(notification.created_at).toLocaleString()}
                         </p>
                       </div>
                     </div>

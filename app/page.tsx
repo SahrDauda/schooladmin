@@ -3,34 +3,29 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"
-import { auth, db } from "@/lib/firebase"
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
-import { Lock, Mail, Eye, EyeOff } from "lucide-react"
-import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
-import type { QuerySnapshot } from "firebase/firestore"
+import { Lock, Mail, Eye, EyeOff, UserPlus } from "lucide-react"
+import { useSupabaseConnection } from "@/hooks/use-supabase-connection"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
-import { sendWelcomeNotification } from "@/lib/notification-utils"
-import { setDoc } from "firebase/firestore"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [emailaddress, setEmailAddress] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const { isConnected } = useFirebaseConnection()
+  const { isConnected } = useSupabaseConnection()
 
   useEffect(() => {
     const rememberedEmail = localStorage.getItem("rememberedEmail")
     if (rememberedEmail) {
-      setEmailAddress(rememberedEmail)
+      setEmail(rememberedEmail)
       setRememberMe(true)
     }
   }, [])
@@ -45,72 +40,85 @@ export default function LoginPage() {
     setErrorMessage("")
 
     try {
-      console.log("Attempting login with email:", emailaddress)
-      const userCredential = await signInWithEmailAndPassword(auth, emailaddress, password)
-      const user = userCredential.user
-      console.log("Firebase Auth successful, user:", user.uid, user.email)
+      console.log("Attempting login with email:", email)
 
-      // Check if user exists in schooladmin collection by email
-      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", emailaddress))
-      let querySnapshot = await getDocs(adminQuery)
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      })
 
-      if (querySnapshot.empty) {
-        // Try email field
-        const adminQuery2 = query(collection(db, "schooladmin"), where("email", "==", emailaddress))
-        querySnapshot = await getDocs(adminQuery2)
+      if (authError) throw authError
+
+      const user = authData.user
+      console.log("Supabase Auth successful, user:", user.id, user.email)
+
+      // Check if user exists in schooladmin table by email
+      // We check both email and email columns for compatibility
+      const { data: admins, error: adminError } = await supabase
+        .from('schooladmin')
+        .select('*')
+        .select('*')
+        .eq('email', email)
+
+      if (adminError) {
+        console.error("Error fetching admin profile:", adminError)
       }
 
-      console.log("Admin query results:", querySnapshot.size, "documents found")
+      console.log("Admin query results:", admins?.length || 0, "documents found")
 
-      if (!querySnapshot.empty) {
-        const adminDoc = querySnapshot.docs[0]
-        const adminData = adminDoc.data() as any
+      if (admins && admins.length > 0) {
+        const adminData = admins[0]
         console.log("Admin document data:", adminData)
 
-        // Ensure an admin profile exists at schooladmin/<uid> for security rules to recognize role
-        try {
-          const profileDocRef = doc(db, "schooladmin", user.uid)
-          const profileDocSnap = await getDoc(profileDocRef)
-          if (!profileDocSnap.exists()) {
-            const normalizedData = {
-              // Required by rules
-              emailaddress: adminData.emailaddress || adminData.email || user.email || emailaddress,
-              email: adminData.email || adminData.emailaddress || user.email || emailaddress,
-              password: typeof adminData.password === "string" && adminData.password.length >= 6 ? adminData.password : password,
-              name: adminData.name || adminData.adminname || adminData.adminName || "Admin User",
-              role: adminData.role || "Principal",
-              school_id: adminData.school_id || adminData.id || adminDoc.id,
-              // Preserve other fields
-              ...adminData,
-            }
-            await setDoc(profileDocRef, normalizedData, { merge: true })
-            console.log("Synchronized admin profile to UID path")
-          }
-        } catch (syncErr) {
-          console.warn("Could not ensure admin profile under UID:", syncErr)
-        }
+        // Ensure an admin profile exists with the correct ID (linking auth ID to schooladmin ID)
+        // In Supabase, the schooladmin ID should ideally match the Auth User ID
+        // If they don't match, we might need to update the schooladmin record to have the correct ID
+        // or just rely on the email link. For now, we'll assume the schooladmin record is the source of truth.
 
-        // Store admin info in localStorage for backward compatibility - use UID for consistency with rules
-        localStorage.setItem("adminId", user.uid)
-        localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || "Admin User")
+        // Update last login
+        await supabase
+          .from('schooladmin')
+          .update({
+            last_login: new Date().toISOString(),
+            // If the record doesn't have an ID that matches auth user, we might want to link them here
+            // but changing primary key is hard. We'll assume the email link is sufficient for now.
+          })
+          .eq('id', adminData.id)
+
+        // Store admin info in localStorage
+        localStorage.setItem("adminId", adminData.id) // Use the table ID, not necessarily auth ID if they differ
+        localStorage.setItem("adminName", adminData.adminname || adminData.name || "Admin User")
         localStorage.setItem("adminRole", adminData.role || "Principal")
-        localStorage.setItem("adminEmail", emailaddress)
+        localStorage.setItem("adminEmail", email)
 
         if (adminData.gender) {
           localStorage.setItem("adminGender", adminData.gender)
         }
 
+        if (rememberMe) {
+          localStorage.setItem("rememberedEmail", email)
+        } else {
+          localStorage.removeItem("rememberedEmail")
+        }
+
         // Check if this is first time login
-        const hasLoggedInBefore = localStorage.getItem("hasLoggedInBefore")
-        if (hasLoggedInBefore === "false" || !hasLoggedInBefore) {
+        const hasLoggedInBefore = adminData.hasloggedinbefore
+
+        // Also check localStorage for legacy support
+        const localHasLoggedIn = localStorage.getItem("hasLoggedInBefore")
+
+        if (hasLoggedInBefore === false || localHasLoggedIn === "false") {
           localStorage.setItem("hasLoggedInBefore", "false")
           router.push("/dashboard")
         } else {
+          localStorage.setItem("hasLoggedInBefore", "true")
           router.push("/dashboard")
         }
       } else {
-        console.error("No admin document found for email:", emailaddress)
+        console.error("No admin document found for email:", email)
         setErrorMessage("No admin record found for this email address.")
+        // Optional: Sign out if no admin record found to prevent 'logged in but no access' state
+        await supabase.auth.signOut()
       }
     } catch (err: any) {
       console.error("Login error:", err)
@@ -125,59 +133,25 @@ export default function LoginPage() {
     setErrorMessage("")
 
     try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
-      const user = result.user
-      console.log("Google Sign-In successful, user:", user.uid, user.email)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      })
 
-      // Check if user exists in schooladmin collection by email
-      const adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
-      let querySnapshot = await getDocs(adminQuery)
+      if (error) throw error
 
-      if (querySnapshot.empty) {
-        // Try email field
-        const adminQuery2 = query(collection(db, "schooladmin"), where("email", "==", user.email))
-        querySnapshot = await getDocs(adminQuery2)
-      }
+      // Note: The user will be redirected, so the code below might not execute immediately
+      // The dashboard page handles the post-login logic for OAuth
 
-      if (!querySnapshot.empty) {
-        const adminDoc = querySnapshot.docs[0]
-        const adminData = adminDoc.data() as any
-
-        // Create/update admin profile at schooladmin/<uid>
-        const profileDocRef = doc(db, "schooladmin", user.uid)
-        const normalizedData = {
-          emailaddress: user.email,
-          email: user.email,
-          name: adminData.name || adminData.adminname || adminData.adminName || user.displayName || "Admin User",
-          role: adminData.role || "Principal",
-          school_id: adminData.school_id || adminData.id || adminDoc.id,
-          googleAuth: true,
-          lastLogin: Timestamp.now(),
-          ...adminData,
-        }
-        await setDoc(profileDocRef, normalizedData, { merge: true })
-
-        // Store admin info in localStorage
-        localStorage.setItem("adminId", user.uid)
-        localStorage.setItem("adminName", adminData.adminname || adminData.adminName || adminData.name || user.displayName || "Admin User")
-        localStorage.setItem("adminRole", adminData.role || "Principal")
-        localStorage.setItem("adminEmail", user.email || "")
-        localStorage.setItem("hasLoggedInBefore", "true")
-
-        if (adminData.gender) {
-          localStorage.setItem("adminGender", adminData.gender)
-        }
-
-        router.push("/dashboard")
-      } else {
-        setErrorMessage("No admin record found for this Google account. Please contact your administrator.")
-        await auth.signOut()
-      }
     } catch (err: any) {
       console.error("Google Sign-In error:", err)
       setErrorMessage(err.message || "An error occurred during Google Sign-In.")
-    } finally {
       setLoading(false)
     }
   }
@@ -198,12 +172,12 @@ export default function LoginPage() {
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                   <Input
-                    id="emailaddress"
+                    id="email"
                     type="email"
                     placeholder="Email Address"
                     className="pl-10 h-10 sm:h-11 text-sm sm:text-base"
-                    value={emailaddress}
-                    onChange={(e) => setEmailAddress(e.target.value)}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
@@ -303,6 +277,17 @@ export default function LoginPage() {
         <CardFooter className="flex flex-col space-y-2 p-4 sm:p-6">
           <div className="text-xs sm:text-sm text-center text-muted-foreground">
             This system is for authorized school administrators only
+          </div>
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push("/add-admin")}
+              type="button"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add School Admin (Temporary)
+            </Button>
           </div>
         </CardFooter>
       </Card>

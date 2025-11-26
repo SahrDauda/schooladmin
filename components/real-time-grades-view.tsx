@@ -9,21 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
-import { 
-  Eye, 
-  TrendingUp, 
-  Users, 
-  GraduationCap, 
-  Calendar,
-  RefreshCw,
+import {
+  TrendingUp,
+  Users,
+  GraduationCap,
   Download,
   FileText,
-  AlertCircle,
-  CheckCircle
+  AlertCircle
 } from "lucide-react"
-import { collection, query, where, getDocs, orderBy, onSnapshot } from "firebase/firestore"
-import { db } from "@/lib/firebase"
-import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { supabase } from "@/lib/supabase"
 import { exportStudentReportToPDF } from "@/lib/student-report-pdf"
 
 interface RealTimeGradesViewProps {
@@ -40,8 +34,8 @@ interface GradeData {
   comment?: string
   teacher_id: string
   school_id: string
-  created_at: Date
-  updated_at: Date
+  created_at: string
+  updated_at: string
 }
 
 interface Student {
@@ -49,6 +43,7 @@ interface Student {
   firstname: string
   lastname: string
   class: string
+  class_id?: string
   school_id: string
 }
 
@@ -88,26 +83,36 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - 2 + i).toString())
 
   useEffect(() => {
-    fetchData()
-    setupRealTimeListener()
-  }, [])
+    if (schoolId) {
+      fetchData()
+      setupRealTimeListener()
+    }
+  }, [schoolId])
 
   const fetchData = async () => {
     try {
       setIsLoading(true)
-      
+
       // Fetch all related data
-      const [studentsSnapshot, teachersSnapshot, subjectsSnapshot, classesSnapshot] = await Promise.all([
-        getDocs(collection(db, "students")),
-        getDocs(collection(db, "teachers")),
-        getDocs(collection(db, "subjects")),
-        getDocs(collection(db, "classes")),
+      const [
+        { data: studentsData },
+        { data: teachersData },
+        { data: subjectsData },
+        { data: classesData },
+        { data: gradesData }
+      ] = await Promise.all([
+        supabase.from('students').select('*').eq('school_id', schoolId),
+        supabase.from('teachers').select('*').eq('school_id', schoolId),
+        supabase.from('subjects').select('*').eq('school_id', schoolId),
+        supabase.from('classes').select('*').eq('school_id', schoolId),
+        supabase.from('grades').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
       ])
 
-      setStudents(studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-      setTeachers(teachersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-      setSubjects(subjectsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-      setClasses(classesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+      if (studentsData) setStudents(studentsData)
+      if (teachersData) setTeachers(teachersData)
+      if (subjectsData) setSubjects(subjectsData)
+      if (classesData) setClasses(classesData)
+      if (gradesData) setGrades(gradesData)
 
       // Set default term and year
       const currentMonth = new Date().getMonth()
@@ -128,35 +133,44 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
 
   const setupRealTimeListener = () => {
     // Listen for real-time updates to grades
-    const gradesQuery = query(
-      collection(db, "grades"),
-      where("school_id", "==", schoolId),
-      orderBy("created_at", "desc")
-    )
+    const channel = supabase
+      .channel('grades-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'grades',
+          filter: `school_id=eq.${schoolId}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newGrade = payload.new as GradeData
+            setGrades(prev => [newGrade, ...prev])
 
-    const unsubscribe = onSnapshot(gradesQuery, (snapshot) => {
-      const gradesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setGrades(gradesData)
-      
-      // Show notification for new grades
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          const newGrade = change.doc.data()
-          const student = students.find(s => s.id === newGrade.student_id)
-          const teacher = teachers.find(t => t.id === newGrade.teacher_id)
-          const subject = subjects.find(sub => sub.id === newGrade.subject_id)
-          
-          if (student && teacher && subject) {
-            toast({
-              title: "New Grade Posted",
-              description: `${teacher.firstname} ${teacher.lastname} posted a grade for ${student.firstname} ${student.lastname} in ${subject.name}`,
-            })
+            // Show notification for new grades
+            const student = students.find(s => s.id === newGrade.student_id)
+            const teacher = teachers.find(t => t.id === newGrade.teacher_id)
+            const subject = subjects.find(sub => sub.id === newGrade.subject_id)
+
+            if (student && subject) {
+              toast({
+                title: "New Grade Posted",
+                description: `${teacher ? `${teacher.firstname} ${teacher.lastname}` : 'A teacher'} posted a grade for ${student.firstname} ${student.lastname} in ${subject.name}`,
+              })
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            setGrades(prev => prev.map(g => g.id === payload.new.id ? payload.new as GradeData : g))
+          } else if (payload.eventType === 'DELETE') {
+            setGrades(prev => prev.filter(g => g.id !== payload.old.id))
           }
         }
-      })
-    })
+      )
+      .subscribe()
 
-    return unsubscribe
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }
 
   // Filter grades based on selected criteria
@@ -164,18 +178,25 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
     const student = students.find(s => s.id === grade.student_id)
     const teacher = teachers.find(t => t.id === grade.teacher_id)
     const subject = subjects.find(s => s.id === grade.subject_id)
-    
-    if (!student || !teacher || !subject) return false
+
+    if (!student || !subject) return false
 
     const matchesTerm = !selectedTerm || grade.term === selectedTerm
     const matchesYear = !selectedYear || grade.year === selectedYear
-    const matchesClass = selectedClass === "all" || student.class === selectedClass
+    // Check class match - handle both direct class string and class_id relation
+    const studentClassId = student.class_id
+    const studentClassName = student.class
+    const matchesClass = selectedClass === "all" ||
+      studentClassId === selectedClass ||
+      studentClassName === selectedClass ||
+      (classes.find(c => c.id === selectedClass)?.name === studentClassName)
+
     const matchesSubject = selectedSubject === "all" || grade.subject_id === selectedSubject
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       student.firstname.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.firstname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.lastname.toLowerCase().includes(searchTerm.toLowerCase())
+      (teacher && (teacher.firstname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teacher.lastname.toLowerCase().includes(searchTerm.toLowerCase())))
 
     return matchesTerm && matchesYear && matchesClass && matchesSubject && matchesSearch
   })
@@ -191,29 +212,16 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
   // Calculate summary statistics
   const summaryStats = {
     totalGrades: filteredGrades.length,
-    averageScore: filteredGrades.length > 0 
+    averageScore: filteredGrades.length > 0
       ? Math.round(filteredGrades.reduce((sum, g) => sum + g.score, 0) / filteredGrades.length)
       : 0,
-    teachersPosted: new Set(filteredGrades.map(g => g.teacher_id)).size,
+    teachersPosted: new Set(filteredGrades.map(g => g.teacher_id).filter(Boolean)).size,
     subjectsCovered: new Set(filteredGrades.map(g => g.subject_id)).size,
   }
 
-  const getStudentName = (studentId: string) => {
-    const student = students.find(s => s.id === studentId)
-    return student ? `${student.firstname} ${student.lastname}` : "Unknown Student"
-  }
-
-  const getTeacherName = (teacherId: string) => {
-    const teacher = teachers.find(t => t.id === teacherId)
-    return teacher ? `${teacher.firstname} ${teacher.lastname}` : "Unknown Teacher"
-  }
-
-  const getSubjectName = (subjectId: string) => {
-    const subject = subjects.find(s => s.id === subjectId)
-    return subject ? subject.name : "Unknown Subject"
-  }
-
-  const getClassName = (classId: string) => {
+  const getClassName = (classId?: string, className?: string) => {
+    if (className) return className
+    if (!classId) return "Unknown Class"
     const cls = classes.find(c => c.id === classId)
     return cls ? cls.name : "Unknown Class"
   }
@@ -241,8 +249,8 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
     })
   }
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString()
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleString()
   }
 
   return (
@@ -411,7 +419,7 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
                       const student = students.find(s => s.id === grade.student_id)
                       const teacher = teachers.find(t => t.id === grade.teacher_id)
                       const subject = subjects.find(s => s.id === grade.subject_id)
-                      
+
                       return (
                         <TableRow key={grade.id}>
                           <TableCell className="font-medium">
@@ -457,14 +465,14 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
                     const studentGrades = filteredGrades.filter(g => g.student_id === studentId)
                     const average = Math.round(studentGrades.reduce((sum, g) => sum + g.score, 0) / studentGrades.length)
                     const subjectsCount = new Set(studentGrades.map(g => g.subject_id)).size
-                    
+
                     return (
                       <TableRow key={studentId}>
                         <TableCell className="font-medium">
                           {student ? `${student.firstname} ${student.lastname}` : "Unknown"}
                         </TableCell>
                         <TableCell>
-                          {student ? getClassName(student.class) : "Unknown"}
+                          {student ? getClassName(student.class_id, student.class) : "Unknown"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{subjectsCount} subjects</Badge>
@@ -518,7 +526,7 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
                     const student = students.find(s => s.id === grade.student_id)
                     const teacher = teachers.find(t => t.id === grade.teacher_id)
                     const subject = subjects.find(s => s.id === grade.subject_id)
-                    
+
                     return (
                       <TableRow key={grade.id}>
                         <TableCell className="font-medium">
@@ -555,4 +563,4 @@ export default function RealTimeGradesView({ schoolId }: RealTimeGradesViewProps
       </Tabs>
     </div>
   )
-} 
+}

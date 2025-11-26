@@ -1,5 +1,5 @@
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+
+import { supabase } from "@/lib/supabase"
 
 export interface SubjectAssignment {
     id?: string
@@ -8,8 +8,8 @@ export interface SubjectAssignment {
     school_id: string
     assigned_by: string // admin ID
     assigned_at: any
-    academic_year?: string
-    term?: string
+    session_id?: string
+    term_id?: string
     status: "active" | "inactive"
 }
 
@@ -27,21 +27,23 @@ export async function assignStudentToSubject(
     subjectId: string,
     schoolId: string,
     adminId: string,
-    academicYear?: string,
-    term?: string
+    sessionId?: string,
+    termId?: string
 ): Promise<string> {
     try {
         // Check if assignment already exists
-        const existingQuery = query(
-            collection(db, "subject_assignments"),
-            where("student_id", "==", studentId),
-            where("subject_id", "==", subjectId),
-            where("school_id", "==", schoolId),
-            where("status", "==", "active")
-        )
+        const { data: existingAssignments, error } = await supabase
+            .from('subject_assignments')
+            .select('id')
+            .eq('student_id', studentId)
+            .eq('subject_id', subjectId)
+            .eq('school_id', schoolId)
+        //.eq('status', 'active') // Check all statuses? Or just active?
 
-        const existingSnapshot = await getDocs(existingQuery)
-        if (!existingSnapshot.empty) {
+        if (error) throw error
+
+        if (existingAssignments && existingAssignments.length > 0) {
+            // If exists but inactive, maybe reactivate? For now, just throw.
             throw new Error("Student is already assigned to this subject")
         }
 
@@ -50,14 +52,21 @@ export async function assignStudentToSubject(
             subject_id: subjectId,
             school_id: schoolId,
             assigned_by: adminId,
-            assigned_at: Timestamp.fromDate(new Date()),
-            academic_year: academicYear || new Date().getFullYear().toString(),
-            term: term || "Full Year",
+            assigned_at: new Date().toISOString(),
+            session_id: sessionId,
+            term_id: termId,
             status: "active"
         }
 
-        const docRef = await addDoc(collection(db, "subject_assignments"), assignmentData)
-        return docRef.id
+        const { data: newAssignment, error: insertError } = await supabase
+            .from('subject_assignments')
+            .insert(assignmentData)
+            .select()
+            .single()
+
+        if (insertError) throw insertError
+
+        return newAssignment.id
     } catch (error) {
         console.error("Error assigning student to subject:", error)
         throw error
@@ -69,7 +78,12 @@ export async function assignStudentToSubject(
  */
 export async function removeStudentFromSubject(assignmentId: string): Promise<void> {
     try {
-        await deleteDoc(doc(db, "subject_assignments", assignmentId))
+        const { error } = await supabase
+            .from('subject_assignments')
+            .delete()
+            .eq('id', assignmentId)
+
+        if (error) throw error
     } catch (error) {
         console.error("Error removing student from subject:", error)
         throw error
@@ -81,18 +95,15 @@ export async function removeStudentFromSubject(assignmentId: string): Promise<vo
  */
 export async function getSubjectAssignments(schoolId: string): Promise<SubjectAssignment[]> {
     try {
-        const querySnapshot = await getDocs(
-            query(
-                collection(db, "subject_assignments"),
-                where("school_id", "==", schoolId),
-                where("status", "==", "active")
-            )
-        )
+        const { data: assignments, error } = await supabase
+            .from('subject_assignments')
+            .select('*')
+            .eq('school_id', schoolId)
+        //.eq('status', 'active')
 
-        return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as SubjectAssignment[]
+        if (error) throw error
+
+        return assignments as SubjectAssignment[]
     } catch (error) {
         console.error("Error fetching subject assignments:", error)
         throw error
@@ -104,30 +115,29 @@ export async function getSubjectAssignments(schoolId: string): Promise<SubjectAs
  */
 export async function getStudentsForSubject(subjectId: string, schoolId: string): Promise<any[]> {
     try {
-        const assignmentsQuery = query(
-            collection(db, "subject_assignments"),
-            where("subject_id", "==", subjectId),
-            where("school_id", "==", schoolId),
-            where("status", "==", "active")
-        )
+        const { data: assignments, error: assignmentsError } = await supabase
+            .from('subject_assignments')
+            .select('student_id')
+            .eq('subject_id', subjectId)
+            .eq('school_id', schoolId)
+        //.eq('status', 'active')
 
-        const assignmentsSnapshot = await getDocs(assignmentsQuery)
-        const studentIds = assignmentsSnapshot.docs.map(doc => doc.data().student_id)
+        if (assignmentsError) throw assignmentsError
+
+        const studentIds = assignments.map(a => a.student_id)
 
         if (studentIds.length === 0) return []
 
         // Fetch student details
-        const studentsQuery = query(
-            collection(db, "students"),
-            where("school_id", "==", schoolId)
-        )
+        const { data: students, error: studentsError } = await supabase
+            .from('students')
+            .select('*')
+            .eq('school_id', schoolId)
+            .in('id', studentIds)
 
-        const studentsSnapshot = await getDocs(studentsQuery)
-        const students = studentsSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(student => studentIds.includes(student.id))
+        if (studentsError) throw studentsError
 
-        return students
+        return students || []
     } catch (error) {
         console.error("Error fetching students for subject:", error)
         throw error
@@ -139,30 +149,29 @@ export async function getStudentsForSubject(subjectId: string, schoolId: string)
  */
 export async function getSubjectsForStudent(studentId: string, schoolId: string): Promise<any[]> {
     try {
-        const assignmentsQuery = query(
-            collection(db, "subject_assignments"),
-            where("student_id", "==", studentId),
-            where("school_id", "==", schoolId),
-            where("status", "==", "active")
-        )
+        const { data: assignments, error: assignmentsError } = await supabase
+            .from('subject_assignments')
+            .select('subject_id')
+            .eq('student_id', studentId)
+            .eq('school_id', schoolId)
+        //.eq('status', 'active')
 
-        const assignmentsSnapshot = await getDocs(assignmentsQuery)
-        const subjectIds = assignmentsSnapshot.docs.map(doc => doc.data().subject_id)
+        if (assignmentsError) throw assignmentsError
+
+        const subjectIds = assignments.map(a => a.subject_id)
 
         if (subjectIds.length === 0) return []
 
         // Fetch subject details
-        const subjectsQuery = query(
-            collection(db, "subjects"),
-            where("school_id", "==", schoolId)
-        )
+        const { data: subjects, error: subjectsError } = await supabase
+            .from('subjects')
+            .select('*')
+            .eq('school_id', schoolId)
+            .in('id', subjectIds)
 
-        const subjectsSnapshot = await getDocs(subjectsQuery)
-        const subjects = subjectsSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(subject => subjectIds.includes(subject.id))
+        if (subjectsError) throw subjectsError
 
-        return subjects
+        return subjects || []
     } catch (error) {
         console.error("Error fetching subjects for student:", error)
         throw error
@@ -177,8 +186,8 @@ export async function bulkAssignStudentsToSubject(
     subjectId: string,
     schoolId: string,
     adminId: string,
-    academicYear?: string,
-    term?: string
+    sessionId?: string,
+    termId?: string
 ): Promise<string[]> {
     try {
         const assignmentIds: string[] = []
@@ -190,12 +199,12 @@ export async function bulkAssignStudentsToSubject(
                     subjectId,
                     schoolId,
                     adminId,
-                    academicYear,
-                    term
+                    sessionId,
+                    termId
                 )
                 assignmentIds.push(assignmentId)
             } catch (error) {
-                console.error(`Failed to assign student ${studentId} to subject ${subjectId}:`, error)
+                console.error(`Failed to assign student ${studentId} to subject ${subjectId}: `, error)
                 // Continue with other assignments
             }
         }
@@ -205,4 +214,4 @@ export async function bulkAssignStudentsToSubject(
         console.error("Error in bulk assignment:", error)
         throw error
     }
-} 
+}

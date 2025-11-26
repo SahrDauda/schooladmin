@@ -1,17 +1,14 @@
-import { doc, setDoc, collection, getDocs, query, Timestamp, deleteDoc, where, writeBatch, getDoc, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { z } from "zod"
 import { toast } from "@/hooks/use-toast"
-import { logClassAction, getChangesBetweenObjects } from "@/lib/audit-utils"
+import { logClassAction } from "@/lib/audit-utils"
 
 // Validation schemas
 export const classSchema = z.object({
   name: z.string().min(1, "Class name is required").max(100, "Class name too long"),
   level: z.string().min(1, "Level is required"),
-  section: z.string().optional(),
   capacity: z.number().min(1, "Capacity must be at least 1").max(1000, "Capacity too high"),
-  teacher_id: z.string().optional(),
-  description: z.string().optional(),
+  form_teacher_id: z.string().optional(), // Changed from teacher_id to form_teacher_id
   school_id: z.string().min(1, "School ID is required"),
 })
 
@@ -22,13 +19,10 @@ export interface Class {
   id: string
   name: string
   level: string
-  section?: string
   capacity: number
-  teacher_id?: string
-  description?: string
+  form_teacher_id?: string // Changed from teacher_id
   students_count?: number
   school_id: string
-  schoolName?: string
   created_at?: any
   updated_at?: any
 }
@@ -71,52 +65,55 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
 
     // Check for duplicate class names only when both fields are present
     if ((!isUpdate) || (validatedData.name && validatedData.level)) {
-      const classesRef = collection(db, "classes")
-      const duplicateQuery = query(
-        classesRef,
-        where("school_id", "==", schoolId),
-        where("name", "==", validatedData.name || data.name),
-        where("level", "==", validatedData.level || data.level)
-      )
-      const duplicateSnapshot = await getDocs(duplicateQuery)
+      const { data: duplicateClasses, error } = await supabase
+        .from('classes')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('name', validatedData.name || data.name)
+        .eq('level', validatedData.level || data.level)
 
-      const duplicateClasses = duplicateSnapshot.docs.filter(doc => doc.id !== existingClassId)
-      if (duplicateClasses.length > 0) {
-        errors.push("A class with this name and level already exists")
+      if (!error && duplicateClasses) {
+        const duplicates = duplicateClasses.filter(doc => doc.id !== existingClassId)
+        if (duplicates.length > 0) {
+          errors.push("A class with this name and level already exists")
+        }
       }
     }
 
     // Validate teacher assignment
-    if (validatedData.teacher_id || data.teacher_id) {
-      const teacherId = validatedData.teacher_id || data.teacher_id
-      const teacherRef = doc(db, "teachers", teacherId as string)
-      const teacherDoc = await getDoc(teacherRef)
+    if (validatedData.form_teacher_id || data.form_teacher_id) {
+      const teacherId = validatedData.form_teacher_id || data.form_teacher_id
 
-      if (!teacherDoc.exists()) {
+      const { data: teacherDoc, error: teacherError } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('id', teacherId)
+        .single()
+
+      if (teacherError || !teacherDoc) {
         errors.push("Selected teacher does not exist")
       } else {
-        const teacherData = teacherDoc.data()
-        if (teacherData.school_id !== schoolId) {
+        if (teacherDoc.school_id !== schoolId) {
           errors.push("Selected teacher does not belong to this school")
         }
 
         // Check if teacher is already assigned to another class
-        const classesRef = collection(db, "classes")
-        const teacherClassesQuery = query(
-          classesRef,
-          where("school_id", "==", schoolId),
-          where("teacher_id", "==", teacherId)
-        )
-        const teacherClassesSnapshot = await getDocs(teacherClassesQuery)
-        const teacherClasses = teacherClassesSnapshot.docs.filter(doc => doc.id !== existingClassId)
+        const { data: teacherClasses, error: classError } = await supabase
+          .from('classes')
+          .select('id')
+          .eq('school_id', schoolId)
+          .eq('form_teacher_id', teacherId)
 
-        if (teacherClasses.length > 0) {
-          warnings.push("This teacher is already assigned to another class")
+        if (!classError && teacherClasses) {
+          const otherClasses = teacherClasses.filter(doc => doc.id !== existingClassId)
+          if (otherClasses.length > 0) {
+            warnings.push("This teacher is already assigned to another class")
+          }
         }
       }
     }
 
-    // Validate capacity when provided (or always for creates)
+    // Validate capacity
     if ((!isUpdate && (validatedData as any).capacity !== undefined) || (isUpdate && (data.capacity !== undefined))) {
       const cap = isUpdate ? Number(data.capacity) : Number((validatedData as any).capacity)
       if (Number.isNaN(cap) || cap < 1) {
@@ -147,48 +144,47 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
 export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWithDetails[]> => {
   try {
     // Fetch classes
-    const classesRef = collection(db, "classes")
-    const classesQuery = query(classesRef, where("school_id", "==", schoolId))
-    const classesSnapshot = await getDocs(classesQuery)
+    const { data: classesList, error: classesError } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('school_id', schoolId)
 
-    const classesList: Class[] = classesSnapshot.docs.map(
-      (doc) => ({ id: doc.id, ...doc.data() } as Class)
-    )
+    if (classesError) throw classesError
 
     // Fetch teachers for class details
-    const teachersRef = collection(db, "teachers")
-    const teachersQuery = query(teachersRef, where("school_id", "==", schoolId))
-    const teachersSnapshot = await getDocs(teachersQuery)
-    const teachers = teachersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as any))
+    const { data: teachers, error: teachersError } = await supabase
+      .from('teachers')
+      .select('*')
+      .eq('school_id', schoolId)
 
-    // Fetch students count efficiently using aggregation
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(studentsRef, where("school_id", "==", schoolId))
-    const studentsSnapshot = await getDocs(studentsQuery)
+    if (teachersError) throw teachersError
 
-    // Count students by class
-    const studentCounts: { [className: string]: number } = {}
-    studentsSnapshot.docs.forEach((doc) => {
-      const studentData = doc.data()
-      if (studentData.class) {
-        const className = studentData.class.trim()
-        studentCounts[className] = (studentCounts[className] || 0) + 1
+    // Fetch students count by class_id
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('class_id')
+      .eq('school_id', schoolId)
+
+    if (studentsError) throw studentsError
+
+    // Count students by class_id
+    const studentCounts: { [classId: string]: number } = {}
+    students?.forEach((student: any) => {
+      if (student.class_id) {
+        studentCounts[student.class_id] = (studentCounts[student.class_id] || 0) + 1
       }
     })
 
     // Combine data and calculate occupancy rates
-    const classesWithDetails: ClassWithDetails[] = classesList.map((cls) => {
-      const studentCount = studentCounts[cls.name] || 0
-      const teacher = teachers.find(t => t.id === cls.teacher_id)
+    const classesWithDetails: ClassWithDetails[] = (classesList || []).map((cls: any) => {
+      const studentCount = studentCounts[cls.id] || 0
+      const teacher = teachers?.find((t: any) => t.id === cls.form_teacher_id)
 
       return {
         ...cls,
         students_count: studentCount,
         teacher_name: teacher ? `${teacher.firstname || ''} ${teacher.lastname || ''}`.trim() : undefined,
-        teacher_email: teacher?.email || teacher?.emailaddress,
+        teacher_email: teacher?.email,
         occupancy_rate: cls.capacity > 0 ? Math.round((studentCount / cls.capacity) * 100) : 0
       }
     })
@@ -213,14 +209,14 @@ export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWi
 
 export const fetchTeachers = async (schoolId: string) => {
   try {
-    const teachersRef = collection(db, "teachers")
-    const q = query(teachersRef, where("school_id", "==", schoolId))
-    const querySnapshot = await getDocs(q)
+    const { data: teachers, error } = await supabase
+      .from('teachers')
+      .select('*')
+      .eq('school_id', schoolId)
 
-    return querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
+    if (error) throw error
+
+    return teachers || []
   } catch (error) {
     console.error("Error fetching teachers:", error)
     throw new Error("Failed to fetch teachers")
@@ -241,22 +237,26 @@ export const createClass = async (
       throw new Error(validation.errors.join(", "))
     }
 
-    // Generate unique ID
-    const classId = `CL${Date.now().toString().slice(-6)}`
-
     // Prepare data
-    const currentDate = new Date()
+    // Note: ID is auto-generated by Supabase (UUID)
     const finalData = {
-      ...classData,
-      id: classId,
+      name: classData.name,
+      level: classData.level,
+      capacity: Number(classData.capacity),
+      form_teacher_id: classData.form_teacher_id || null,
       school_id: schoolInfo.school_id,
-      schoolName: schoolInfo.schoolName,
-      created_at: Timestamp.fromDate(currentDate),
-      students_count: 0,
     }
 
-    // Save to Firestore
-    await setDoc(doc(db, "classes", classId), finalData)
+    // Save to Supabase
+    const { data, error } = await supabase
+      .from('classes')
+      .insert(finalData)
+      .select('id')
+      .single()
+
+    if (error) throw error
+
+    const classId = data.id
 
     // Log audit trail
     if (userId && userName) {
@@ -286,22 +286,24 @@ export const updateClass = async (
     }
 
     // Prepare update data
-    const currentDate = new Date()
     const finalData = {
       ...updateData,
-      school_id: schoolInfo.school_id,
-      schoolName: schoolInfo.schoolName,
-      updated_at: Timestamp.fromDate(currentDate),
+      updated_at: new Date().toISOString(),
     }
 
-    // Update in Firestore
-    await updateDoc(doc(db, "classes", classId), finalData)
+    // Update in Supabase
+    const { error } = await supabase
+      .from('classes')
+      .update(finalData)
+      .eq('id', classId)
+
+    if (error) throw error
 
     // Return teacher change info for notification
     return {
       previousTeacherId,
-      newTeacherId: updateData.teacher_id,
-      hasTeacherChanged: previousTeacherId !== updateData.teacher_id
+      newTeacherId: updateData.form_teacher_id,
+      hasTeacherChanged: previousTeacherId !== updateData.form_teacher_id
     }
   } catch (error) {
     console.error("Error updating class:", error)
@@ -312,16 +314,25 @@ export const updateClass = async (
 export const deleteClass = async (classId: string): Promise<void> => {
   try {
     // Check if class has students
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(studentsRef, where("class_id", "==", classId))
-    const studentsSnapshot = await getDocs(studentsQuery)
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('class_id', classId)
+      .limit(1)
 
-    if (!studentsSnapshot.empty) {
+    if (studentsError) throw studentsError
+
+    if (students && students.length > 0) {
       throw new Error("Cannot delete class with enrolled students. Please reassign students first.")
     }
 
     // Delete class
-    await deleteDoc(doc(db, "classes", classId))
+    const { error } = await supabase
+      .from('classes')
+      .delete()
+      .eq('id', classId)
+
+    if (error) throw error
   } catch (error) {
     console.error("Error deleting class:", error)
     throw error
@@ -331,11 +342,15 @@ export const deleteClass = async (classId: string): Promise<void> => {
 // Utility functions
 export const getClassById = async (classId: string): Promise<Class | null> => {
   try {
-    const classDoc = await getDoc(doc(db, "classes", classId))
-    if (classDoc.exists()) {
-      return { id: classDoc.id, ...classDoc.data() } as Class
-    }
-    return null
+    const { data: classDoc, error } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('id', classId)
+      .single()
+
+    if (error || !classDoc) return null
+
+    return classDoc as Class
   } catch (error) {
     console.error("Error fetching class by ID:", error)
     throw error
@@ -350,10 +365,14 @@ export const checkClassCapacity = async (classId: string): Promise<{ current: nu
     }
 
     // Count students in this class
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(studentsRef, where("class_id", "==", classId))
-    const studentsSnapshot = await getDocs(studentsQuery)
-    const currentStudents = studentsSnapshot.size
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('class_id', classId)
+
+    if (error) throw error
+
+    const currentStudents = count || 0
 
     return {
       current: currentStudents,
@@ -383,4 +402,4 @@ export const getClassMetrics = (classes: ClassWithDetails[]) => {
     fullClasses,
     emptyClasses
   }
-} 
+}

@@ -3,8 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { doc, setDoc, Timestamp, getDoc, collection, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -81,13 +80,12 @@ export default function AddStudentPage() {
     // Fetch classes for the dropdown
     const fetchClasses = async () => {
       try {
-        const classesRef = collection(db, "classes")
-        const classesSnapshot = await getDocs(classesRef)
-        const classesList = classesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        setClasses(classesList)
+        const { data: classesList, error } = await supabase
+          .from('classes')
+          .select('*')
+
+        if (error) throw error
+        setClasses(classesList || [])
       } catch (error) {
         console.error("Error fetching classes:", error)
       }
@@ -98,9 +96,13 @@ export default function AddStudentPage() {
       try {
         const adminId = localStorage.getItem("adminId")
         if (adminId) {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
+          const { data: adminData, error: adminError } = await supabase
+            .from('schooladmin')
+            .select('*')
+            .eq('id', adminId)
+            .single()
+
+          if (!adminError && adminData) {
             const currentSchoolId = adminData.school_id || adminId
             const currentSchoolName = adminData.schoolName || "Holy Family Junior Secondary School"
 
@@ -120,9 +122,14 @@ export default function AddStudentPage() {
             }))
 
             // Now fetch the stage from the 'schools' collection using currentSchoolId
-            const schoolDoc = await getDoc(doc(db, "schools", currentSchoolId))
-            if (schoolDoc.exists()) {
-              setSchoolStage(schoolDoc.data().stage || "senior secondary")
+            const { data: schoolData, error: schoolError } = await supabase
+              .from('schools')
+              .select('*')
+              .eq('id', currentSchoolId)
+              .single()
+
+            if (!schoolError && schoolData) {
+              setSchoolStage(schoolData.stage || "senior secondary")
             } else {
               setSchoolStage("senior secondary") // Default if school doc doesn't exist
             }
@@ -167,24 +174,24 @@ export default function AddStudentPage() {
         },
         body: JSON.stringify({ nin: nin })
       })
-      
+
       console.log('Response status:', response.status)
       console.log('Response ok:', response.ok)
       console.log('Response headers:', response.headers)
-        
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: NIN not found`)
       }
-      
+
       const data = await response.json()
       console.log('API response data:', data)
-      
+
       // Check if the API returned valid data
       if (!data || !data.firstName || !data.lastName) {
         console.log('Invalid data structure:', data)
         throw new Error('Invalid NIN data received')
       }
-      
+
       // Auto-populate form with NIN data
       setFormData((prev) => ({
         ...prev,
@@ -200,16 +207,16 @@ export default function AddStudentPage() {
         faculty: data.faculty || prev.faculty,
         nin: nin
       }))
-      
+
       console.log('Form updated with NIN data')
-      
+
       toast({
         title: "Success",
         description: `Student information retrieved for ${data.firstName} ${data.lastName}`,
       })
     } catch (error) {
       console.error('NIN search failed:', error)
-      
+
       // Show specific error message based on the error
       let errorMessage = "NIN verification failed"
       if (error instanceof Error) {
@@ -221,7 +228,7 @@ export default function AddStudentPage() {
           errorMessage = "Network error - please check your connection"
         }
       }
-      
+
       toast({
         title: "NIN Not Found",
         description: errorMessage,
@@ -255,14 +262,18 @@ export default function AddStudentPage() {
         ...formData,
         id: studentId,
         status: "Active",
-        created_at: Timestamp.fromDate(currentDate),
+        created_at: currentDate.toISOString(),
         date: currentDate.toLocaleDateString(),
         month: currentDate.toLocaleString("default", { month: "long" }),
         year: currentDate.getFullYear().toString(),
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "students", studentId), studentData)
+      // Save to Supabase
+      const { error } = await supabase
+        .from('students')
+        .insert(studentData)
+
+      if (error) throw error
 
       toast({
         title: "Success",
@@ -311,9 +322,9 @@ export default function AddStudentPage() {
                     value={formData.nin}
                     onChange={(e) => setFormData({ ...formData, nin: e.target.value })}
                   />
-                  <Button 
-                    type="button" 
-                    variant="secondary" 
+                  <Button
+                    type="button"
+                    variant="secondary"
                     onClick={() => searchNINFromAPI(formData.nin)}
                     disabled={isSearchingNIN || !formData.nin}
                     className="whitespace-nowrap"

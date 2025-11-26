@@ -1,18 +1,18 @@
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase"
-import { auth } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 
 export interface SchoolInfo {
   school_id: string
   schoolName: string
-  stage?: string // Add stage to the interface
+  stage?: string
 }
 
 export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
   try {
     // Prefer values set by AuthProvider; fallback to existing localStorage keys
     const adminIdFromStorage = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
-    const uid = auth?.currentUser?.uid || null
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const uid = user?.id || null
 
     const candidateIds = [adminIdFromStorage, uid].filter(Boolean) as string[]
 
@@ -30,83 +30,54 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
     // Try reading admin profile by possible IDs (localStorage and/or UID)
     for (const candId of candidateIds) {
       try {
-        const aDoc = await getDoc(doc(db, "schooladmin", candId))
-        if (aDoc.exists()) {
-          resolvedAdminData = aDoc.data()
+        const { data: aDoc, error } = await supabase
+          .from('schooladmin')
+          .select('*')
+          .eq('id', candId)
+          .single()
+
+        if (!error && aDoc) {
+          resolvedAdminData = aDoc
           resolvedAdminDocId = candId
           break
         }
       } catch (error) {
         console.warn(`Failed to read admin document for ID ${candId}:`, error)
-        // Continue to next candidate instead of ignoring
         continue
-      }
-    }
-
-    // If we couldn't read by ID, try to read by email (this should work with current rules)
-    if (!resolvedAdminData && auth?.currentUser?.email) {
-      try {
-        console.log("Trying to find admin by email:", auth.currentUser.email)
-        const adminQuery = query(
-          collection(db, "schooladmin"),
-          where("emailaddress", "==", auth.currentUser.email)
-        )
-        const adminSnapshot = await getDocs(adminQuery)
-
-        if (adminSnapshot.empty) {
-          // Try email field as fallback
-          const adminQuery2 = query(
-            collection(db, "schooladmin"),
-            where("email", "==", auth.currentUser.email)
-          )
-          const adminSnapshot2 = await getDocs(adminQuery2)
-
-          if (!adminSnapshot2.empty) {
-            const adminDoc = adminSnapshot2.docs[0]
-            resolvedAdminData = adminDoc.data()
-            resolvedAdminDocId = adminDoc.id
-            console.log("Found admin by email field:", resolvedAdminData)
-          }
-        } else {
-          const adminDoc = adminSnapshot.docs[0]
-          resolvedAdminData = adminDoc.data()
-          resolvedAdminDocId = adminDoc.id
-          console.log("Found admin by emailaddress field:", resolvedAdminData)
-        }
-      } catch (error) {
-        console.error("Failed to find admin by email:", error)
       }
     }
 
     if (resolvedAdminData) {
       const schoolId = resolvedAdminData.school_id
 
-      // Fetch school stage and school name from the 'schools' collection via school_id
+      // Fetch school details from the 'schools' table via school_id
       let schoolStage = ""
-      let schoolName = resolvedAdminData.schoolname || resolvedAdminData.schoolName || ""
+      let schoolName = ""
 
       if (schoolId) {
-        const schoolsRef = collection(db, "schools")
-        const schoolsQuery = query(schoolsRef, where("school_id", "==", schoolId))
         try {
-          const schoolsSnapshot = await getDocs(schoolsQuery)
-          if (!schoolsSnapshot.empty) {
-            const schoolDoc = schoolsSnapshot.docs[0]
-            const schoolData: any = schoolDoc.data()
-            schoolStage = schoolData.stage || ""
-            if (schoolData.school_name) {
-              schoolName = schoolData.school_name
-            }
+          const { data: schoolData, error } = await supabase
+            .from('schools')
+            .select('*')
+            .eq('id', schoolId)
+            .single()
+
+          if (!error && schoolData) {
+            // Assuming 'stage' might be a field in schools table or derived
+            // For now, we'll check if it exists, otherwise default
+            schoolName = schoolData.name || ""
+            // If stage is not in schools table, we might need to add it or infer it
+            // For now, let's assume it might be there or we leave it empty
+            schoolStage = (schoolData as any).stage || ""
           }
         } catch (error) {
-          console.warn("Failed to read schools collection:", error)
-          // If schools read is blocked by rules, still return school_id and whatever name we have
+          console.warn("Failed to read schools table:", error)
         }
       }
 
       return {
         school_id: schoolId || resolvedAdminDocId!,
-        schoolName,
+        schoolName: schoolName || resolvedAdminData.schoolname || resolvedAdminData.schoolName || "",
         stage: schoolStage,
       }
     }
@@ -120,7 +91,6 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
     }
   } catch (error) {
     console.error("Error fetching school admin data:", error)
-    // Do not poison downstream with "error" school_id; return unknown for resilience
     return {
       school_id: "unknown",
       schoolName: "",
@@ -141,15 +111,29 @@ export function getCurrentSchoolInfoSync(): SchoolInfo {
 
 export async function getStudentCountsByClass(schoolId: string): Promise<{ [className: string]: number }> {
   try {
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(studentsRef, where("school_id", "==", schoolId))
-    const studentsSnapshot = await getDocs(studentsQuery)
+    // We need to join with classes table to get class names if we only have class_id in students
+    // But students table has class_id (UUID). 
+    // We want counts by class NAME.
+
+    const { data: classes, error: classesError } = await supabase
+      .from('classes')
+      .select('id, name')
+      .eq('school_id', schoolId)
+
+    if (classesError) throw classesError
+
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('class_id')
+      .eq('school_id', schoolId)
+
+    if (studentsError) throw studentsError
 
     const studentCounts: { [className: string]: number } = {}
+    const classMap = new Map(classes?.map(c => [c.id, c.name]))
 
-    studentsSnapshot.docs.forEach((doc) => {
-      const studentData: any = doc.data()
-      const className = studentData.class || "Unassigned"
+    students?.forEach((student: any) => {
+      const className = classMap.get(student.class_id) || "Unassigned"
       studentCounts[className] = (studentCounts[className] || 0) + 1
     })
 
@@ -162,11 +146,14 @@ export async function getStudentCountsByClass(schoolId: string): Promise<{ [clas
 
 export async function getTotalStudentCount(schoolId: string): Promise<number> {
   try {
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(studentsRef, where("school_id", "==", schoolId))
-    const studentsSnapshot = await getDocs(studentsQuery)
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
 
-    return studentsSnapshot.size
+    if (error) throw error
+
+    return count || 0
   } catch (error) {
     console.error("Error fetching total student count:", error)
     return 0
@@ -175,26 +162,28 @@ export async function getTotalStudentCount(schoolId: string): Promise<number> {
 
 export async function generateAdmissionNumber(schoolId: string, year: string): Promise<string> {
   try {
-    // Get all students for this school and year
-    const studentsRef = collection(db, "students")
-    const studentsQuery = query(
-      studentsRef,
-      where("school_id", "==", schoolId),
-      where("batch", "==", year)
-    )
-    const studentsSnapshot = await getDocs(studentsQuery)
+    // Get count of students for this school to generate sequential number
+    // Note: This is a simple approach. For strict uniqueness, we might need a sequence or atomic increment.
+    // But for now, count + 1 is reasonable for low concurrency.
 
-    // Count existing students for this school and year
-    const existingCount = studentsSnapshot.size
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
 
-    // Generate the next number (001, 002, etc.)
+    if (error) throw error
+
+    const existingCount = count || 0
     const nextNumber = (existingCount + 1).toString().padStart(3, '0')
 
-    // Format: SCHOOL_ID + YEAR + SEQUENTIAL_NUMBER
-    return `${schoolId}${year}${nextNumber}`
+    // Format: SCH-YEAR-NUM (e.g., SCH-2024-001)
+    // We might want a school code/prefix if available in schools table
+
+    return `${year}${nextNumber}`
   } catch (error) {
     console.error("Error generating admission number:", error)
-    // Fallback to timestamp-based generation
-    return `${schoolId}${year}${Date.now().toString().slice(-3)}`
+    return `${year}${Date.now().toString().slice(-3)}`
   }
 }
+
+

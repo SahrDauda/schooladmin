@@ -1,0 +1,86 @@
+-- =====================================================
+-- MANUAL ADMIN CREATION SCRIPT
+-- =====================================================
+-- Copy and paste this entire block into your Supabase SQL Editor
+-- and run it to create the user, school, and admin record.
+-- =====================================================
+
+-- Enable pgcrypto for password hashing (required for auth.users)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DO $$
+DECLARE
+  new_user_id UUID := gen_random_uuid();
+  new_school_id UUID := gen_random_uuid();
+  user_email TEXT := 'emmanuelsahrdauda17@gmail.com';
+  user_password TEXT := 'dauda2019';
+  user_name TEXT := 'Emmanuel Sahr Dauda';
+  school_name_text TEXT := 'Holy Family Senior Secondary Schools';
+BEGIN
+  -- 1. Insert into auth.users (The Login User)
+  -- We manually create the auth user with a hashed password
+  INSERT INTO auth.users (
+    instance_id,
+    id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    recovery_token
+  ) VALUES (
+    '00000000-0000-0000-0000-000000000000',
+    new_user_id,
+    'authenticated',
+    'authenticated',
+    user_email,
+    crypt(user_password, gen_salt('bf')), -- Hash the password
+    now(), -- Auto-confirm the email
+    '{"provider": "email", "providers": ["email"]}',
+    jsonb_build_object('name', user_name, 'role', 'Principal'),
+    now(),
+    now(),
+    '',
+    ''
+  );
+
+  -- 2. Insert into public.schools (The School)
+  -- MUST be inserted BEFORE schooladmin due to Foreign Key constraint
+  INSERT INTO public.schools (
+    id,
+    name,
+    created_at
+  ) VALUES (
+    new_school_id,
+    school_name_text,
+    now()
+  );
+
+  -- 3. Insert into public.schooladmin (The Admin Profile)
+  INSERT INTO public.schooladmin (
+    id,
+    school_id,
+    email,
+    name,
+    adminname,
+    gender,
+    role,
+    created_at
+  ) VALUES (
+    new_user_id,
+    new_school_id,
+    user_email,
+    user_name,
+    user_name,
+    'Male',
+    'Principal',
+    now()
+  );
+
+  RAISE NOTICE 'SUCCESS! Created User: % with School: %', user_email, school_name_text;
+END $$;

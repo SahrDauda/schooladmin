@@ -18,12 +18,12 @@ import { Label } from "@/components/ui/label"
 import { Plus, Pencil, Trash2, Search } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
-import { doc, setDoc, collection, getDocs, query, where, Timestamp, deleteDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { z } from "zod"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 
 interface Subject {
   id: string
@@ -34,8 +34,8 @@ interface Subject {
   level?: string
   assigned_teacher?: string | null
   assigned_teacher_name?: string | null
-  created_at?: Timestamp
-  updated_at?: Timestamp
+  created_at?: string
+  updated_at?: string
 }
 
 interface Department {
@@ -43,8 +43,8 @@ interface Department {
   name: string
   school_id: string
   schoolname: string
-  created_at?: Timestamp
-  updated_at?: Timestamp
+  created_at?: string
+  updated_at?: string
 }
 
 interface Teacher {
@@ -53,7 +53,6 @@ interface Teacher {
   lastname?: string
   name?: string
   email?: string
-  emailaddress?: string
   school_id?: string
 }
 
@@ -161,7 +160,7 @@ export default function SubjectsPage() {
     const loadSchoolInfo = async () => {
       const info = await getCurrentSchoolInfo()
       console.log("🏫 School info loaded:", info)
-      
+
       setSchoolInfo(info)
       setFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
     }
@@ -177,86 +176,37 @@ export default function SubjectsPage() {
       setIsLoading(true)
       try {
         // Fetch subjects
-        const subjectsRef = collection(db, "subjects")
-        const subjectsQuery = query(subjectsRef, where("school_id", "==", schoolInfo.school_id))
-        const subjectsSnapshot = await getDocs(subjectsQuery)
-        const subjectsList: Subject[] = subjectsSnapshot.docs.map(
-          (doc) =>
-          ({
-            id: doc.id,
-            ...doc.data(),
-          } as Subject),
-        )
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('*')
+          .eq('school_id', schoolInfo.school_id)
+          .order('name')
 
-        // Sort subjects by name
-        subjectsList.sort((a, b) => a.name.localeCompare(b.name))
-        setSubjects(subjectsList)
+        if (subjectsError) throw subjectsError
+        setSubjects(subjectsData || [])
 
         // Fetch departments (only for Senior Secondary)
         if (schoolInfo.stage === "Senior Secondary") {
-          const departmentsRef = collection(db, "departments")
-          const departmentsQuery = query(departmentsRef, where("school_id", "==", schoolInfo.school_id))
-          const departmentsSnapshot = await getDocs(departmentsQuery)
-          const departmentsList: Department[] = departmentsSnapshot.docs.map(
-            (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-            } as Department),
-          )
+          const { data: departmentsData, error: departmentsError } = await supabase
+            .from('departments')
+            .select('*')
+            .eq('school_id', schoolInfo.school_id)
+            .order('name')
 
-          // Sort departments by name
-          departmentsList.sort((a, b) => a.name.localeCompare(b.name))
-          setDepartments(departmentsList)
+          if (departmentsError) throw departmentsError
+          setDepartments(departmentsData || [])
         }
 
-        // Fetch teachers with proper error handling for permissions
-        console.log('Fetching teachers for school_id:', schoolInfo.school_id)
-        try {
-          const teachersRef = collection(db, "teachers")
-          const teachersQuery = query(teachersRef, where("school_id", "==", schoolInfo.school_id))
-          const teachersSnapshot = await getDocs(teachersQuery)
-          console.log('Teachers snapshot size:', teachersSnapshot.size)
-          
-          const teachersList: Teacher[] = teachersSnapshot.docs.map(
-            (doc) => {
-              const teacherData = doc.data()
-              console.log('Teacher data:', { id: doc.id, ...teacherData })
-              return {
-                id: doc.id,
-                ...teacherData,
-              } as Teacher
-            }
-          )
+        // Fetch teachers
+        const { data: teachersData, error: teachersError } = await supabase
+          .from('teachers')
+          .select('*')
+          .eq('school_id', schoolInfo.school_id)
+          .order('firstname')
 
-          console.log('Teachers list before sorting:', teachersList)
-          // Sort teachers by name
-          teachersList.sort((a, b) => {
-            const nameA = a.firstname && a.lastname ? `${a.firstname} ${a.lastname}` : a.name || ""
-            const nameB = b.firstname && b.lastname ? `${b.firstname} ${b.lastname}` : b.name || ""
-            return nameA.localeCompare(nameB)
-          })
-          console.log('Teachers list after sorting:', teachersList)
-          setTeachers(teachersList)
-        } catch (teacherError: any) {
-          console.error('Error fetching teachers:', teacherError)
-          if (teacherError?.code === 'permission-denied') {
-            console.error('❌ Permission denied when fetching teachers. Check Firebase security rules.')
-            toast({
-              title: "Permission Error",
-              description: "Unable to access teachers data. Please contact your administrator.",
-              variant: "destructive",
-            })
-          } else {
-            console.error('❌ Unknown error when fetching teachers:', teacherError.message)
-            toast({
-              title: "Error",
-              description: "Failed to load teachers data",
-              variant: "destructive",
-            })
-          }
-          setTeachers([]) // Set empty array so UI shows "no teachers"
-        }
+        if (teachersError) throw teachersError
+        setTeachers(teachersData || [])
+
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
@@ -384,21 +334,19 @@ export default function SubjectsPage() {
     setIsSubmittingDepartment(true)
 
     try {
-      // Generate a unique ID for new departments
-      const departmentId = `DEPT_${Date.now().toString().slice(-6)}`
-
-      // Add timestamp and metadata
-      const currentDate = new Date()
       const departmentData = {
         ...departmentFormData,
-        id: departmentId,
         school_id: schoolInfo.school_id,
         schoolname: schoolInfo.schoolName,
-        created_at: Timestamp.fromDate(currentDate),
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "departments", departmentId), departmentData)
+      const { data, error } = await supabase
+        .from('departments')
+        .insert(departmentData)
+        .select()
+        .single()
+
+      if (error) throw error
 
       // Show success message
       toast({
@@ -407,9 +355,11 @@ export default function SubjectsPage() {
       })
 
       // Refresh departments list
-      const updatedDepartments = [...departments, { ...departmentData }]
-      updatedDepartments.sort((a, b) => a.name.localeCompare(b.name))
-      setDepartments(updatedDepartments)
+      if (data) {
+        const updatedDepartments = [...departments, data]
+        updatedDepartments.sort((a, b) => a.name.localeCompare(b.name))
+        setDepartments(updatedDepartments)
+      }
 
       // Reset form and close dialog
       setDepartmentFormData({
@@ -476,22 +426,38 @@ export default function SubjectsPage() {
       // Validate form data
       subjectSchema.parse(formData)
 
-      // Generate a unique ID for new subjects
-      const subjectId = selectedSubject ? selectedSubject.id : `SUB_${Date.now().toString().slice(-6)}`
-
-      // Add timestamp and metadata
-      const currentDate = new Date()
       const subjectData = {
         ...formData,
-        id: subjectId,
         school_id: schoolInfo.school_id,
-        schoolname: schoolInfo.schoolName,
-        updated_at: Timestamp.fromDate(currentDate),
-        ...(selectedSubject ? {} : { created_at: Timestamp.fromDate(currentDate) }),
+        // schoolname: schoolInfo.schoolName, // Not needed if not in schema, but kept for compatibility if needed
       }
 
-      // Save to Firestore
-      await setDoc(doc(db, "subjects", subjectId), subjectData)
+      let data, error
+
+      if (selectedSubject) {
+        // Update existing subject
+        const result = await supabase
+          .from('subjects')
+          .update({ ...subjectData, updated_at: new Date().toISOString() })
+          .eq('id', selectedSubject.id)
+          .select()
+          .single()
+
+        data = result.data
+        error = result.error
+      } else {
+        // Create new subject
+        const result = await supabase
+          .from('subjects')
+          .insert(subjectData)
+          .select()
+          .single()
+
+        data = result.data
+        error = result.error
+      }
+
+      if (error) throw error
 
       // Show success message
       toast({
@@ -500,18 +466,14 @@ export default function SubjectsPage() {
       })
 
       // Refresh subjects list
-      const updatedSubjects = [...subjects]
-      const existingIndex = updatedSubjects.findIndex((s) => s.id === subjectId)
+      if (data) {
+        const updatedSubjects = selectedSubject
+          ? subjects.map(s => s.id === selectedSubject.id ? data : s)
+          : [...subjects, data]
 
-      if (existingIndex >= 0) {
-        updatedSubjects[existingIndex] = { ...subjectData }
-      } else {
-        updatedSubjects.push({ ...subjectData })
+        updatedSubjects.sort((a, b) => a.name.localeCompare(b.name))
+        setSubjects(updatedSubjects)
       }
-
-      // Sort subjects by name
-      updatedSubjects.sort((a, b) => a.name.localeCompare(b.name))
-      setSubjects(updatedSubjects)
 
       // Reset form and close dialog
       setFormData({
@@ -552,7 +514,12 @@ export default function SubjectsPage() {
 
     if (confirm("Are you sure you want to delete this subject? This action cannot be undone.")) {
       try {
-        await deleteDoc(doc(db, "subjects", selectedSubject.id))
+        const { error } = await supabase
+          .from('subjects')
+          .delete()
+          .eq('id', selectedSubject.id)
+
+        if (error) throw error
 
         toast({
           title: "Success",
@@ -597,24 +564,32 @@ export default function SubjectsPage() {
       const teacherName = teacher.firstname && teacher.lastname
         ? `${teacher.firstname} ${teacher.lastname}`
         : teacher.name || "Teacher"
-      const teacherEmail = teacher.email || teacher.emailaddress || ""
+      const teacherEmail = teacher.email || ""
 
       // Update subject with assigned teacher
-      await setDoc(doc(db, "subjects", selectedSubject.id), {
-        ...selectedSubject,
-        assigned_teacher: selectedTeacher,
-        assigned_teacher_name: teacherName,
-        updated_at: Timestamp.fromDate(new Date())
-      }, { merge: true })
+      const { error: subjectError } = await supabase
+        .from('subjects')
+        .update({
+          assigned_teacher: selectedTeacher,
+          assigned_teacher_name: teacherName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedSubject.id)
+
+      if (subjectError) throw subjectError
 
       // Update teacher document with assigned subject
-      console.log("🔄 Updating teacher document:", selectedTeacher, "with subject:", selectedSubject.name)
-      await setDoc(doc(db, "teachers", selectedTeacher), {
-        subject: selectedSubject.name,
-        subject_id: selectedSubject.id,
-        updated_at: Timestamp.fromDate(new Date())
-      }, { merge: true })
-      console.log("✅ Teacher document updated successfully")
+      // Note: This overwrites any previous subject assignment for the teacher, matching previous logic
+      const { error: teacherError } = await supabase
+        .from('teachers')
+        .update({
+          subject: selectedSubject.name,
+          subject_id: selectedSubject.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedTeacher)
+
+      if (teacherError) throw teacherError
 
       // Send notification to teacher
       try {
@@ -624,7 +599,8 @@ export default function SubjectsPage() {
           teacherName,
           teacherEmail,
           selectedSubject.name,
-          selectedSubject.code
+          selectedSubject.code,
+          schoolInfo.school_id
         )
       } catch (error) {
         console.error("Error sending teacher notification:", error)
@@ -665,22 +641,31 @@ export default function SubjectsPage() {
       const teacherName = teacher?.firstname && teacher?.lastname
         ? `${teacher.firstname} ${teacher.lastname}`
         : teacher?.name || "Teacher"
-      const teacherEmail = teacher?.email || teacher?.emailaddress || ""
+      const teacherEmail = teacher?.email || ""
 
       // Update subject to remove assigned teacher
-      await setDoc(doc(db, "subjects", subject.id), {
-        ...subject,
-        assigned_teacher: null,
-        assigned_teacher_name: null,
-        updated_at: Timestamp.fromDate(new Date())
-      }, { merge: true })
+      const { error: subjectError } = await supabase
+        .from('subjects')
+        .update({
+          assigned_teacher: null,
+          assigned_teacher_name: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', subject.id)
+
+      if (subjectError) throw subjectError
 
       // Update teacher document to remove assigned subject
-      await setDoc(doc(db, "teachers", subject.assigned_teacher), {
-        subject: null,
-        subject_id: null,
-        updated_at: Timestamp.fromDate(new Date())
-      }, { merge: true })
+      const { error: teacherError } = await supabase
+        .from('teachers')
+        .update({
+          subject: null,
+          subject_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', subject.assigned_teacher)
+
+      if (teacherError) throw teacherError
 
       // Send notification to teacher about unassignment
       if (teacherName && teacherEmail) {
@@ -691,7 +676,8 @@ export default function SubjectsPage() {
             teacherName,
             teacherEmail,
             subject.name,
-            subject.code
+            subject.code,
+            schoolInfo.school_id
           )
         } catch (error) {
           console.error("Error sending teacher unassignment notification:", error)
@@ -739,15 +725,6 @@ export default function SubjectsPage() {
   // Get stage-specific level options
   const levelOptions = getLevelOptions(schoolInfo.stage || "")
   const isSeniorSecondary = schoolInfo.stage === "Senior Secondary"
-  console.log("School stage:", schoolInfo.stage, "Level options:", levelOptions, "Is Senior Secondary:", isSeniorSecondary)
-
-  // Debug: Check if stage matches exactly
-  console.log("Stage comparison:", {
-    stage: schoolInfo.stage,
-    isPrimary: schoolInfo.stage === "Primary",
-    isJuniorSecondary: schoolInfo.stage === "Junior Secondary",
-    isSeniorSecondary: schoolInfo.stage === "Senior Secondary"
-  })
 
   return (
     <DashboardLayout>
@@ -799,9 +776,9 @@ export default function SubjectsPage() {
                       <SelectValue placeholder="Level" />
                     </SelectTrigger>
                     <SelectContent>
-                      {levels.filter((c): c is string => !!c).map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {level === "all" ? "All Levels" : level}
+                      {levels.filter((c): c is string => !!c).map((lvl) => (
+                        <SelectItem key={lvl} value={lvl}>
+                          {lvl === "all" ? "All Levels" : lvl}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -809,191 +786,201 @@ export default function SubjectsPage() {
                 </div>
               </div>
 
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : filteredSubjects.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {subjects.length === 0
-                    ? "No subjects found. Add your first subject to get started."
-                    : "No subjects match your search criteria."}
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      {isSeniorSecondary && <TableHead>Department</TableHead>}
+                      <TableHead>Level</TableHead>
+                      <TableHead>Assigned Teacher</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredSubjects.length === 0 ? (
                       <TableRow>
-                        <TableHead>Subject Code</TableHead>
-                        <TableHead>Subject Name</TableHead>
-                        {isSeniorSecondary && <TableHead>Department</TableHead>}
-                        <TableHead>Level</TableHead>
-                        <TableHead>Assigned Teacher</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableCell colSpan={isSeniorSecondary ? 6 : 5} className="text-center py-8 text-muted-foreground">
+                          No subjects found
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSubjects.map((subject) => (
-                        <TableRow
-                          key={subject.id}
-                          className="hover:bg-muted/50"
-                        >
-                          <TableCell
-                            className="font-medium cursor-pointer"
-                            onClick={() => handleOpenDetailsDialog(subject)}
-                          >
-                            {subject.code}
-                          </TableCell>
-                          <TableCell
-                            className="cursor-pointer"
-                            onClick={() => handleOpenDetailsDialog(subject)}
-                          >
-                            {subject.name}
-                          </TableCell>
-                          {isSeniorSecondary && (
-                            <TableCell
-                              className="cursor-pointer"
-                              onClick={() => handleOpenDetailsDialog(subject)}
-                            >
-                              {subject.department || "—"}
-                            </TableCell>
-                          )}
-                          <TableCell
-                            className="cursor-pointer"
-                            onClick={() => handleOpenDetailsDialog(subject)}
-                          >
-                            {subject.level || "—"}
-                          </TableCell>
+                    ) : (
+                      filteredSubjects.map((subject) => (
+                        <TableRow key={subject.id}>
+                          <TableCell className="font-medium">{subject.code}</TableCell>
+                          <TableCell>{subject.name}</TableCell>
+                          {isSeniorSecondary && <TableCell>{subject.department || "-"}</TableCell>}
+                          <TableCell>{subject.level || "-"}</TableCell>
                           <TableCell>
-                            {subject.assigned_teacher_name || "Not Assigned"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              {subject.assigned_teacher ? (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleUnassignTeacher(subject)}
-                                    className="text-red-600 hover:text-red-700"
-                                  >
-                                    Unassign
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleOpenAssignTeacherDialog(subject)}
-                                  >
-                                    Reassign
-                                  </Button>
-                                </>
-                              ) : (
+                            {subject.assigned_teacher_name ? (
+                              <div className="flex items-center gap-2">
+                                <span>{subject.assigned_teacher_name}</span>
                                 <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleOpenAssignTeacherDialog(subject)}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive"
+                                  onClick={() => handleUnassignTeacher(subject)}
+                                  title="Unassign Teacher"
                                 >
-                                  Assign Teacher
+                                  <Trash2 className="h-3 w-3" />
                                 </Button>
-                              )}
+                              </div>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenAssignTeacherDialog(subject)}
+                              >
+                                Assign
+                              </Button>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenDetailsDialog(subject)}
+                              >
+                                <Search className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Add Subject Dialog */}
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+        {/* Add/Edit Subject Dialog */}
+        <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            setIsAddDialogOpen(false)
+            setIsEditDialogOpen(false)
+          }
+        }}>
+          <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Add Subject</DialogTitle>
-              <DialogDescription>Add a new subject to the system.</DialogDescription>
+              <DialogTitle>{isEditDialogOpen ? "Edit Subject" : "Add Subject"}</DialogTitle>
+              <DialogDescription>
+                {isEditDialogOpen ? "Update subject details" : "Add a new subject to the curriculum"}
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Search by Subject Code */}
-              <div className="mb-6 p-4 border rounded-md bg-gray-50">
-                <h3 className="text-sm font-medium mb-2">Search by Subject Code</h3>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter subject code"
-                    value={subjectCodeSearchQuery}
-                    onChange={(e) => setSubjectCodeSearchQuery(e.target.value)}
-                  />
-                  <Button variant="secondary" onClick={searchSubjectByCode} disabled={isSearchingSubjectCode}>
-                    {isSearchingSubjectCode ? (
-                      <span className="flex items-center">
-                        <span className="animate-spin mr-2">⏳</span> Searching...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <Search className="w-4 h-4 mr-2" /> Search
-                      </span>
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the subject code to automatically fill the form with existing subject information
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Subject Name *</Label>
-                  <Input id="name" value={formData.name} onChange={handleInputChange} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="code">Subject Code *</Label>
+                  <Label htmlFor="code">Subject Code</Label>
                   <div className="flex gap-2">
-                    <Input id="code" value={formData.code} onChange={handleInputChange} required />
-                    <Button type="button" variant="outline" onClick={generateSubjectCode} className="whitespace-nowrap">
-                      Generate
+                    <Input
+                      id="code"
+                      value={formData.code}
+                      onChange={handleInputChange}
+                      placeholder="e.g. MTH101"
+                      required
+                    />
+                    <Button type="button" variant="outline" size="icon" onClick={generateSubjectCode} title="Generate Code">
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-                {isSeniorSecondary && (
-                  <div className="space-y-2">
-                    <Label htmlFor="department">Department</Label>
-                    <Select value={formData.department} onValueChange={(value) => handleSelectChange("department", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 <div className="space-y-2">
-                  <Label htmlFor="level">Level</Label>
-                  <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
+                  <Label htmlFor="name">Subject Name</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Mathematics"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Search by Code Button (Only in Add Mode) */}
+              {isAddDialogOpen && (
+                <div className="flex gap-2 items-end">
+                  <div className="space-y-2 flex-1">
+                    <Label htmlFor="searchCode">Search by Code (Auto-fill)</Label>
+                    <Input
+                      id="searchCode"
+                      value={subjectCodeSearchQuery}
+                      onChange={(e) => setSubjectCodeSearchQuery(e.target.value)}
+                      placeholder="Enter code to search..."
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={searchSubjectByCode}
+                    disabled={isSearchingSubjectCode || !subjectCodeSearchQuery}
+                  >
+                    {isSearchingSubjectCode ? "Searching..." : "Search"}
+                  </Button>
+                </div>
+              )}
+
+              {isSeniorSecondary && (
+                <div className="space-y-2">
+                  <Label htmlFor="department">Department</Label>
+                  <Select
+                    value={formData.department}
+                    onValueChange={(value) => handleSelectChange("department", value)}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select level" />
+                      <SelectValue placeholder="Select Department" />
                     </SelectTrigger>
                     <SelectContent>
-                      {levelOptions.map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {level}
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.name}>
+                          {dept.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input id="description" value={formData.description} onChange={handleInputChange} />
-                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="level">Level</Label>
+                <Select
+                  value={formData.level}
+                  onValueChange={(value) => handleSelectChange("level", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {levelOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="Subject description..."
+                  rows={3}
+                />
+              </div>
+
               <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAddDialogOpen(false)
+                  setIsEditDialogOpen(false)
+                }}>
+                  Cancel
+                </Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save Subject"}
                 </Button>
@@ -1002,94 +989,30 @@ export default function SubjectsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Subject Dialog */}
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] w-[90%] max-h-[85vh] overflow-y-auto">
+        {/* Add Department Dialog */}
+        <Dialog open={isAddDepartmentDialogOpen} onOpenChange={setIsAddDepartmentDialogOpen}>
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Subject</DialogTitle>
-              <DialogDescription>Update subject information.</DialogDescription>
+              <DialogTitle>Add Department</DialogTitle>
+              <DialogDescription>Add a new department for Senior Secondary level</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Search by Subject Code */}
-              <div className="mb-6 p-4 border rounded-md bg-gray-50">
-                <h3 className="text-sm font-medium mb-2">Search by Subject Code</h3>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter subject code"
-                    value={subjectCodeSearchQuery}
-                    onChange={(e) => setSubjectCodeSearchQuery(e.target.value)}
-                  />
-                  <Button variant="secondary" onClick={searchSubjectByCode} disabled={isSearchingSubjectCode}>
-                    {isSearchingSubjectCode ? (
-                      <span className="flex items-center">
-                        <span className="animate-spin mr-2">⏳</span> Searching...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <Search className="w-4 h-4 mr-2" /> Search
-                      </span>
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the subject code to automatically fill the form with existing subject information
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Subject Name *</Label>
-                  <Input id="name" value={formData.name} onChange={handleInputChange} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="code">Subject Code *</Label>
-                  <div className="flex gap-2">
-                    <Input id="code" value={formData.code} onChange={handleInputChange} required />
-                    <Button type="button" variant="outline" onClick={generateSubjectCode} className="whitespace-nowrap">
-                      Generate
-                    </Button>
-                  </div>
-                </div>
-                {isSeniorSecondary && (
-                  <div className="space-y-2">
-                    <Label htmlFor="department">Department</Label>
-                    <Select value={formData.department} onValueChange={(value) => handleSelectChange("department", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="level">Level</Label>
-                  <Select value={formData.level} onValueChange={(value) => handleSelectChange("level", value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {levelOptions.map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {level}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input id="description" value={formData.description} onChange={handleInputChange} />
-                </div>
+            <form onSubmit={handleSubmitDepartment} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Department Name</Label>
+                <Input
+                  id="name"
+                  value={departmentFormData.name}
+                  onChange={handleDepartmentInputChange}
+                  placeholder="e.g. Science, Arts, Commercial"
+                  required
+                />
               </div>
               <DialogFooter>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Updating..." : "Update Subject"}
+                <Button type="button" variant="outline" onClick={() => setIsAddDepartmentDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmittingDepartment}>
+                  {isSubmittingDepartment ? "Adding..." : "Add Department"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1098,54 +1021,46 @@ export default function SubjectsPage() {
 
         {/* Subject Details Dialog */}
         <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] w-[90%]">
+          <DialogContent>
             <DialogHeader>
               <DialogTitle>Subject Details</DialogTitle>
             </DialogHeader>
             {selectedSubject && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Subject Code</h3>
-                    <p className="text-base font-medium">{selectedSubject.code}</p>
+                    <Label className="text-muted-foreground">Name</Label>
+                    <p className="font-medium">{selectedSubject.name}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Subject Name</h3>
-                    <p className="text-base font-medium">{selectedSubject.name}</p>
+                    <Label className="text-muted-foreground">Code</Label>
+                    <p className="font-medium">{selectedSubject.code}</p>
                   </div>
                   {isSeniorSecondary && (
                     <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Department</h3>
-                      <p className="text-base">{selectedSubject.department || "—"}</p>
+                      <Label className="text-muted-foreground">Department</Label>
+                      <p className="font-medium">{selectedSubject.department || "-"}</p>
                     </div>
                   )}
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Level</h3>
-                    <p className="text-base">{selectedSubject.level || "—"}</p>
+                    <Label className="text-muted-foreground">Level</Label>
+                    <p className="font-medium">{selectedSubject.level || "-"}</p>
                   </div>
-                  <div className="md:col-span-2">
-                    <h3 className="text-sm font-medium text-muted-foreground">Description</h3>
-                    <p className="text-base">{selectedSubject.description || "No description provided."}</p>
+                  <div className="col-span-2">
+                    <Label className="text-muted-foreground">Assigned Teacher</Label>
+                    <p className="font-medium">{selectedSubject.assigned_teacher_name || "Not Assigned"}</p>
                   </div>
-                  {selectedSubject.created_at && (
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
-                      <p className="text-sm">{selectedSubject.created_at.toDate().toLocaleDateString()}</p>
-                    </div>
-                  )}
-                  {selectedSubject.updated_at && (
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Last Updated</h3>
-                      <p className="text-sm">{selectedSubject.updated_at.toDate().toLocaleDateString()}</p>
-                    </div>
-                  )}
+                  <div className="col-span-2">
+                    <Label className="text-muted-foreground">Description</Label>
+                    <p className="text-sm">{selectedSubject.description || "No description provided."}</p>
+                  </div>
                 </div>
-                <DialogFooter className="flex justify-between sm:justify-end gap-2">
-                  <Button variant="destructive" onClick={handleDelete} className="w-full sm:w-auto">
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button variant="destructive" onClick={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete
                   </Button>
-                  <Button onClick={handleOpenEditDialog} className="w-full sm:w-auto">
+                  <Button onClick={handleOpenEditDialog}>
                     <Pencil className="mr-2 h-4 w-4" />
                     Edit
                   </Button>
@@ -1155,90 +1070,40 @@ export default function SubjectsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Add Department Dialog */}
-        <Dialog open={isAddDepartmentDialogOpen} onOpenChange={setIsAddDepartmentDialogOpen}>
-          <DialogContent className="sm:max-w-[500px] w-[90%]">
-            <DialogHeader>
-              <DialogTitle>Add Department</DialogTitle>
-              <DialogDescription>Add a new department/faculty to the school.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmitDepartment} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Department Name *</Label>
-                <Input
-                  id="name"
-                  value={departmentFormData.name}
-                  onChange={handleDepartmentInputChange}
-                  placeholder="e.g., Science, Commercial, Arts"
-                  required
-                />
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={isSubmittingDepartment}>
-                  {isSubmittingDepartment ? "Saving..." : "Save Department"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
         {/* Assign Teacher Dialog */}
         <Dialog open={isAssignTeacherDialogOpen} onOpenChange={setIsAssignTeacherDialogOpen}>
-          <DialogContent className="sm:max-w-[500px] w-[90%]">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Assign Teacher to Subject</DialogTitle>
+              <DialogTitle>Assign Teacher</DialogTitle>
               <DialogDescription>
-                Select a teacher to assign to {selectedSubject?.name} ({selectedSubject?.code})
+                Assign a teacher to {selectedSubject?.name}
               </DialogDescription>
             </DialogHeader>
-
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="teacher">Select Teacher</Label>
+                <Label>Select Teacher</Label>
                 <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
                   <SelectTrigger>
-                    <SelectValue placeholder={isLoading ? "Loading teachers..." : teachers.length === 0 ? "No teachers found" : "Choose a teacher"} />
+                    <SelectValue placeholder="Select a teacher" />
                   </SelectTrigger>
                   <SelectContent>
-                    {isLoading ? (
-                      <SelectItem value="loading" disabled>
-                        Loading teachers...
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.id} value={teacher.id}>
+                        {teacher.firstname} {teacher.lastname}
                       </SelectItem>
-                    ) : teachers.length === 0 ? (
-                      <SelectItem value="no-teachers" disabled>
-                        No teachers available. Please add teachers first.
-                      </SelectItem>
-                    ) : (
-                      teachers.map((teacher) => {
-                        const teacherName = teacher.firstname && teacher.lastname
-                          ? `${teacher.firstname} ${teacher.lastname}`
-                          : teacher.name || "Unknown Teacher"
-                        console.log('Rendering teacher option:', { id: teacher.id, name: teacherName })
-                        return (
-                          <SelectItem key={teacher.id} value={teacher.id}>
-                            {teacherName}
-                          </SelectItem>
-                        )
-                      })
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
-                {!isLoading && (
-                  <p className="text-xs text-gray-500">
-                    Found {teachers.length} teacher{teachers.length !== 1 ? 's' : ''} in your school
-                  </p>
-                )}
               </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAssignTeacherDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAssignTeacher} disabled={!selectedTeacher}>
+                  Assign Teacher
+                </Button>
+              </DialogFooter>
             </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAssignTeacherDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAssignTeacher} disabled={!selectedTeacher}>
-                Assign Teacher
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

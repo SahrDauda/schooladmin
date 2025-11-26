@@ -1,9 +1,8 @@
 "use client"
 
 import { useState, useEffect, createContext, useContext } from "react"
-import { User, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth"
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore"
-import { auth, db } from "@/lib/firebase"
+import { User, Session } from "@supabase/supabase-js"
+import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
 interface AdminData {
@@ -15,7 +14,7 @@ interface AdminData {
     email?: string
     role: string
     school_id: string
-    hasLoggedInBefore?: boolean
+    hasloggedinbefore?: boolean
     firstLoginAt?: any
     gender?: string
     admin_images?: string
@@ -23,6 +22,7 @@ interface AdminData {
 
 interface AuthContextType {
     user: User | null
+    session: Session | null
     admin: AdminData | null
     loading: boolean
     signOut: () => Promise<void>
@@ -33,79 +33,67 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
+    const [session, setSession] = useState<Session | null>(null)
     const [admin, setAdmin] = useState<AdminData | null>(null)
     const [loading, setLoading] = useState(true)
     const router = useRouter()
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            setUser(user)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            setSession(session)
+            setUser(session?.user ?? null)
 
-            if (user) {
+            if (session?.user) {
                 try {
-                    // Query Firestore for admin by email - check both emailaddress and email fields
-                    console.log("Looking for admin with email:", user.email)
+                    console.log("Looking for admin with email:", session.user.email)
 
+                    // Query Supabase for admin by email
                     // Try emailaddress field first
-                    let adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
-                    let querySnapshot = await getDocs(adminQuery)
+                    let { data: admins, error } = await supabase
+                        .from('schooladmin')
+                        .select('*')
+                        .eq('emailaddress', session.user.email)
 
-                    // If no results, try email field
-                    if (querySnapshot.empty) {
-                        console.log("No admin found with emailaddress, trying email field")
-                        adminQuery = query(collection(db, "schooladmin"), where("email", "==", user.email))
-                        querySnapshot = await getDocs(adminQuery)
+                    if (error || !admins || admins.length === 0) {
+                        // If no results, try email field
+                        const { data: adminsByEmail, error: errorByEmail } = await supabase
+                            .from('schooladmin')
+                            .select('*')
+                            .eq('email', session.user.email)
+
+                        if (!errorByEmail && adminsByEmail && adminsByEmail.length > 0) {
+                            admins = adminsByEmail
+                        }
                     }
 
-                    console.log("Admin query results:", querySnapshot.size, "documents found")
-
-                    if (!querySnapshot.empty) {
-                        const adminDoc = querySnapshot.docs[0]
-                        const adminData = adminDoc.data() as AdminData
+                    if (admins && admins.length > 0) {
+                        const adminData = admins[0] as AdminData
                         console.log("Admin document data:", adminData)
 
                         const resolvedAdmin: AdminData = {
                             ...adminData,
-                            id: adminDoc.id
+                            id: adminData.id // Assuming id is part of the returned data
                         }
                         setAdmin(resolvedAdmin)
 
-                        // Ensure rules alignment: mirror essential fields under schooladmin/{auth.uid}
-                        try {
-                            if (user.uid && adminDoc.id !== user.uid) {
-                                const adminRefByUid = doc(db, "schooladmin", user.uid)
-                                const mirrored = {
-                                    role: adminData.role || "Principal",
-                                    school_id: adminData.school_id || adminData.id || "",
-                                    emailaddress: user.email || adminData.emailaddress || adminData.email || "",
-                                    name: adminData.adminname || adminData.adminName || adminData.name || "Admin User",
-                                }
-                                await setDoc(adminRefByUid, mirrored, { merge: true })
-                                console.log("Mirrored admin profile to schooladmin/", user.uid)
-                            }
-                        } catch (mirrorErr) {
-                            console.warn("Failed to mirror admin doc by UID:", mirrorErr)
-                        }
-
-                        // Backward compatibility: populate localStorage for components still using it
+                        // Backward compatibility: populate localStorage
                         try {
                             localStorage.setItem("adminId", resolvedAdmin.id)
                             const name = resolvedAdmin.adminname || resolvedAdmin.adminName || resolvedAdmin.name || "Admin User"
                             localStorage.setItem("adminName", name)
                             if (resolvedAdmin.gender) localStorage.setItem("adminGender", resolvedAdmin.gender)
                             localStorage.setItem("adminRole", resolvedAdmin.role || "Principal")
-                            if (user.email) localStorage.setItem("adminEmail", user.email)
+                            if (session.user.email) localStorage.setItem("adminEmail", session.user.email)
                         } catch { }
                     } else {
-                        // Admin document doesn't exist, sign out
                         console.log("No admin document found, signing out")
-                        await firebaseSignOut(auth)
+                        await supabase.auth.signOut()
                         setAdmin(null)
                         router.push("/")
                     }
                 } catch (error) {
                     console.error("Error fetching admin data:", error)
-                    await firebaseSignOut(auth)
+                    await supabase.auth.signOut()
                     setAdmin(null)
                     router.push("/")
                 }
@@ -119,16 +107,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     localStorage.removeItem("adminEmail")
                 } catch { }
             }
-
             setLoading(false)
         })
 
-        return () => unsubscribe()
+        return () => {
+            subscription.unsubscribe()
+        }
     }, [router])
 
     const signOut = async () => {
         try {
-            await firebaseSignOut(auth)
+            await supabase.auth.signOut()
             setAdmin(null)
             try {
                 localStorage.removeItem("adminId")
@@ -144,40 +133,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const refreshAdminData = async () => {
-        if (!user) return
+        if (!user || !user.email) return
 
         try {
-            // Try emailaddress field first
-            let adminQuery = query(collection(db, "schooladmin"), where("emailaddress", "==", user.email))
-            let querySnapshot = await getDocs(adminQuery)
+            let { data: admins, error } = await supabase
+                .from('schooladmin')
+                .select('*')
+                .eq('emailaddress', user.email)
 
-            // If no results, try email field
-            if (querySnapshot.empty) {
-                adminQuery = query(collection(db, "schooladmin"), where("email", "==", user.email))
-                querySnapshot = await getDocs(adminQuery)
+            if (error || !admins || admins.length === 0) {
+                const { data: adminsByEmail, error: errorByEmail } = await supabase
+                    .from('schooladmin')
+                    .select('*')
+                    .eq('email', user.email)
+
+                if (!errorByEmail && adminsByEmail && adminsByEmail.length > 0) {
+                    admins = adminsByEmail
+                }
             }
 
-            if (!querySnapshot.empty) {
-                const adminDoc = querySnapshot.docs[0]
-                const adminData = adminDoc.data() as AdminData
+            if (admins && admins.length > 0) {
+                const adminData = admins[0] as AdminData
                 const resolvedAdmin: AdminData = {
                     ...adminData,
-                    id: adminDoc.id
+                    id: adminData.id
                 }
                 setAdmin(resolvedAdmin)
-                // Attempt mirroring again on refresh
-                try {
-                    if (user.uid && adminDoc.id !== user.uid) {
-                        const adminRefByUid = doc(db, "schooladmin", user.uid)
-                        const mirrored = {
-                            role: adminData.role || "Principal",
-                            school_id: adminData.school_id || adminData.id || "",
-                            emailaddress: user.email || adminData.emailaddress || adminData.email || "",
-                            name: adminData.adminname || adminData.adminName || adminData.name || "Admin User",
-                        }
-                        await setDoc(adminRefByUid, mirrored, { merge: true })
-                    }
-                } catch { }
+
                 try {
                     localStorage.setItem("adminId", resolvedAdmin.id)
                     const name = resolvedAdmin.adminname || resolvedAdmin.adminName || resolvedAdmin.name || "Admin User"
@@ -193,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const value = {
         user,
+        session,
         admin,
         loading,
         signOut,
@@ -212,4 +195,4 @@ export function useAuth() {
         throw new Error("useAuth must be used within an AuthProvider")
     }
     return context
-} 
+}

@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { doc, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { supabase } from "@/lib/supabase"
 import { toast } from "@/hooks/use-toast"
 import { Loader2, MessageSquare } from "lucide-react"
 
@@ -41,11 +40,13 @@ export function GradeCommentDialog({ isOpen, onClose, grade, onCommentUpdated }:
 
     setIsLoading(true)
     try {
-      // Update the grade document in Firestore
-      const gradeRef = doc(db, "grades", grade.id)
-      await updateDoc(gradeRef, {
-        comments: comment.trim(),
-      })
+      // Update the grade document in Supabase
+      const { error } = await supabase
+        .from('grades')
+        .update({ comments: comment.trim() })
+        .eq('id', grade.id)
+
+      if (error) throw error
 
       // Update local state
       onCommentUpdated(grade.id, comment.trim())

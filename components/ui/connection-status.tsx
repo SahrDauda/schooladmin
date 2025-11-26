@@ -1,15 +1,18 @@
 "use client"
 
-import { useFirebaseConnection } from "@/hooks/use-firebase-connection"
+import { useSupabaseConnection } from "@/hooks/use-supabase-connection"
 import { WifiOff, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 
 export function ConnectionStatus() {
-  const { isConnected } = useFirebaseConnection()
+  const { isConnected } = useSupabaseConnection()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  if (isConnected) return null
+  // Consider online if browser is online (hook handles Supabase check internally)
+  const online = isConnected
+
+  if (online) return null
 
   const handleRefresh = () => {
     setIsRefreshing(true)
