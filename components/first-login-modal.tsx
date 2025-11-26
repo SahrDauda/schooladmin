@@ -75,6 +75,9 @@ export default function FirstLoginModal({ isOpen, onClose, userId, userEmail }: 
             })
 
             onClose()
+
+            // Force reload to ensure session is refreshed and hasloggedinbefore state is updated
+            window.location.reload()
         } catch (error: any) {
             console.error("Error updating password:", error)
             toast({
@@ -132,8 +135,8 @@ export default function FirstLoginModal({ isOpen, onClose, userId, userEmail }: 
                         <Lock className="h-5 w-5 text-primary" />
                         Security Update Required
                     </DialogTitle>
-                    <DialogDescription className="pt-2">
-                        <div className="space-y-2">
+                    <DialogDescription className="pt-2" asChild>
+                        <div className="space-y-2 text-sm text-muted-foreground">
                             <p>
                                 Welcome! Since this is your first login, you are using a temporary password.
                             </p>

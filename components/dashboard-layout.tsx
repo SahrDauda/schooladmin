@@ -30,8 +30,8 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, orderBy, limit, Timestamp } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+
+import { supabase } from "@/lib/supabase"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { toast } from "@/hooks/use-toast"
 
@@ -41,7 +41,7 @@ interface Notification {
   message: string
   type: 'welcome' | 'password_change' | 'system' | 'info'
   read: boolean
-  created_at: Timestamp
+  created_at: string
   admin_id?: string
   // new unified fields
   recipient_type?: 'admin' | 'teacher' | 'parent' | 'mbsse' | 'system'
@@ -101,9 +101,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (adminId) {
       const fetchAdminData = async () => {
         try {
-          const adminDoc = await getDoc(doc(db, "schooladmin", adminId))
-          if (adminDoc.exists()) {
-            const adminData = adminDoc.data()
+          const { data: adminData, error } = await supabase
+            .from('schooladmin')
+            .select('*')
+            .eq('id', adminId)
+            .single()
+
+          if (error) throw error
+
+          if (adminData) {
             if (adminData.adminname) {
               setAdminName(adminData.adminname)
               localStorage.setItem("adminName", adminData.adminname)
@@ -157,9 +163,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [])
 
-  const handleLogout = () => {
-    localStorage.clear()
-    router.push("/")
+  const handleLogout = async () => {
+    try {
+      // Attempt Supabase sign out
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      // Always clear local storage and redirect, regardless of sign out success
+      localStorage.clear()
+
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out",
+      })
+
+      // Use replace to prevent back navigation
+      window.location.replace("/")
+    }
   }
 
   const handleNavigation = () => {
@@ -197,33 +218,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     setLoadingNotifications(true)
     try {
-      const notificationsRef = collection(db, "notifications")
       // New model
-      const qNew = query(
-        notificationsRef,
-        where("recipient_type", "==", "admin"),
-        where("recipient_id", "==", adminId),
-        limit(20)
-      )
-      // Legacy model
-      const qLegacy = query(
-        notificationsRef,
-        where("admin_id", "==", adminId),
-        limit(20)
-      )
+      const { data: newNotifications, error: newError } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('recipient_type', 'admin')
+        .eq('recipient_id', adminId)
+        .limit(20)
 
-      const [snapNew, snapLegacy] = await Promise.all([getDocs(qNew), getDocs(qLegacy)])
+      // Legacy model
+      const { data: legacyNotifications, error: legacyError } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('admin_id', adminId)
+        .limit(20)
+
+      if (newError && legacyError) throw newError || legacyError
+
       const merged = new Map<string, Notification>()
-      for (const d of [...snapNew.docs, ...snapLegacy.docs]) {
-        merged.set(d.id, { id: d.id, ...(d.data() as any) })
+      const allDocs = [...(newNotifications || []), ...(legacyNotifications || [])]
+
+      for (const d of allDocs) {
+        merged.set(d.id, d as Notification)
       }
-      const list = Array.from(merged.values()) as Notification[]
+      const list = Array.from(merged.values())
 
       // Sort by created_at desc
       list.sort((a, b) => {
-        const dateA = (a.created_at as any)?.toDate?.() || new Date((a as any).created_at?.seconds * 1000 || 0)
-        const dateB = (b.created_at as any)?.toDate?.() || new Date((b as any).created_at?.seconds * 1000 || 0)
-        return dateB.getTime() - dateA.getTime()
+        const dateA = new Date(a.created_at).getTime()
+        const dateB = new Date(b.created_at).getTime()
+        return dateB - dateA
       })
 
       setNotifications(list)
@@ -237,9 +261,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const markAsRead = async (notificationId: string) => {
     setMarkingAsRead(notificationId)
     try {
-      await updateDoc(doc(db, "notifications", notificationId), {
-        read: true
-      })
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId)
+
+      if (error) throw error
 
       setNotifications(prev =>
         prev.map(notif =>
@@ -258,10 +285,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const markAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(n => !n.read)
+      const unreadIds = unreadNotifications.map(n => n.id)
 
-      for (const notification of unreadNotifications) {
-        await updateDoc(doc(db, "notifications", notification.id), { read: true })
-      }
+      if (unreadIds.length === 0) return
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .in('id', unreadIds)
+
+      if (error) throw error
 
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
@@ -400,8 +433,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                               {notification.message}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {notification.created_at?.toDate?.()
-                                ? notification.created_at.toDate().toLocaleDateString()
+                              {notification.created_at
+                                ? new Date(notification.created_at).toLocaleDateString()
                                 : new Date().toLocaleDateString()
                               }
                             </p>
