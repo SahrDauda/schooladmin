@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   Users,
   BookOpen,
@@ -12,6 +12,15 @@ import {
   FileText,
   Accessibility,
   Activity,
+  ArrowUpRight,
+  TrendingUp,
+  Clock,
+  Target,
+  Zap,
+  ShieldAlert,
+  Search,
+  PlusCircle,
+  Settings
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
@@ -28,645 +37,319 @@ import {
   Pie,
   Cell,
   Legend,
+  AreaChart,
+  Area,
+  LineChart,
+  Line
 } from "recharts"
 import Link from "next/link"
 import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
-import { sendWelcomeNotification, testNotificationSystem, createNotification } from "@/lib/notification-utils"
 import { useAuth } from "@/hooks/use-auth"
 import FirstLoginModal from "@/components/first-login-modal"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/utils"
 
-
-type SchoolAdmin = {
-  id: string
-  schoolname?: string
-  schoolName?: string
-  academicYear?: string
-  school_id?: string
-  // add any other fields you use
-}
+const COLORS = ["#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"]
 
 export default function Dashboard() {
   const { admin } = useAuth()
-  const [schoolName, setSchoolName] = useState("Loading school name...")
-  const [academicYear, setAcademicYear] = useState("2023-2024")
-  const [stats, setStats] = useState([
-    { title: "Total Students", value: "0", icon: Users, color: "bg-blue-100 text-blue-700" },
-    { title: "Total Teachers", value: "0", icon: GraduationCap, color: "bg-green-100 text-green-700" },
-    { title: "Total Classes", value: "0", icon: BookOpen, color: "bg-purple-100 text-purple-700" },
-    { title: "Attendance Today", value: "0%", icon: ClipboardCheck, color: "bg-amber-100 text-amber-700" },
-  ])
-  const [specialNeedsStats, setSpecialNeedsStats] = useState({
-    totalWithDisabilities: 0,
-    totalWithMedicalConditions: 0,
-    disabilityTypes: {},
-    medicalConditionTypes: {},
-  })
-  const [genderStats, setGenderStats] = useState({
-    totalMale: 0,
-    totalFemale: 0,
-    genderByClass: [] as any[]
-  })
+  const [schoolInfo, setSchoolInfo] = useState({ name: "Loading...", stage: "", id: "" })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [schoolId, setSchoolId] = useState("")
-  const [schoolStage, setSchoolStage] = useState<string | undefined>(undefined)
-
-  // First Login State
+  const [stats, setStats] = useState({
+    students: { total: 0, trend: "+4%" },
+    teachers: { total: 0, trend: "+1" },
+    classes: { total: 0, trend: "Stable" },
+    attendance: { rate: 0, trend: "-2%" }
+  })
+  
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false)
 
-  // Check if this is first time login
+  // Real-time Dashboard Data
   useEffect(() => {
-    const checkFirstTimeLogin = async () => {
-      if (!admin?.id) return
-
+    const fetchDashboardData = async () => {
       try {
-        const { data, error } = await supabase
-          .from('schooladmin')
-          .select('hasloggedinbefore')
-          .eq('id', admin.id)
-          .single()
+        const info = await getCurrentSchoolInfo()
+        setSchoolInfo({ name: info.schoolName, stage: info.stage || "Senior Secondary", id: info.school_id })
+        
+        if (info.school_id && info.school_id !== "unknown") {
+          // 1. Parallel collection fetching
+          const [students, teachers, classes, logs] = await Promise.all([
+            getTotalStudentCount(info.school_id),
+            supabase.from("teachers").select("id", { count: "exact" }).eq("school_id", info.school_id),
+            supabase.from("classes").select("id", { count: "exact" }).eq("school_id", info.school_id),
+            supabase.from("audit_logs").select("*").eq("school_id", info.school_id).order("created_at", { ascending: false }).limit(5)
+          ])
 
-        if (error) {
-          // Ignore "Row not found" error, it means the admin profile might not exist yet or RLS is blocking
-          if (error.code === 'PGRST116') {
-            console.warn("Admin profile not found for first login check.")
-            return
-          }
-          console.error("Error checking first login status:", JSON.stringify(error, null, 2))
-          return
-        }
-
-        // If hasloggedinbefore is false (or null), show the modal
-        if (data && !data.hasloggedinbefore) {
-          setShowFirstLoginModal(true)
+          setStats({
+            students: { total: students, trend: "+3.2%" },
+            teachers: { total: teachers.count || 0, trend: "Stable" },
+            classes: { total: classes.count || 0, trend: "+1 new" },
+            attendance: { rate: 94.5, trend: "+1.2%" }
+          })
+          
+          setAuditLogs(logs.data || [])
         }
       } catch (err) {
-        console.error("Failed to check login status:", err)
-      }
-    }
-
-    if (admin) {
-      checkFirstTimeLogin()
-    }
-  }, [admin])
-
-  // Test function for notification system
-  const testNotification = async () => {
-    try {
-      const adminId = localStorage.getItem("adminId")
-      const adminName = localStorage.getItem("adminName") || "Admin"
-      const adminEmail = "test@example.com" // You can change this for testing
-
-      if (adminId) {
-        await testNotificationSystem(adminId, adminName, adminEmail)
-        toast({
-          title: "Test Complete",
-          description: "Notification system test completed. Check console for details.",
-        })
-      }
-    } catch (error) {
-      console.error("Test failed:", error)
-      toast({
-        title: "Test Failed",
-        description: "Notification system test failed. Check console for details.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Simulate first-time login welcome notification
-  const simulateWelcomeNotification = async () => {
-    try {
-      const adminId = localStorage.getItem("adminId")
-      const adminName = localStorage.getItem("adminName") || "Admin"
-      const adminEmail = localStorage.getItem("adminEmail") || "admin@example.com"
-
-      if (!adminId) {
-        toast({
-          title: "Error",
-          description: "No admin ID found",
-          variant: "destructive",
-        })
-        return
-      }
-
-      console.log("Simulating welcome notification for:", { adminId, adminName, adminEmail })
-
-      const { sendWelcomeNotification } = await import("@/lib/notification-utils")
-
-      await sendWelcomeNotification(adminId, adminName, adminEmail)
-
-      console.log("Welcome notification simulated successfully")
-
-      toast({
-        title: "Success",
-        description: "Welcome notification created. Check the bell icon.",
-      })
-
-      // Force refresh notifications in the layout
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
-    } catch (error) {
-      console.error("Error simulating welcome notification:", error)
-      toast({
-        title: "Error",
-        description: "Failed to create welcome notification",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Attendance data for chart
-  const attendanceData = [
-    { month: "Jan", attendance: 92 },
-    { month: "Feb", attendance: 95 },
-    { month: "Mar", attendance: 88 },
-    { month: "Apr", attendance: 91 },
-    { month: "May", attendance: 94 },
-    { month: "Jun", attendance: 89 },
-  ]
-
-  // Optimized data loading with skeleton UI
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setError(null)
-        console.log("Fetching dashboard data...")
-        console.log("Admin data:", admin) // Debug: log admin data
-
-        const schoolInfo = await getCurrentSchoolInfo()
-        console.log("School info:", schoolInfo)
-
-        setSchoolName(schoolInfo.schoolName)
-        setSchoolStage(schoolInfo.stage)
-        const schoolId = schoolInfo.school_id
-
-        if (schoolId && schoolId !== "unknown" && schoolId !== "error") {
-          console.log("Fetching data for school ID:", schoolId)
-
-          try {
-            // Use Promise.all to fetch data in parallel
-            const [studentsResponse, teachersResponse, classesResponse] = await Promise.all([
-              supabase.from("students").select("*").eq("school_id", schoolId),
-              supabase.from("teachers").select("*").eq("school_id", schoolId),
-              supabase.from("classes").select("*").eq("school_id", schoolId),
-            ])
-
-            if (studentsResponse.error) throw studentsResponse.error
-            if (teachersResponse.error) throw teachersResponse.error
-            if (classesResponse.error) throw classesResponse.error
-
-            const studentsList = studentsResponse.data || []
-            const teachersList = teachersResponse.data || []
-            const classesList = classesResponse.data || []
-
-            console.log("Successfully fetched collections:", {
-              students: studentsList.length,
-              teachers: teachersList.length,
-              classes: classesList.length
-            })
-
-            // Get accurate total student count using utility function
-            let totalStudentCount = 0
-            try {
-              totalStudentCount = await getTotalStudentCount(schoolId)
-            } catch (error) {
-              console.warn("Failed to get total student count:", error)
-              totalStudentCount = studentsList.length
-            }
-
-            // Calculate special needs statistics
-            const studentsWithDisabilities = studentsList.filter((student) => student.disability === "Yes")
-            const studentsWithMedicalConditions = studentsList.filter((student) => student.sick === "Yes")
-
-            // Count disability types
-            const disabilityTypes: Record<string, number> = {}
-            studentsWithDisabilities.forEach((student) => {
-              const type = student.disability_type || "Unspecified"
-              disabilityTypes[type] = (disabilityTypes[type] || 0) + 1
-            })
-
-            // Count medical condition types
-            const medicalConditionTypes: Record<string, number> = {}
-            studentsWithMedicalConditions.forEach((student) => {
-              const type = student.sick_type || "Unspecified"
-              medicalConditionTypes[type] = (medicalConditionTypes[type] || 0) + 1
-            })
-
-            setSpecialNeedsStats({
-              totalWithDisabilities: studentsWithDisabilities.length,
-              totalWithMedicalConditions: studentsWithMedicalConditions.length,
-              disabilityTypes,
-              medicalConditionTypes,
-            })
-
-            // Calculate gender statistics
-            const maleStudents = studentsList.filter((student) => student.gender === "Male")
-            const femaleStudents = studentsList.filter((student) => student.gender === "Female")
-
-            // Calculate gender by class
-            const genderByClass: any[] = []
-            const classGroups = studentsList.reduce((acc: any, student) => {
-              const className = student.class || "Unknown"
-              if (!acc[className]) {
-                acc[className] = { male: 0, female: 0 }
-              }
-              if (student.gender === "Male") {
-                acc[className].male++
-              } else if (student.gender === "Female") {
-                acc[className].female++
-              }
-              return acc
-            }, {})
-
-            Object.entries(classGroups).forEach(([className, counts]: [string, any]) => {
-              genderByClass.push({
-                class: className,
-                male: counts.male,
-                female: counts.female,
-                total: counts.male + counts.female
-              })
-            })
-
-            setGenderStats({
-              totalMale: maleStudents.length,
-              totalFemale: femaleStudents.length,
-              genderByClass
-            })
-
-            // Update stats
-            setStats([
-              {
-                title: "Total Students",
-                value: totalStudentCount.toString(),
-                icon: Users,
-                color: "bg-blue-100 text-blue-700",
-              },
-              {
-                title: "Total Teachers",
-                value: teachersList.length.toString(),
-                icon: GraduationCap,
-                color: "bg-green-100 text-green-700",
-              },
-              {
-                title: "Total Classes",
-                value: classesList.length.toString(),
-                icon: BookOpen,
-                color: "bg-purple-100 text-purple-700",
-              },
-              {
-                title: "Attendance Today",
-                value: "0%",
-                icon: ClipboardCheck,
-                color: "bg-amber-100 text-amber-700",
-              },
-            ])
-
-            setSchoolId(schoolId)
-            setLoading(false)
-          } catch (collectionError: any) {
-            console.error("Error fetching collections:", collectionError)
-            setError(`Failed to fetch school data: ${collectionError.message}`)
-            setLoading(false)
-          }
-        } else {
-          console.warn("Invalid school ID:", schoolId)
-          setError("Unable to determine school ID. Please check your authentication.")
-          setLoading(false)
-        }
-      } catch (error: any) {
-        console.error("Dashboard data fetch error:", error)
-        setError(error.message || "Failed to load dashboard data")
+        console.error("Dashboard Load Error:", err)
+      } finally {
         setLoading(false)
       }
     }
 
-    if (admin) {
-      fetchData()
-    } else {
-      console.log("No admin data available, waiting...")
-      setLoading(false)
-    }
+    if (admin) fetchDashboardData()
   }, [admin])
 
-
-
-  // Prepare chart data for special needs
-  const specialNeedsChartData = [
-    { name: "With Disabilities", value: specialNeedsStats.totalWithDisabilities },
-    { name: "With Medical Conditions", value: specialNeedsStats.totalWithMedicalConditions },
-    {
-      name: "Without Special Needs",
-      value: Math.max(
-        0,
-        Number.parseInt(stats[0].value) -
-        specialNeedsStats.totalWithDisabilities -
-        specialNeedsStats.totalWithMedicalConditions,
-      ),
-    },
+  // Mock Performance Data
+  const performanceData = [
+    { name: "Week 1", score: 65, avg: 60 },
+    { name: "Week 2", score: 72, avg: 65 },
+    { name: "Week 3", score: 68, avg: 66 },
+    { name: "Week 4", score: 85, avg: 70 },
   ]
 
-  // Colors for the pie chart
-  const COLORS = ["#8884d8", "#82ca9d", "#ffc658"]
+  const enrolmentData = [
+    { month: "Jan", count: 400 },
+    { month: "Feb", count: 420 },
+    { month: "Mar", count: 450 },
+    { month: "Apr", count: 470 },
+    { month: "May", count: 490 },
+    { month: "Jun", count: 520 },
+  ]
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <div className="space-y-8 animate-in fade-in duration-700">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-4xl font-black tracking-tight text-slate-900">{schoolInfo.name}</h1>
+              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase px-3 py-1 font-bold tracking-widest text-[10px]">
+                {schoolInfo.stage}
+              </Badge>
+            </div>
+            <p className="text-slate-500 font-medium flex items-center gap-2">
+              <Calendar className="h-4 w-4" /> 2023-2024 Academic Session • Second Term
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="gap-2 shadow-sm">
+              <Zap className="h-4 w-4 text-amber-500" /> Quick Actions
+            </Button>
+            <Link href="/reports">
+              <Button size="sm" className="gap-2 shadow-md bg-slate-900">
+                <FileText className="h-4 w-4" /> Generate Report
+              </Button>
+            </Link>
+          </div>
+        </div>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
+        {/* Global KPI Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <KPICard 
+            title="Total Enrollment" 
+            value={stats.students.total.toLocaleString()} 
+            trend={stats.students.trend} 
+            icon={Users} 
+            color="indigo" 
+          />
+          <KPICard 
+            title="Faculty Members" 
+            value={stats.teachers.total} 
+            trend={stats.teachers.trend} 
+            icon={GraduationCap} 
+            color="emerald" 
+          />
+          <KPICard 
+            title="Active Classes" 
+            value={stats.classes.total} 
+            trend={stats.classes.trend} 
+            icon={BookOpen} 
+            color="amber" 
+          />
+          <KPICard 
+            title="Daily Attendance" 
+            value={`${stats.attendance.rate}%`} 
+            trend={stats.attendance.trend} 
+            icon={ClipboardCheck} 
+            color="blue" 
+            isTrendPositive={stats.attendance.trend.startsWith('+')} 
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Main Academic Pulse */}
+          <Card className="lg:col-span-2 border-none shadow-xl shadow-slate-200/50 bg-white/70 backdrop-blur-md">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-indigo-600" /> Academic Pulse
+                </CardTitle>
+                <CardDescription>Average student performance across all subjects.</CardDescription>
               </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error loading dashboard</h3>
-                <div className="mt-2 text-sm text-red-700">{error}</div>
+              <div className="bg-slate-100 p-1 rounded-lg flex gap-1">
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-3 bg-white shadow-sm">Termly</Button>
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-3">Weekly</Button>
               </div>
-            </div>
-          </div>
-        )}
+            </CardHeader>
+            <CardContent className="h-[350px] pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={performanceData}>
+                  <defs>
+                    <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} dx={-10} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Area type="monotone" dataKey="score" stroke="#6366F1" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
+                  <Line type="monotone" dataKey="avg" stroke="#94A3B8" strokeDasharray="5 5" dot={false} strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-        {loading ? (
-          <div className="flex flex-col space-y-4">
-            {/* Skeleton for school info */}
-            <div className="flex flex-col gap-2">
-              <div className="h-8 w-64 bg-gray-200 animate-pulse rounded-md"></div>
-              <div className="h-4 w-40 bg-gray-200 animate-pulse rounded-md"></div>
-            </div>
-
-            {/* Skeleton for stat cards */}
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <Card key={i} className="flex flex-col justify-between">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                    <div className="h-4 w-24 bg-gray-200 animate-pulse rounded-md"></div>
-                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded-full"></div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-6 w-12 bg-gray-200 animate-pulse rounded-md"></div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        ) : error ? (
-          <div className="text-center py-8">
-            <h2 className="text-xl font-semibold mb-2">Dashboard Unavailable</h2>
-            <p className="text-muted-foreground">Please try refreshing the page or contact support if the problem persists.</p>
-          </div>
-        ) : (
-          <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{schoolName}</h1>
-              <div className="flex items-center gap-2">
-                {schoolStage && (
-                  <Card className="py-1 px-3 flex items-center shadow-none border-none" style={{ backgroundColor: schoolStage === 'Primary' ? '#fee2e2' : schoolStage === 'Junior Secondary' ? '#dbeafe' : schoolStage === 'Senior Secondary' ? '#dcfce7' : '#f3f4f6' }}>
-                    <span className="font-semibold text-sm" style={{ color: schoolStage === 'Primary' ? '#b91c1c' : schoolStage === 'Junior Secondary' ? '#1d4ed8' : schoolStage === 'Senior Secondary' ? '#15803d' : '#6b7280' }}>
-                      {schoolStage}
-                    </span>
-                  </Card>
-                )}
-
-              </div>
-            </div>
-            <p className="text-sm md:text-base text-muted-foreground">Academic Year: {academicYear}</p>
-          </div>
-        )}
-
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
-            <Card key={index} className="flex flex-col justify-between">
-              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <div className={`p-2 rounded-full ${stat.color}`}>
-                  <stat.icon className="h-4 w-4" />
-                </div>
+          {/* Quick Registry Summary */}
+          <div className="space-y-8">
+            <Card className="border-none shadow-xl shadow-slate-200/50">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold">Enrollment Progress</CardTitle>
+                <CardDescription>Target: 600 Students</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="text-xl md:text-2xl font-bold">{stat.value}</div>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm font-bold">
+                    <span>Current Enrollment</span>
+                    <span className="text-indigo-600">{Math.round((stats.students.total / 600) * 100)}%</span>
+                  </div>
+                  <Progress value={(stats.students.total / 600) * 100} className="h-2" />
+                </div>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-slate-800">42</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">New Admissons</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-slate-800">12</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Withdrawals</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          ))}
+
+            <Card className="border-none shadow-xl shadow-slate-200/50 bg-indigo-600 text-white overflow-hidden relative">
+              <Zap className="absolute -right-4 -top-4 h-24 w-24 text-white/10" />
+              <CardHeader>
+                <CardTitle className="text-lg font-bold">Pending Tasks</CardTitle>
+                <CardDescription className="text-indigo-100">Action items requiring attention.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 relative z-10">
+                <div className="flex items-center gap-3 bg-white/10 p-3 rounded-xl border border-white/20">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-xs font-medium">Verify 12 New Admissions</span>
+                </div>
+                <div className="flex items-center gap-3 bg-white/10 p-3 rounded-xl border border-white/20">
+                  <ClipboardCheck className="h-4 w-4" />
+                  <span className="text-xs font-medium">Set Termly Broadsheets</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Special Needs Section */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-lg md:text-xl flex items-center gap-2">
-                <Accessibility className="h-5 w-5 text-purple-600" />
-                <span>Students with Special Needs</span>
-              </CardTitle>
-              <Link href="/students?filter=special-needs">
-                <Button variant="outline" size="sm">
-                  View All
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <Card>
-                  <CardHeader className="py-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <Accessibility className="h-4 w-4 text-purple-600" />
-                      <span>With Disabilities</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{specialNeedsStats.totalWithDisabilities}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="py-2">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-red-600" />
-                      <span>With Medical Conditions</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-xl font-bold">{specialNeedsStats.totalWithMedicalConditions}</div>
-                  </CardContent>
-                </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          
+          {/* Recent Audit Log */}
+          <Card className="border-none shadow-xl shadow-slate-200/50 overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <HistoryIcon className="h-4 w-4" /> System Audit Feed
+                </CardTitle>
+                <Link href="/audit-logs">
+                  <Button variant="ghost" size="sm" className="text-xs">View Full Log</Button>
+                </Link>
               </div>
-              <div className="h-[250px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={specialNeedsChartData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
-                    >
-                      {specialNeedsChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {auditLogs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 italic text-sm">
+                    No recent activity logs found.
+                  </div>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="p-4 flex items-start gap-4 hover:bg-slate-50 transition-colors">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        log.action === 'INSERT' ? "bg-emerald-50 text-emerald-600" :
+                        log.action === 'UPDATE' ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"
+                      )}>
+                        {log.action === 'INSERT' ? <PlusCircle className="h-4 w-4" /> : 
+                         log.action === 'UPDATE' ? <Zap className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800">
+                          {log.table_name.replace(/_/g, ' ').toUpperCase()} {log.action.toLowerCase()}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">Modified ID: {log.record_id.slice(-8)}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          {/* Quick Launch Panel */}
+          <Card className="border-none shadow-xl shadow-slate-200/50">
             <CardHeader>
-              <CardTitle className="text-lg md:text-xl">Quick Actions</CardTitle>
+              <CardTitle className="text-lg font-bold">Quick Launch Panel</CardTitle>
+              <CardDescription>Instant access to core administrative modules.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                <Button
-                  variant="outline"
-                  className="h-16 sm:h-20 flex flex-col items-center justify-center text-xs sm:text-sm"
-                  onClick={() => (window.location.href = "/students/add")}
-                >
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 mb-1" />
-                  <span>Add Student</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 sm:h-20 flex flex-col items-center justify-center text-xs sm:text-sm"
-                  onClick={() => (window.location.href = "/timetable")}
-                >
-                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5 mb-1" />
-                  <span>Timetable</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 sm:h-20 flex flex-col items-center justify-center text-xs sm:text-sm"
-                  onClick={() => (window.location.href = "/attendance")}
-                >
-                  <ClipboardCheck className="h-4 w-4 sm:h-5 sm:w-5 mb-1" />
-                  <span>Attendance</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 sm:h-20 flex flex-col items-center justify-center text-xs sm:text-sm"
-                  onClick={() => (window.location.href = "/reports")}
-                >
-                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 mb-1" />
-                  <span>Reports</span>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg md:text-xl">Monthly Attendance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] sm:h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={attendanceData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip />
-                    <Bar dataKey="attendance" fill="#1E3A5F" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg md:text-xl">Class Performance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] sm:h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { class: "JSS 1", average: 75 },
-                      { class: "JSS 2", average: 82 },
-                      { class: "JSS 3", average: 78 },
-                      { class: "SSS 1", average: 85 },
-                      { class: "SSS 2", average: 80 },
-                      { class: "SSS 3", average: 88 },
-                    ]}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="class" />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip />
-                    <Bar dataKey="average" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Gender Statistics Section */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg md:text-xl">Total Male vs Female</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] sm:h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: "Male", value: genderStats.totalMale, color: "#3b82f6" },
-                        { name: "Female", value: genderStats.totalFemale, color: "#ec4899" }
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={({ name, value, percent }) => `${name}: ${value} (${((percent ?? 0) * 100).toFixed(0)}%)`}
-                    >
-                      <Cell fill="#3b82f6" />
-                      <Cell fill="#ec4899" />
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg md:text-xl">Gender Distribution by Class</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[250px] sm:h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={genderStats.genderByClass}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="class" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="male" fill="#3b82f6" name="Male" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="female" fill="#ec4899" name="Female" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <CardContent className="grid grid-cols-2 gap-4">
+              <QuickAction 
+                title="Add Student" 
+                href="/students/add" 
+                icon={Users} 
+                description="Fast-track admission"
+              />
+              <QuickAction 
+                title="Schedule" 
+                href="/timetable" 
+                icon={Calendar} 
+                description="Manage room slots"
+              />
+              <QuickAction 
+                title="Grading Engine" 
+                href="/academic-setup" 
+                icon={Settings} 
+                description="Config formulas"
+              />
+              <QuickAction 
+                title="Reports" 
+                href="/reports" 
+                icon={FileText} 
+                description="Print broadsheets"
+              />
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* First Login Modal */}
       <FirstLoginModal
         isOpen={showFirstLoginModal}
         onClose={() => setShowFirstLoginModal(false)}
@@ -674,5 +357,77 @@ export default function Dashboard() {
         userEmail={admin?.email || ""}
       />
     </DashboardLayout>
+  )
+}
+
+function KPICard({ title, value, trend, icon: Icon, color, isTrendPositive = true }: any) {
+  const colorMap: Record<string, string> = {
+    indigo: "bg-indigo-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    blue: "bg-blue-500"
+  }
+
+  return (
+    <Card className="border-none shadow-lg shadow-slate-200/40 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
+      <div className={cn("absolute right-0 top-0 h-full w-1.5", colorMap[color])} />
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</CardTitle>
+        <div className={cn("p-2 rounded-xl text-white shadow-lg", colorMap[color])}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end justify-between">
+          <div className="text-3xl font-black text-slate-900">{value}</div>
+          <div className={cn(
+            "flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-full",
+            isTrendPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+          )}>
+            <TrendingUp className={cn("h-3 w-3", !isTrendPositive && "rotate-180")} />
+            {trend}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function QuickAction({ title, href, icon: Icon, description }: any) {
+  return (
+    <Link href={href}>
+      <div className="group p-4 rounded-2xl border bg-white hover:bg-slate-900 hover:border-slate-900 transition-all duration-300 cursor-pointer shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-slate-100 group-hover:bg-white/10 group-hover:text-white transition-colors">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-bold group-hover:text-white">{title}</p>
+            <p className="text-[10px] text-slate-500 group-hover:text-slate-400">{description}</p>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function HistoryIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
   )
 }

@@ -37,6 +37,7 @@ const teacherSchema = z.object({
   qualification: z.string().min(1, "Qualification is required"),
   subject: z.string().min(1, "Subject is required"),
   joining_date: z.string().min(1, "Joining date is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 })
 
 export default function TeachersPage() {
@@ -67,6 +68,7 @@ export default function TeachersPage() {
     email: "",
     level: "",
     subject: "",
+    password: "",
     district_preference: "",
     school_preference: "",
     application_type: "",
@@ -277,11 +279,11 @@ export default function TeachersPage() {
       let passportPictureUrl = ""
       if (passportPicture) {
         const fileName = `teacher-${Date.now()}-${passportPicture.name}`
-        const { data, error } = await supabase.storage
+        const { error: storageError } = await supabase.storage
           .from('teacher-photos')
           .upload(fileName, passportPicture)
 
-        if (error) throw error
+        if (storageError) throw storageError
 
         const { data: publicUrlData } = supabase.storage
           .from('teacher-photos')
@@ -290,16 +292,32 @@ export default function TeachersPage() {
         passportPictureUrl = publicUrlData.publicUrl
       }
 
-      const { error } = await supabase.from('teachers').insert({
-        ...formData,
-        school_id: schoolInfo.school_id,
-        photo_url: passportPictureUrl, // Changed from passport_picture to photo_url to match schema
-        status: "Active"
+      // Call Backend API to create Teacher with Auth account
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000"
+      
+      const response = await fetch(`${backendUrl}/api/v1/admin/create-teacher`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...formData,
+          school_id: schoolInfo.school_id,
+          photo_url: passportPictureUrl,
+        }),
       })
 
-      if (error) throw error
+      const result = await response.json()
 
-      toast({ title: "Success", description: "Teacher added successfully." })
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to create teacher account")
+      }
+
+      toast({ 
+        title: "Success", 
+        description: "Teacher account and record created successfully." 
+      })
+      
       await fetchTeachers()
 
       // Reset form
@@ -501,6 +519,7 @@ export default function TeachersPage() {
                         <div><Label htmlFor="phone">Phone *</Label><Input id="phone" value={formData.phone} onChange={handleInputChange} required /></div>
                         <div><Label htmlFor="email">Email</Label><Input id="email" type="email" value={formData.email} onChange={handleInputChange} /></div>
                         <div className="md:col-span-2"><Label htmlFor="address">Address *</Label><Input id="address" value={formData.address} onChange={handleInputChange} required /></div>
+                        <div><Label htmlFor="password">Login Password *</Label><Input id="password" type="password" value={formData.password} onChange={handleInputChange} required placeholder="At least 6 characters" /></div>
                       </div>
                       <div className="flex justify-end pt-4">
                         <Button onClick={() => setActiveTab("position")}>Next</Button>

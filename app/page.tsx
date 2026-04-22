@@ -8,24 +8,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
-import { Lock, Mail, Eye, EyeOff, UserPlus } from "lucide-react"
-import { useSupabaseConnection } from "@/hooks/use-supabase-connection"
+import { Lock, Mail, Eye, EyeOff } from "lucide-react"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
+  const { admin, loading: authLoading } = useAuth()
+  const [emailaddress, setEmailAddress] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const { isConnected } = useSupabaseConnection()
+
+  useEffect(() => {
+    if (admin) {
+      router.push("/dashboard")
+    }
+  }, [admin, router])
 
   useEffect(() => {
     const rememberedEmail = localStorage.getItem("rememberedEmail")
     if (rememberedEmail) {
-      setEmail(rememberedEmail)
+      setEmailAddress(rememberedEmail)
       setRememberMe(true)
     }
   }, [])
@@ -40,255 +46,158 @@ export default function LoginPage() {
     setErrorMessage("")
 
     try {
-      console.log("Attempting login with email:", email)
-
+      // Use Supabase Auth for authentication
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
+        email: emailaddress,
         password: password,
       })
 
       if (authError) throw authError
-
+      
+      // Auth change will be handled by AuthProvider/hooks
+      // But we check if it's an admin specifically here for faster feedback
       const user = authData.user
-      console.log("Supabase Auth successful, user:", user.id, user.email)
-
-      // Check if user exists in schooladmin table by email
-      // We check both email and email columns for compatibility
-      const { data: admins, error: adminError } = await supabase
-        .from('schooladmin')
-        .select('*')
-        .select('*')
-        .eq('email', email)
-
-      if (adminError) {
-        console.error("Error fetching admin profile:", adminError)
+      if (user) {
+          const { data: adminData } = await supabase
+            .from('schooladmin')
+            .select('*')
+            .eq('emailaddress', user.email)
+            .maybeSingle()
+            
+          if (!adminData) {
+              const { data: adminByEmail } = await supabase
+                .from('schooladmin')
+                .select('*')
+                .eq('email', user.email)
+                .maybeSingle()
+                
+              if (!adminByEmail) {
+                // If not found in schooladmin, maybe check if they are a teacher?
+                // For now, let's just say only admins here.
+                await supabase.auth.signOut()
+                throw new Error("No admin account found for this user.")
+              }
+          }
       }
 
-      console.log("Admin query results:", admins?.length || 0, "documents found")
-
-      if (admins && admins.length > 0) {
-        const adminData = admins[0]
-        console.log("Admin document data:", adminData)
-
-        // Ensure an admin profile exists with the correct ID (linking auth ID to schooladmin ID)
-        // In Supabase, the schooladmin ID should ideally match the Auth User ID
-        // If they don't match, we might need to update the schooladmin record to have the correct ID
-        // or just rely on the email link. For now, we'll assume the schooladmin record is the source of truth.
-
-        // Update last login
-        await supabase
-          .from('schooladmin')
-          .update({
-            last_login: new Date().toISOString(),
-            // If the record doesn't have an ID that matches auth user, we might want to link them here
-            // but changing primary key is hard. We'll assume the email link is sufficient for now.
-          })
-          .eq('id', adminData.id)
-
-        // Store admin info in localStorage
-        localStorage.setItem("adminId", adminData.id) // Use the table ID, not necessarily auth ID if they differ
-        localStorage.setItem("adminName", adminData.adminname || adminData.name || "Admin User")
-        localStorage.setItem("adminRole", adminData.role || "Principal")
-        localStorage.setItem("adminEmail", email)
-
-        if (adminData.gender) {
-          localStorage.setItem("adminGender", adminData.gender)
-        }
-
-        if (rememberMe) {
-          localStorage.setItem("rememberedEmail", email)
-        } else {
-          localStorage.removeItem("rememberedEmail")
-        }
-
-        // Check if this is first time login
-        const hasLoggedInBefore = adminData.hasloggedinbefore
-
-        // Also check localStorage for legacy support
-        const localHasLoggedIn = localStorage.getItem("hasLoggedInBefore")
-
-        if (hasLoggedInBefore === false || localHasLoggedIn === "false") {
-          localStorage.setItem("hasLoggedInBefore", "false")
-          router.push("/dashboard")
-        } else {
-          localStorage.setItem("hasLoggedInBefore", "true")
-          router.push("/dashboard")
-        }
+      if (rememberMe) {
+        localStorage.setItem("rememberedEmail", emailaddress)
       } else {
-        console.error("No admin document found for email:", email)
-        setErrorMessage("No admin record found for this email address.")
-        // Optional: Sign out if no admin record found to prevent 'logged in but no access' state
-        await supabase.auth.signOut()
+        localStorage.removeItem("rememberedEmail")
       }
-    } catch (err: any) {
-      console.error("Login error:", err)
-      setErrorMessage(err.message || "An error occurred during login.")
+
+      router.push("/dashboard")
+      
+    } catch (err) {
+      const error = err as Error
+      console.error("Login error:", error)
+      setErrorMessage(error.message || "Login failed. Please try again.")
+
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid email or password",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true)
-    setErrorMessage("")
-
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          redirectTo: `${window.location.origin}/dashboard`,
-        },
-      })
-
-      if (error) throw error
-
-      // Note: The user will be redirected, so the code below might not execute immediately
-      // The dashboard page handles the post-login logic for OAuth
-
-    } catch (err: any) {
-      console.error("Google Sign-In error:", err)
-      setErrorMessage(err.message || "An error occurred during Google Sign-In.")
-      setLoading(false)
-    }
+  if (authLoading) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+              <div className="animate-pulse flex flex-col items-center">
+                  <SchoolTechLogo size="lg" />
+                  <p className="mt-4 text-gray-500">Checking session...</p>
+              </div>
+          </div>
+      )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4 sm:p-6">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-1 text-center p-4 sm:p-6">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6">
+      <Card className="w-full max-w-md shadow-xl border-t-4 border-blue-600">
+        <CardHeader className="space-y-1 text-center p-6">
           <div className="flex justify-center mb-4">
             <SchoolTechLogo size="md" />
           </div>
-          <CardDescription className="text-base sm:text-lg">Welcome to the School Admin panel</CardDescription>
+          <h2 className="text-2xl font-bold text-gray-900">Admin Portal</h2>
+          <CardDescription className="text-gray-500">Log in to manage your school</CardDescription>
         </CardHeader>
-        <CardContent className="p-4 sm:p-6">
+        <CardContent className="p-6">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <Input
-                    id="email"
+                    id="emailaddress"
                     type="email"
-                    placeholder="Email Address"
-                    className="pl-10 h-10 sm:h-11 text-sm sm:text-base"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Admin Email"
+                    className="pl-10 h-11"
+                    value={emailaddress}
+                    onChange={(e) => setEmailAddress(e.target.value)}
                     required
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Password"
-                    className="pl-10 h-10 sm:h-11 text-sm sm:text-base pr-10"
+                    className="pl-10 h-11 pr-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground focus:outline-none"
-                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
                     id="rememberMe"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
                   />
-                  <label htmlFor="rememberMe" className="text-xs sm:text-sm text-gray-600">
+                  <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer">
                     Remember me
                   </label>
                 </div>
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-xs sm:text-sm text-[#1E3A5F] hover:underline"
+                  className="text-sm text-blue-600 hover:underline font-medium"
                 >
                   Forgot password?
                 </button>
               </div>
-              {errorMessage && <div className="text-xs sm:text-sm text-red-500 mt-2">{errorMessage}</div>}
+              {errorMessage && <div className="text-sm text-red-500 bg-red-50 p-2 rounded border border-red-100">{errorMessage}</div>}
               <Button
                 type="submit"
-                className="w-full h-10 sm:h-11 text-sm sm:text-base bg-[#1E3A5F]"
+                className="w-full h-11 bg-blue-700 hover:bg-blue-800 text-white font-semibold transition-colors shadow-md"
                 disabled={loading}
               >
-                {loading ? "Logging in..." : "Login"}
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleSignIn}
-                disabled={loading}
-                className="w-full h-10 sm:h-11 text-sm sm:text-base"
-              >
-                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                  <path
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    fill="#4285F4"
-                  />
-                  <path
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    fill="#34A853"
-                  />
-                  <path
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    fill="#FBBC05"
-                  />
-                  <path
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    fill="#EA4335"
-                  />
-                </svg>
-                {loading ? "Signing in..." : "Sign in with Google"}
+                {loading ? "Verifying..." : "Sign In to Dashboard"}
               </Button>
             </div>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-2 p-4 sm:p-6">
-          <div className="text-xs sm:text-sm text-center text-muted-foreground">
-            This system is for authorized school administrators only
-          </div>
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/add-admin")}
-              type="button"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add School Admin (Temporary)
-            </Button>
-          </div>
+        <CardFooter className="flex flex-col space-y-4 p-6 bg-gray-50 border-t rounded-b-lg">
+          <p className="text-xs text-center text-gray-400">
+            &copy; {new Date().getFullYear()} Skultɛk School Management System. All rights reserved.
+          </p>
         </CardFooter>
       </Card>
     </div>

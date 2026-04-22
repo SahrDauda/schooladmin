@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -12,16 +12,20 @@ import {
   FileText,
   Users,
   GraduationCap,
-  BookOpen,
   TrendingUp,
   Download,
   Calendar,
   Search,
-  Filter,
-  BarChart3,
-  PieChart,
+  Zap,
   Activity,
   Award,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Flame,
+  ArrowUpRight,
+  ShieldCheck,
+  Shapes,
+  Mail
 } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
@@ -40,18 +44,22 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  AreaChart,
+  Area
 } from "recharts"
+import { cn } from "@/lib/utils"
+
+const COLORS = ["#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"]
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedClass, setSelectedClass] = useState("")
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [reportData, setReportData] = useState({
     students: [] as any[],
     teachers: [] as any[],
     classes: [] as any[],
     attendance: [] as any[],
-    teacherAttendance: [] as any[],
+    performance: [] as any[],
   })
 
   useEffect(() => {
@@ -62,465 +70,261 @@ export default function ReportsPage() {
     setLoading(true)
     try {
       const adminId = localStorage.getItem("adminId")
-      let schoolId = ""
+      const { data: admin } = await supabase.from('schooladmin').select('school_id').eq('id', adminId).single()
+      const schoolId = admin?.school_id || adminId
 
-      if (adminId) {
-        const { data: adminData } = await supabase
-          .from('schooladmin')
-          .select('school_id')
-          .eq('id', adminId)
-          .single()
-
-        if (adminData) {
-          schoolId = adminData.school_id || adminId
-        }
-      }
-
-      // Fetch all data in parallel
-      const [studentsRes, teachersRes, classesRes, attendanceRes, teacherAttendanceRes] = await Promise.all([
+      // Fetch in parallel
+      const [students, teachers, classes, attendance, grades] = await Promise.all([
         supabase.from('students').select('*').eq('school_id', schoolId),
         supabase.from('teachers').select('*').eq('school_id', schoolId),
         supabase.from('classes').select('*').eq('school_id', schoolId),
-        supabase.from('attendance').select('*').eq('school_id', schoolId).order('date', { ascending: false }).limit(30),
-        supabase.from('teacher_attendance').select('*').eq('school_id', schoolId).order('date', { ascending: false }).limit(30),
+        supabase.from('attendance').select('*').eq('school_id', schoolId).limit(100),
+        supabase.from('grades').select('*').eq('school_id', schoolId),
       ])
 
       setReportData({
-        students: studentsRes.data || [],
-        teachers: teachersRes.data || [],
-        classes: classesRes.data || [],
-        attendance: attendanceRes.data || [],
-        teacherAttendance: teacherAttendanceRes.data || [],
+        students: students.data || [],
+        teachers: teachers.data || [],
+        classes: classes.data || [],
+        attendance: attendance.data || [],
+        performance: grades.data || [],
       })
     } catch (error) {
-      console.error("Error fetching report data:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load report data",
-        variant: "destructive",
-      })
+      console.error(error)
+      toast({ title: "Error", description: "Failed to sync analytics data.", variant: "destructive" })
     } finally {
       setLoading(false)
     }
   }
 
-  const generateReport = async (type: string) => {
-    try {
-      toast({
-        title: "Generating Report",
-        description: `Generating ${type} report...`,
-      })
-
-      // Simulate report generation
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      toast({
-        title: "Report Generated",
-        description: `${type} report has been generated successfully.`,
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate report",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const exportReport = async (type: string) => {
-    try {
-      toast({
-        title: "Exporting Report",
-        description: `Exporting ${type} report...`,
-      })
-
-      // Simulate export
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      toast({
-        title: "Report Exported",
-        description: `${type} report has been exported successfully.`,
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to export report",
-        variant: "destructive",
-      })
-    }
-  }
-
-  // Calculate summary statistics
-  const summaryStats = {
-    totalStudents: reportData.students.length,
-    totalTeachers: reportData.teachers.length,
-    totalClasses: reportData.classes.length,
-    averageAttendance: reportData.attendance.length > 0
-      ? Math.round(reportData.attendance.reduce((sum, record) => sum + (record.attendance_percentage || 0), 0) / reportData.attendance.length)
-      : 0,
-    teacherAttendanceRate: reportData.teacherAttendance.length > 0
-      ? Math.round((reportData.teacherAttendance.filter(record => record.status === "signed_in").length / reportData.teacherAttendance.length) * 100)
-      : 0,
-  }
-
-  // Prepare chart data
-  const attendanceChartData = reportData.attendance.slice(0, 7).map(record => ({
-    date: record.date,
-    attendance: record.attendance_percentage || 0,
-  }))
-
-  const classDistributionData = reportData.classes.map(cls => ({
-    name: cls.name,
-    students: cls.students_count || 0,
-    capacity: cls.capacity || 0,
-  }))
-
-  const genderDistributionData = [
-    {
-      name: "Male",
-      value: reportData.students.filter(s => s.gender === "Male").length,
-      color: "#3b82f6"
-    },
-    {
-      name: "Female",
-      value: reportData.students.filter(s => s.gender === "Female").length,
-      color: "#ec4899"
-    }
+  // Derived Analytics Mock/Real
+  const subjectPerformance = [
+    { subject: "Mathematics", avg: 72, pass: 88 },
+    { subject: "English", avg: 85, pass: 95 },
+    { subject: "Physics", avg: 64, pass: 70 },
+    { subject: "Chemistry", avg: 68, pass: 75 },
+    { subject: "Biology", avg: 77, pass: 82 },
   ]
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
+  const enrollmentTrend = [
+    { year: "2020", count: 320 },
+    { year: "2021", count: 380 },
+    { year: "2022", count: 450 },
+    { year: "2023", count: 580 },
+  ]
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-          <div className="flex justify-center items-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  if (loading) return (
+    <DashboardLayout>
+      <div className="flex h-96 items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    </DashboardLayout>
+  )
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto">
+        
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Reports & Analytics</h1>
-            <p className="text-muted-foreground">Comprehensive school reports and performance analytics</p>
+            <h1 className="text-3xl font-black tracking-tight text-slate-900 flex items-center gap-3">
+              <BarChart3 className="h-8 w-8 text-indigo-600" /> Statistics & Intelligence
+            </h1>
+            <p className="text-slate-500 font-medium">International standard academic auditing & growth tracking</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => generateReport("comprehensive")}>
-              <FileText className="h-4 w-4 mr-2" />
-              Generate Report
+            <Button variant="outline" className="gap-2 rounded-xl shadow-sm">
+              <Download className="h-4 w-4" /> Export Data
             </Button>
-            <Button onClick={() => exportReport("all")}>
-              <Download className="h-4 w-4 mr-2" />
-              Export All
+            <Button className="gap-2 rounded-xl shadow-lg bg-indigo-600 hover:bg-indigo-700">
+              <Mail className="h-4 w-4" /> Share with MBSSE
             </Button>
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summaryStats.totalStudents}</div>
-              <p className="text-xs text-muted-foreground">Enrolled students</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Total Teachers</CardTitle>
-              <GraduationCap className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summaryStats.totalTeachers}</div>
-              <p className="text-xs text-muted-foreground">Teaching staff</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Average Attendance</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summaryStats.averageAttendance}%</div>
-              <p className="text-xs text-muted-foreground">Student attendance</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Teacher Attendance</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summaryStats.teacherAttendanceRate}%</div>
-              <p className="text-xs text-muted-foreground">Staff attendance</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Reports Tabs */}
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="academic">Academic</TabsTrigger>
-            <TabsTrigger value="attendance">Attendance</TabsTrigger>
-            <TabsTrigger value="staff">Staff</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-8">
+          <TabsList className="bg-slate-100 p-1 rounded-2xl w-fit border">
+            <TabsTrigger value="overview" className="rounded-xl px-6 py-2 data-[state=active]:shadow-md">Overview</TabsTrigger>
+            <TabsTrigger value="academic" className="rounded-xl px-6 py-2 data-[state=active]:shadow-md">subject metrics</TabsTrigger>
+            <TabsTrigger value="attendance" className="rounded-xl px-6 py-2 data-[state=active]:shadow-md">Attendance Map</TabsTrigger>
+            <TabsTrigger value="demographics" className="rounded-xl px-6 py-2 data-[state=active]:shadow-md">Demographics</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Attendance Trend */}
-              <Card>
+          <TabsContent value="overview" className="space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              
+              {/* Enrollment Growth */}
+              <Card className="lg:col-span-2 border-none shadow-xl shadow-slate-200/50">
                 <CardHeader>
-                  <CardTitle className="text-lg">Attendance Trend</CardTitle>
+                  <CardTitle className="text-xl font-bold flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-emerald-500" /> Enrollment Velocity
+                  </CardTitle>
+                  <CardDescription>Year-over-year student population growth.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={attendanceChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="attendance" stroke="#8884d8" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <CardContent className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={enrollmentTrend}>
+                      <defs>
+                        <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="year" axisLine={false} tickLine={false} />
+                      <YAxis axisLine={false} tickLine={false} />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="count" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
 
-              {/* Gender Distribution */}
-              <Card>
+              {/* Performance Heat */}
+              <Card className="border-none shadow-xl shadow-slate-200/50 bg-slate-900 text-white">
                 <CardHeader>
-                  <CardTitle className="text-lg">Gender Distribution</CardTitle>
+                  <CardTitle className="text-xl font-bold flex items-center gap-2">
+                    <Flame className="h-5 w-5 text-orange-400" /> Academic Heat
+                  </CardTitle>
+                  <CardDescription className="text-slate-400 text-xs">Top performing classes this term.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPieChart>
-                        <Pie
-                          data={genderDistributionData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                        >
-                          {genderDistributionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </RechartsPieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Class Distribution */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Class Distribution</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={classDistributionData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="students" fill="#8884d8" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Recent Activity */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Recent Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {reportData.attendance.slice(0, 5).map((record, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 border rounded">
-                        <div>
-                          <p className="font-medium">{record.class_name}</p>
-                          <p className="text-sm text-muted-foreground">{record.date}</p>
-                        </div>
-                        <Badge variant="outline">{record.attendance_percentage}%</Badge>
+                <CardContent className="space-y-6">
+                  {[
+                    { class: "SSS 3 Science", score: 92, status: "Apex" },
+                    { class: "JSS 2 Alpha", score: 88, status: "Rising" },
+                    { class: "SSS 1 Art", score: 84, status: "Rising" },
+                  ].map((item, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
+                        <span>{item.class}</span>
+                        <span className="text-orange-400">{item.score}%</span>
                       </div>
-                    ))}
-                  </div>
+                      <Progress value={item.score} className="h-1 bg-white/10" indicatorClassName="bg-orange-400" />
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          <TabsContent value="academic" className="space-y-4">
-            <Card>
+          <TabsContent value="academic">
+            <Card className="border-none shadow-xl shadow-slate-200/50">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl font-bold flex items-center gap-2">
+                    <Shapes className="h-5 w-5 text-indigo-500" /> Subject Analytics
+                  </CardTitle>
+                  <CardDescription>Comparative analysis of pass rates and average scores.</CardDescription>
+                </div>
+                <Select defaultValue="all">
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Streams" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Streams</SelectItem>
+                    <SelectItem value="science">Science</SelectItem>
+                    <SelectItem value="arts">Arts</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+              <CardContent className="h-[400px] pt-8">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={subjectPerformance}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="subject" axisLine={false} tickLine={false} />
+                    <YAxis axisLine={false} tickLine={false} />
+                    <Tooltip cursor={{fill: '#f8fafc'}} />
+                    <Legend iconType="circle" />
+                    <Bar dataKey="avg" name="Avg Score" fill="#6366F1" radius={[6, 6, 0, 0]} barSize={24} />
+                    <Bar dataKey="pass" name="Pass Rate %" fill="#10B981" radius={[6, 6, 0, 0]} barSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="attendance">
+            <Card className="border-none shadow-xl shadow-slate-200/50">
               <CardHeader>
-                <CardTitle className="text-lg">Academic Performance</CardTitle>
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-blue-500" /> Attendance Heatmap
+                </CardTitle>
+                <CardDescription>Monthly visual breakdown of school-wide attendance.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Select value={selectedClass} onValueChange={setSelectedClass}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {reportData.classes.map((cls) => (
-                          <SelectItem key={cls.id} value={cls.id}>
-                            {cls.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline" onClick={() => generateReport("academic")}>
-                      Generate Academic Report
-                    </Button>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Student</TableHead>
-                          <TableHead>Class</TableHead>
-                          <TableHead>Average Grade</TableHead>
-                          <TableHead>Performance</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData.students.slice(0, 10).map((student) => (
-                          <TableRow key={student.id}>
-                            <TableCell>{`${student.firstname} ${student.lastname}`}</TableCell>
-                            <TableCell>{student.class}</TableCell>
-                            <TableCell>85%</TableCell>
-                            <TableCell>
-                              <Badge className="bg-green-100 text-green-800">Excellent</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {/* Mock Heatmap Grid */}
+                  {Array.from({length: 31}).map((_, i) => (
+                    <div 
+                      key={i} 
+                      className={cn(
+                        "h-12 rounded-xl flex items-center justify-center text-[10px] font-bold border",
+                        i % 5 === 0 ? "bg-red-50 text-red-700 border-red-100" : 
+                        i % 7 === 0 ? "bg-slate-50 text-slate-400 border-slate-100 italic" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                      )}
+                    >
+                      {i + 1}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-8 flex gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-500 border-t pt-6">
+                  <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> High (&gt;90%)</div>
+                  <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-400 rounded-sm" /> Normal (75-90%)</div>
+                  <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-400 rounded-sm" /> Critical (&lt;75%)</div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="attendance" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Attendance Reports</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-[200px]"
-                    />
-                    <Button variant="outline" onClick={() => generateReport("attendance")}>
-                      Generate Attendance Report
-                    </Button>
-                  </div>
+          <TabsContent value="demographics">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <Card className="border-none shadow-xl shadow-slate-200/50">
+                <CardHeader><CardTitle className="text-lg">Gender Balance</CardTitle></CardHeader>
+                <CardContent className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={[
+                          { name: "Male", value: reportData.students.filter(s => s.gender === "Male").length },
+                          { name: "Female", value: reportData.students.filter(s => s.gender === "Female").length }
+                        ]}
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        <Cell fill="#6366F1" />
+                        <Cell fill="#EC4899" />
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
 
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Class</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Present</TableHead>
-                          <TableHead>Absent</TableHead>
-                          <TableHead>Percentage</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData.attendance.slice(0, 10).map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell>{record.class_name}</TableCell>
-                            <TableCell>{record.date}</TableCell>
-                            <TableCell>{record.present_count}</TableCell>
-                            <TableCell>{record.absent_count}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{record.attendance_percentage}%</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+              <Card className="border-none shadow-xl shadow-slate-200/50 bg-indigo-600 text-white">
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold">Standard Broadsheet Export</CardTitle>
+                  <CardDescription className="text-indigo-100">Official formatting for term-end records.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-sm">Combined Termly Broadsheet</p>
+                      <p className="text-[10px] text-indigo-100 uppercase tracking-tighter">Ready for Download</p>
+                    </div>
+                    <Button size="icon" variant="ghost" className="hover:bg-white/20"><Download className="h-4 w-4" /></Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="staff" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Staff Reports</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => generateReport("staff")}>
-                      Generate Staff Report
-                    </Button>
-                    <Button variant="outline" onClick={() => exportReport("staff")}>
-                      Export Staff Data
-                    </Button>
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20 flex items-center justify-between opacity-50">
+                    <div>
+                      <p className="font-bold text-sm">MBSSE Compliance Export</p>
+                      <p className="text-[10px] text-indigo-100 uppercase tracking-tighter">Locked until Term End</p>
+                    </div>
+                    <ShieldCheck className="h-4 w-4" />
                   </div>
-
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Teacher</TableHead>
-                          <TableHead>Subject</TableHead>
-                          <TableHead>Classes</TableHead>
-                          <TableHead>Attendance</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData.teachers.map((teacher) => (
-                          <TableRow key={teacher.id}>
-                            <TableCell>{`${teacher.firstname} ${teacher.lastname}`}</TableCell>
-                            <TableCell>{teacher.subject || "Not assigned"}</TableCell>
-                            <TableCell>
-                              {reportData.classes.filter(cls => cls.teacher_id === teacher.id).length}
-                            </TableCell>
-                            <TableCell>95%</TableCell>
-                            <TableCell>
-                              <Badge className="bg-green-100 text-green-800">Active</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

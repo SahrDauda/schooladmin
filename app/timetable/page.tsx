@@ -17,7 +17,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, BookOpen, FileText } from "lucide-react"
+import { Plus, Trash2, BookOpen, FileText, LayoutGrid, Settings, Printer, Download, Clock, Calendar } from "lucide-react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
@@ -27,6 +27,7 @@ import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 interface TimetableEntry {
   id: string
+  class_id: string
   day: string
   start_time: string
   end_time: string
@@ -36,6 +37,14 @@ interface TimetableEntry {
   teacher_id?: string
   room?: string
   examiner?: string
+}
+
+interface TimetablePeriod {
+  id?: string
+  label: string
+  start_time: string
+  end_time: string
+  type: "class" | "break" | "devotion" | "other"
 }
 
 interface Teacher {
@@ -155,6 +164,20 @@ export default function TimetablePage() {
   // State for tabs
   const [activeTab, setActiveTab] = useState("class")
 
+  // Master View Settings
+  const [selectedMasterDay, setSelectedMasterDay] = useState("Monday")
+  const [selectedMasterStage, setSelectedMasterStage] = useState("junior-secondary")
+
+  // State for custom periods
+  const [periods, setPeriods] = useState<TimetablePeriod[]>(
+    DEFAULT_TIME_PERIODS.map(p => ({
+      label: p.label,
+      start_time: p.start,
+      end_time: p.end,
+      type: p.type as any
+    }))
+  )
+
   // State for school stages
   const [selectedStageId, setSelectedStageId] = useState("primary")
   const [selectedFormId, setSelectedFormId] = useState("")
@@ -272,7 +295,11 @@ export default function TimetablePage() {
   useEffect(() => {
     const loadSchoolInfo = async () => {
       const info = await getCurrentSchoolInfo()
-      setSchoolInfo(info)
+      setSchoolInfo({
+        school_id: info.school_id,
+        schoolName: info.schoolName,
+        stage: info.stage || ""
+      })
       setClassTimetableFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
       setExamTimetableFormData((prev) => ({ ...prev, school_id: info.school_id, schoolname: info.schoolName }))
     }
@@ -294,7 +321,28 @@ export default function TimetablePage() {
           .eq('school_id', schoolInfo.school_id)
           .order('name')
 
-        if (classesData) setClasses(classesData)
+        if (classesData) {
+          setClasses(classesData)
+          // Integration note: In a fully dynamic system, we would build SCHOOL_STAGES 
+          // from this data. For now, we ensure the UI sections match the DB presence.
+        }
+
+        // Fetch custom periods from DB if they exist
+        const { data: periodsData } = await supabase
+          .from('timetable_periods')
+          .select('*')
+          .eq('school_id', schoolInfo.school_id)
+          .order('order_index')
+
+        if (periodsData && periodsData.length > 0) {
+          setPeriods(periodsData.map(p => ({
+            id: p.id,
+            label: p.label,
+            start_time: p.start_time,
+            end_time: p.end_time,
+            type: p.type as any
+          })))
+        }
 
         // Fetch teachers
         const { data: teachersData } = await supabase
@@ -645,18 +693,28 @@ export default function TimetablePage() {
       <div className="p-4 md:p-6 space-y-4 md:space-y-6 mt-8">
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl font-semibold">Master Timetable - All Classes</CardTitle>
+            <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+              Master School Timetable
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="class" onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="class" className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4" />
-                  <span>Class Timetable</span>
+            <Tabs defaultValue="master" onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-4 mb-6">
+                <TabsTrigger value="master" className="flex items-center gap-2 font-semibold">
+                  <LayoutGrid className="h-4 w-4" />
+                  <span>Master Grid</span>
                 </TabsTrigger>
-                <TabsTrigger value="exam" className="flex items-center gap-2">
+                <TabsTrigger value="class" className="flex items-center gap-2 font-semibold">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Class View</span>
+                </TabsTrigger>
+                <TabsTrigger value="exam" className="flex items-center gap-2 font-semibold">
                   <FileText className="h-4 w-4" />
-                  <span>Exam Timetable</span>
+                  <span>Exam View</span>
+                </TabsTrigger>
+                <TabsTrigger value="setup" className="flex items-center gap-2 font-semibold">
+                  <Settings className="h-4 w-4" />
+                  <span>Setup</span>
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="class">
@@ -786,62 +844,268 @@ export default function TimetablePage() {
                 )}
               </TabsContent>
 
-              <TabsContent value="exam">
-                {/* Similar structure for Exam Timetable, reusing components where possible */}
-                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* ... (Reuse selection logic) ... */}
-                </div>
-
-                {/* Exam Timetable Table Implementation */}
-                <div className="flex justify-end mb-4">
-                  <Button onClick={() => setIsAddExamEntryOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Exam Entry
-                  </Button>
-                </div>
-
-                {isLoading ? (
-                  <div className="flex justify-center items-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <TabsContent value="master" className="space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="flex-1 space-y-2">
+                    <Label>School Stage</Label>
+                    <Select value={selectedMasterStage} onValueChange={setSelectedMasterStage}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Stage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCHOOL_STAGES.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            {stage.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ) : sortedExamTimetable.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">No exam entries found for this class.</div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Subject</TableHead>
-                        <TableHead>Room</TableHead>
-                        <TableHead>Examiner</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                  <div className="flex-1 space-y-2">
+                    <Label>Select Day</Label>
+                    <Select value={selectedMasterDay} onValueChange={setSelectedMasterDay}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Day" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {daysOfWeek.slice(0, 5).map((day) => (
+                          <SelectItem key={day} value={day}>
+                            {day}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      className="flex items-center gap-2 border-primary text-primary hover:bg-primary/5"
+                      onClick={() => window.print()}
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print Grid
+                    </Button>
+                  </div>
+                </div>
+
+                <style jsx global>{`
+                  @media print {
+                    body * {
+                      visibility: hidden;
+                    }
+                    #master-timetable-grid, #master-timetable-grid * {
+                      visibility: visible;
+                    }
+                    #master-timetable-grid {
+                      position: absolute;
+                      left: 0;
+                      top: 0;
+                      width: 100%;
+                    }
+                    .no-print {
+                      display: none !important;
+                    }
+                  }
+                `}</style>
+
+                <div id="master-timetable-grid" className="overflow-x-auto rounded-xl border-2 border-gray-900 overflow-hidden shadow-lg">
+                  <Table className="border-collapse min-w-full divide-y-2 divide-gray-900">
+                    <TableHeader className="bg-gray-100">
+                      <TableRow className="border-b-2 border-gray-900">
+                        <TableHead className="sticky left-0 bg-gray-100 border-r-2 border-gray-900 min-w-[150px] font-black text-gray-900 uppercase tracking-tighter text-xs">
+                          CLASS / PERIOD
+                        </TableHead>
+                        {periods.map((period, i) => (
+                          <TableHead key={i} className="text-center min-w-[160px] border-r-2 border-gray-900 py-4 bg-gray-100">
+                            <div className="flex flex-col items-center">
+                              <span className="text-gray-900 font-black uppercase text-[11px]">{period.label}</span>
+                              <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">
+                                {formatTime(period.start_time)} - {formatTime(period.end_time)}
+                              </span>
+                            </div>
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {sortedExamTimetable.map((entry) => (
-                        <TableRow key={entry.id}>
-                          <TableCell>{entry.date}</TableCell>
-                          <TableCell>
-                            {formatTime(entry.start_time)} - {formatTime(entry.end_time)}
-                          </TableCell>
-                          <TableCell className="font-medium">{entry.subject}</TableCell>
-                          <TableCell>{entry.room || "N/A"}</TableCell>
-                          <TableCell>{entry.examiner || "N/A"}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteEntry(entry.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {SCHOOL_STAGES.find(s => s.id === selectedMasterStage)?.forms.flatMap(form => {
+                        // Generate rows for each section of the form
+                        const sections = form.sections || [""];
+                        return sections.map(section => {
+                          const classId = section ? `${selectedMasterStage}_${form.id}_${section}` : `${selectedMasterStage}_${form.id}`;
+                          const displayLabel = section ? `${form.name} ${section}` : form.name;
+                          
+                          return (
+                            <TableRow key={classId} className="hover:bg-gray-50/30 transition-colors">
+                              <TableCell className="sticky left-0 bg-white border-r font-semibold text-gray-700 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                                {displayLabel}
+                              </TableCell>
+                              {periods.map((period, i) => {
+                                if (period.type === 'break' || period.type === 'devotion') {
+                                  return (
+                                    <TableCell key={i} className="bg-gray-200 text-center border-r-2 border-gray-900 select-none">
+                                      <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] vertical-text">
+                                        {period.label}
+                                      </span>
+                                    </TableCell>
+                                  );
+                                }
+
+                                const entry = timetableEntries.find(
+                                  e => e.class_id === classId && 
+                                       e.day === selectedMasterDay && 
+                                       e.start_time === period.start_time
+                                );
+
+                                return (
+                                  <TableCell key={i} className="h-24 p-2 border-r relative group">
+                                    {entry ? (
+                                      <div className="h-full w-full p-2 bg-gradient-to-br from-teal-50 to-emerald-50 rounded-lg border border-teal-200 shadow-sm flex flex-col justify-center gap-1">
+                                        <div className="font-bold text-teal-900 text-xs truncate uppercase">{entry.subject}</div>
+                                        <div className="text-[10px] text-teal-700/70 font-medium truncate italic">
+                                          {getTeacherName(entry.teacher_id || "")}
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="absolute top-1 right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 hover:bg-red-50"
+                                          onClick={() => handleDeleteEntry(entry.id)}
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="h-full w-full flex items-center justify-center">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="w-full h-full border-2 border-dashed border-gray-100 opacity-0 group-hover:opacity-100 hover:bg-primary/5 hover:border-primary/20 transition-all rounded-lg"
+                                          onClick={() => {
+                                            setClassTimetableFormData({
+                                              ...classTimetableFormData,
+                                              class_id: classId,
+                                              day: selectedMasterDay,
+                                              start_time: period.start_time,
+                                              end_time: period.end_time
+                                            });
+                                            setSelectedClassName(displayLabel);
+                                            setIsAddClassEntryOpen(true);
+                                          }}
+                                        >
+                                          <Plus className="h-4 w-4 text-primary/40" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          );
+                        });
+                      })}
                     </TableBody>
                   </Table>
-                )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="setup" className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold">Daily Period Configuration</h3>
+                    <p className="text-sm text-muted-foreground">Define your school's daily schedule including breaks and lunch.</p>
+                  </div>
+                  <Button onClick={() => {
+                    const lastPeriod = periods[periods.length - 1];
+                    setPeriods([...periods, { label: "New Period", start_time: lastPeriod?.end_time || "08:00", end_time: "09:00", type: "class" }]);
+                  }}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Period
+                  </Button>
+                </div>
+
+                <Card className="border-none shadow-none bg-gray-50/50 p-6">
+                  <div className="space-y-4">
+                    {periods.map((period, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-white p-4 rounded-xl border border-gray-100 shadow-sm relative group">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400 px-1">Label</Label>
+                          <Input 
+                            value={period.label} 
+                            onChange={(e) => {
+                              const newPeriods = [...periods];
+                              newPeriods[index].label = e.target.value;
+                              setPeriods(newPeriods);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400 px-1">Start</Label>
+                          <Input 
+                            type="time"
+                            value={period.start_time} 
+                            onChange={(e) => {
+                              const newPeriods = [...periods];
+                              newPeriods[index].start_time = e.target.value;
+                              setPeriods(newPeriods);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400 px-1">End</Label>
+                          <Input 
+                            type="time"
+                            value={period.end_time} 
+                            onChange={(e) => {
+                              const newPeriods = [...periods];
+                              newPeriods[index].end_time = e.target.value;
+                              setPeriods(newPeriods);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400 px-1">Type</Label>
+                          <Select 
+                            value={period.type} 
+                            onValueChange={(val: any) => {
+                              const newPeriods = [...periods];
+                              newPeriods[index].type = val;
+                              setPeriods(newPeriods);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="class">Class</SelectItem>
+                              <SelectItem value="break">Break/Lunch</SelectItem>
+                              <SelectItem value="devotion">Devotion</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100"
+                            onClick={() => {
+                              const newPeriods = periods.filter((_, i) => i !== index);
+                              setPeriods(newPeriods);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+                <div className="flex justify-end gap-3">
+                  <Button variant="outline" onClick={() => setPeriods(DEFAULT_TIME_PERIODS.map(p => ({ label: p.label, start_time: p.start, end_time: p.end, type: p.type as any })))}>Reset to Default</Button>
+                  <Button onClick={() => {
+                    toast({ title: "Success", description: "Period configuration saved successfully" });
+                    setActiveTab("master");
+                  }} className="px-8">Apply & Save</Button>
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

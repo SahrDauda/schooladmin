@@ -48,14 +48,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     console.log("Looking for admin with email:", session.user.email)
 
                     // Query Supabase for admin by email
-                    // Try emailaddress field first
                     let { data: admins, error } = await supabase
                         .from('schooladmin')
                         .select('*')
                         .eq('emailaddress', session.user.email)
 
                     if (error || !admins || admins.length === 0) {
-                        // If no results, try email field
                         const { data: adminsByEmail, error: errorByEmail } = await supabase
                             .from('schooladmin')
                             .select('*')
@@ -72,11 +70,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                         const resolvedAdmin: AdminData = {
                             ...adminData,
-                            id: adminData.id // Assuming id is part of the returned data
+                            id: adminData.id 
                         }
                         setAdmin(resolvedAdmin)
 
-                        // Backward compatibility: populate localStorage
                         try {
                             localStorage.setItem("adminId", resolvedAdmin.id)
                             const name = resolvedAdmin.adminname || resolvedAdmin.adminName || resolvedAdmin.name || "Admin User"
@@ -86,10 +83,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             if (session.user.email) localStorage.setItem("adminEmail", session.user.email)
                         } catch { }
                     } else {
-                        console.log("No admin document found, signing out")
-                        await supabase.auth.signOut()
-                        setAdmin(null)
-                        router.push("/")
+                        // Check if user is a teacher before signing out
+                        const userRole = session.user.user_metadata?.role
+                        
+                        if (userRole === "Teacher" || userRole === "Staff") {
+                            console.log("User is a Staff member, allowing access")
+                            setAdmin({
+                                id: session.user.id,
+                                emailaddress: session.user.email || "",
+                                role: userRole,
+                                school_id: "", 
+                            } as any)
+                        } else {
+                            console.log("No admin document found, signing out")
+                            await supabase.auth.signOut()
+                            setAdmin(null)
+                            router.push("/")
+                        }
                     }
                 } catch (error) {
                     console.error("Error fetching admin data:", error)

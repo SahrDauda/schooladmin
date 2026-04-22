@@ -78,6 +78,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Timetable", href: "/timetable", icon: Calendar },
     { name: "Grades", href: "/grades", icon: FileText },
     { name: "Subjects", href: "/subjects", icon: BookOpen },
+    { name: "Academic Setup", href: "/academic-setup", icon: Settings },
     { name: "Notifications", href: "/notifications", icon: Bell },
     { name: "Reports", href: "/reports", icon: MessageSquare },
   ]
