@@ -43,29 +43,33 @@ export async function GET(req: NextRequest) {
     let timetable: any[] = [];
 
     if (isAdmin) {
-      students = await (prisma as any).students.findMany({ where: { school_id: sId } });
-      classes = await (prisma as any).classes.findMany({ where: { school_id: sId } });
-      subjects = await (prisma as any).subjects.findMany({ where: { school_id: sId } });
-      attendance = await (prisma as any).attendance.findMany({ where: { school_id: sId } });
-      teachers = await (prisma as any).teachers.findMany({ where: { school_id: sId } });
-      grades = await (prisma as any).grades.findMany({ where: { school_id: sId } });
-      timetable = await (prisma as any).timetable_slots.findMany({ where: { school_id: sId } });
+      try { students = await (prisma as any).students.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Students pull failed", e); }
+      try { classes = await (prisma as any).classes.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Classes pull failed", e); }
+      try { subjects = await (prisma as any).subjects.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Subjects pull failed", e); }
+      try { attendance = await (prisma as any).attendance.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Attendance pull failed", e); }
+      try { teachers = await (prisma as any).teachers.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Teachers pull failed", e); }
+      try { grades = await (prisma as any).grades.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Grades pull failed", e); }
+      try { timetable = await (prisma as any).timetable_slots.findMany({ where: { school_id: sId } }); } catch (e) { console.error("Timetable pull failed", e); }
     } else {
       // Scoped pull for teachers
-      const tId = String(user_id);
-      const teacher = await prisma.teachers.findUnique({
-        where: { id: tId },
-        include: { classes: true } as any
-      });
-      
-      classes = teacher?.classes || [];
-      const classIds = classes.map((c: any) => c.id);
-      
-      students = await (prisma as any).students.findMany({ where: { class_id: { in: classIds } } });
-      subjects = await (prisma as any).subjects.findMany({ where: { school_id: sId } }); // Usually teachers need all subjects
-      grades = await (prisma as any).grades.findMany({ where: { class_id: { in: classIds } } });
-      attendance = await (prisma as any).attendance.findMany({ where: { class_id: { in: classIds } } });
-      teachers = teacher ? [teacher] : [];
+      try {
+        const tId = String(user_id);
+        const teacher = await prisma.teachers.findUnique({
+          where: { id: tId },
+          include: { classes: true } as any
+        });
+        
+        classes = teacher?.classes || [];
+        const classIds = classes.map((c: any) => c.id);
+        
+        students = await (prisma as any).students.findMany({ where: { class_id: { in: classIds } } });
+        subjects = await (prisma as any).subjects.findMany({ where: { school_id: sId } }); 
+        grades = await (prisma as any).grades.findMany({ where: { class_id: { in: classIds } } });
+        attendance = await (prisma as any).attendance.findMany({ where: { class_id: { in: classIds } } });
+        teachers = teacher ? [teacher] : [];
+      } catch (e) {
+        console.error("Teacher scoped pull failed", e);
+      }
     }
 
     return NextResponse.json(toSnakeCase({
