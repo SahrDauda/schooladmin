@@ -1,0 +1,332 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model academic_sessions {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  start_date          DateTime              @db.Date
+  end_date            DateTime              @db.Date
+  is_current          Boolean?              @default(false)
+  school_id           String?               @db.Uuid
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  schools             schools?              @relation(fields: [school_id], references: [id])
+  grades              grades[]
+  subject_assignments subject_assignments[]
+  terms               terms[]
+}
+
+model attendance {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  class_id              String?  @db.Uuid
+  date                  DateTime @db.Date
+  present_count         Int?     @default(0)
+  absent_count          Int?     @default(0)
+  late_count            Int?     @default(0)
+  total_students        Int?     @default(0)
+  attendance_percentage Float?   @default(0)
+  students              Json?    @default("{}")
+  school_id             String?  @db.Uuid
+  student_id            String?  @db.Uuid
+  status                String?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  classes               classes? @relation(fields: [class_id], references: [id])
+  schools               schools? @relation(fields: [school_id], references: [id])
+}
+
+model audit_logs {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action      String?
+  entity_type String?
+  entity_id   String?  @db.Uuid
+  user_id     String?  @db.Uuid
+  user_name   String?
+  school_id   String?  @db.Uuid
+  changes     Json?
+  metadata    Json?
+  timestamp   DateTime @default(now()) @db.Timestamptz(6)
+  schools     schools? @relation(fields: [school_id], references: [id])
+}
+
+model classes {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  level           String
+  capacity        Int?              @default(50)
+  form_teacher_id String?           @db.Uuid
+  school_id       String?           @db.Uuid
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @default(now()) @db.Timestamptz(6)
+  arm             String?
+  faculty         String?
+  attendance      attendance[]
+  teachers        teachers?         @relation(fields: [form_teacher_id], references: [id])
+  schools         schools?          @relation(fields: [school_id], references: [id])
+  grades          grades[]
+  students        students[]
+  timetable_slots timetable_slots[]
+}
+
+model fee_payments {
+  id             String   @id @db.Uuid
+  student_id     String   @db.Uuid
+  amount         Float
+  payment_date   DateTime @default(now()) @db.Timestamptz(6)
+  payment_method String
+  reference      String?
+  school_id      String   @db.Uuid
+  schools        schools  @relation(fields: [school_id], references: [id])
+  students       students @relation(fields: [student_id], references: [id])
+}
+
+model fee_templates {
+  id        String  @id @db.Uuid
+  name      String
+  amount    Float
+  frequency String
+  school_id String  @db.Uuid
+  schools   schools @relation(fields: [school_id], references: [id])
+}
+
+model grades {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id        String?            @db.Uuid
+  subject_id        String?            @db.Uuid
+  class_id          String?            @db.Uuid
+  term_id           String?            @db.Uuid
+  session_id        String?            @db.Uuid
+  ca_score          Float?             @default(0)
+  exam_score        Float?             @default(0)
+  total_score       Float?
+  grade             String?
+  remark            String?
+  teacher_comment   String?
+  principal_comment String?
+  school_id         String?            @db.Uuid
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+  classes           classes?           @relation(fields: [class_id], references: [id])
+  academic_sessions academic_sessions? @relation(fields: [session_id], references: [id])
+  students          students?          @relation(fields: [student_id], references: [id])
+  subjects          subjects?          @relation(fields: [subject_id], references: [id])
+  terms             terms?             @relation(fields: [term_id], references: [id])
+}
+
+model notifications {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipient_type String?
+  recipient_id   String?  @db.Uuid
+  title          String
+  message        String
+  type           String?
+  read           Boolean? @default(false)
+  action_url     String?
+  sender_type    String?
+  sender_id      String?  @db.Uuid
+  school_id      String?  @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  schools        schools? @relation(fields: [school_id], references: [id])
+}
+
+model school_configs {
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  school_id            String  @unique @db.Uuid
+  passing_mark         Float   @default(50)
+  grading_system       String  @default("WASSCE")
+  term_remarks_enabled Boolean @default(true)
+  schools              schools @relation(fields: [school_id], references: [id])
+}
+
+model schooladmin {
+  id                String   @id @db.Uuid
+  email             String   @unique
+  adminname         String?
+  gender            String?
+  admin_images      String?
+  role              String?  @default("Principal")
+  school_id         String?  @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+  hasloggedinbefore Boolean? @default(false)
+  status            String?  @default("Active")
+  schoolname        String?
+  schools           schools? @relation(fields: [school_id], references: [id])
+}
+
+model schools {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  address            String?
+  emis_code          String?              @unique
+  logo_url           String?
+  contact_email      String?
+  contact_phone      String?
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  stage              String?
+  academic_sessions  academic_sessions[]
+  attendance         attendance[]
+  audit_logs         audit_logs[]
+  classes            classes[]
+  fee_payments       fee_payments[]
+  fee_templates      fee_templates[]
+  notifications      notifications[]
+  school_configs     school_configs?
+  schooladmin        schooladmin[]
+  students           students[]
+  subjects           subjects[]
+  teacher_attendance teacher_attendance[]
+  teachers           teachers[]
+  timetable_slots    timetable_slots[]
+}
+
+model students {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstname           String
+  lastname            String
+  othernames          String?
+  gender              String?
+  dateofbirth         DateTime?             @db.Date
+  address             String?
+  guardian_name       String?
+  guardian_phone      String?
+  guardian_email      String?
+  class_id            String?               @db.Uuid
+  admission_number    String?
+  passport_url        String?
+  status              String?               @default("Active")
+  school_id           String?               @db.Uuid
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  health_status       String?
+  is_disabled         Boolean?              @default(false)
+  student_id          String?
+  house               String?
+  fee_payments        fee_payments[]
+  grades              grades[]
+  classes             classes?              @relation(fields: [class_id], references: [id])
+  schools             schools?              @relation(fields: [school_id], references: [id])
+  subject_assignments subject_assignments[]
+}
+
+model subject_assignments {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id        String?            @db.Uuid
+  subject_id        String?            @db.Uuid
+  term_id           String?            @db.Uuid
+  session_id        String?            @db.Uuid
+  assigned_at       DateTime           @default(now()) @db.Timestamptz(6)
+  academic_sessions academic_sessions? @relation(fields: [session_id], references: [id])
+  students          students?          @relation(fields: [student_id], references: [id])
+  subjects          subjects?          @relation(fields: [subject_id], references: [id])
+  terms             terms?             @relation(fields: [term_id], references: [id])
+}
+
+model subjects {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  code                String?
+  category            String?
+  school_id           String?               @db.Uuid
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  grades              grades[]
+  subject_assignments subject_assignments[]
+  schools             schools?              @relation(fields: [school_id], references: [id])
+  teacher_subjects    teacher_subjects[]
+  timetable_slots     timetable_slots[]
+}
+
+model teacher_attendance {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teacher_id    String?   @db.Uuid
+  date          DateTime  @db.Date
+  status        String?   @default("present")
+  sign_in_time  DateTime? @db.Timestamptz(6)
+  sign_out_time DateTime? @db.Timestamptz(6)
+  school_id     String?   @db.Uuid
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  schools       schools?  @relation(fields: [school_id], references: [id])
+  teachers      teachers? @relation(fields: [teacher_id], references: [id])
+}
+
+model teacher_subjects {
+  teacher_id String   @db.Uuid
+  subject_id String   @db.Uuid
+  subjects   subjects @relation(fields: [subject_id], references: [id])
+  teachers   teachers @relation(fields: [teacher_id], references: [id])
+
+  @@id([teacher_id, subject_id])
+}
+
+model teachers {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstname          String
+  lastname           String
+  email              String?              @unique
+  phone              String?
+  gender             String?
+  qualification      String?
+  address            String?
+  photo_url          String?
+  status             String?              @default("Active")
+  school_id          String?              @db.Uuid
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  dob                DateTime?            @db.Date
+  health_status      String?
+  institution        String?
+  is_disabled        Boolean?             @default(false)
+  joining_date       DateTime?            @db.Timestamptz(6)
+  level              String?
+  nin_number         String?
+  previous_schools   String?
+  subject            String?
+  hasloggedinbefore  Boolean?             @default(false)
+  classes            classes[]
+  teacher_attendance teacher_attendance[]
+  teacher_subjects   teacher_subjects[]
+  schools            schools?             @relation(fields: [school_id], references: [id])
+  timetable_slots    timetable_slots[]
+}
+
+model terms {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  session_id          String?               @db.Uuid
+  start_date          DateTime?             @db.Date
+  end_date            DateTime?             @db.Date
+  is_current          Boolean?              @default(false)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  grades              grades[]
+  subject_assignments subject_assignments[]
+  academic_sessions   academic_sessions?    @relation(fields: [session_id], references: [id])
+}
+
+model timetable_slots {
+  id         String   @id @db.Uuid
+  school_id  String   @db.Uuid
+  class_id   String   @db.Uuid
+  subject_id String   @db.Uuid
+  teacher_id String   @db.Uuid
+  day        String
+  start_time String
+  end_time   String
+  room       String?
+  classes    classes  @relation(fields: [class_id], references: [id])
+  schools    schools  @relation(fields: [school_id], references: [id])
+  subjects   subjects @relation(fields: [subject_id], references: [id])
+  teachers   teachers @relation(fields: [teacher_id], references: [id])
+}
+
+model verification_codes {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String    @unique
+  code       String
+  expires_at DateTime  @db.Timestamptz(6)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+}
