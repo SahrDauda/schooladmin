@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const toSnakeCase = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(v => toSnakeCase(v));
   if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
