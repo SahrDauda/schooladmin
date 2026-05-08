@@ -48,7 +48,26 @@ export async function POST(req: NextRequest) {
 
       if (authError) throw authError;
 
-      // 3. Create SchoolAdmin profile
+      // 3. Create Default Academic Session
+      const currentYear = new Date().getFullYear();
+      const session = await (tx as any).academic_sessions.create({
+        data: {
+          name: `${currentYear}/${currentYear + 1}`,
+          start_date: new Date(currentYear, 8, 1), // Sept 1st
+          end_date: new Date(currentYear + 1, 6, 31), // July 31st
+          is_current: true,
+          school_id: school.id,
+          terms: {
+            create: [
+              { name: 'Term 1', is_current: true, start_date: new Date(currentYear, 8, 1), end_date: new Date(currentYear, 11, 15) },
+              { name: 'Term 2', is_current: false, start_date: new Date(currentYear + 1, 0, 10), end_date: new Date(currentYear + 1, 3, 10) },
+              { name: 'Term 3', is_current: false, start_date: new Date(currentYear + 1, 4, 1), end_date: new Date(currentYear + 1, 6, 31) }
+            ]
+          }
+        }
+      });
+
+      // 4. Create SchoolAdmin profile
       const adminProfile = await (tx as any).schooladmin.create({
         data: {
           id: authData.user.id,
@@ -63,7 +82,7 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      return { school, adminProfile };
+      return { school, adminProfile, session };
     });
 
     return NextResponse.json({ success: true, data: result });

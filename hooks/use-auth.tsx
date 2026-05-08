@@ -45,27 +45,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (session?.user) {
                 try {
-                    console.log("Looking for admin with email:", session.user.email)
-
-                    // Query Supabase for admin by email
+                    // 1. Primary Check: Query by UUID (Most reliable)
                     let { data: admins, error } = await supabase
                         .from('schooladmin')
                         .select('*')
-                        .eq('emailaddress', session.user.email)
+                        .eq('id', session.user.id)
+                        .maybeSingle()
 
-                    if (error || !admins || admins.length === 0) {
-                        const { data: adminsByEmail, error: errorByEmail } = await supabase
+                    // 2. Fallback: Query by Email if ID check fails
+                    if (!admins) {
+                        console.log("ID check failed, trying emailaddress column:", session.user.email)
+                        const { data: adminsByEmailAddr } = await supabase
                             .from('schooladmin')
                             .select('*')
-                            .eq('email', session.user.email)
-
-                        if (!errorByEmail && adminsByEmail && adminsByEmail.length > 0) {
+                            .eq('emailaddress', session.user.email)
+                            .maybeSingle()
+                        
+                        if (adminsByEmailAddr) {
+                            admins = adminsByEmailAddr
+                        } else {
+                            console.log("Trying email column:", session.user.email)
+                            const { data: adminsByEmail } = await supabase
+                                .from('schooladmin')
+                                .select('*')
+                                .eq('email', session.user.email)
+                                .maybeSingle()
+                            
                             admins = adminsByEmail
                         }
                     }
 
-                    if (admins && admins.length > 0) {
-                        const adminData = admins[0] as AdminData
+                    if (admins) {
+                        const adminData = admins as any as AdminData
                         console.log("Admin document data:", adminData)
 
                         const resolvedAdmin: AdminData = {
@@ -143,29 +154,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const refreshAdminData = async () => {
-        if (!user || !user.email) return
+        if (!user) return
 
         try {
-            let { data: admins, error } = await supabase
+            // 1. Primary Check: Query by UUID
+            let { data: adminData } = await supabase
                 .from('schooladmin')
                 .select('*')
-                .eq('emailaddress', user.email)
+                .eq('id', user.id)
+                .maybeSingle()
 
-            if (error || !admins || admins.length === 0) {
-                const { data: adminsByEmail, error: errorByEmail } = await supabase
+            // 2. Fallback: Query by Email
+            if (!adminData && user.email) {
+                const { data: byEmailAddr } = await supabase
                     .from('schooladmin')
                     .select('*')
-                    .eq('email', user.email)
-
-                if (!errorByEmail && adminsByEmail && adminsByEmail.length > 0) {
-                    admins = adminsByEmail
+                    .eq('emailaddress', user.email)
+                    .maybeSingle()
+                
+                if (byEmailAddr) {
+                    adminData = byEmailAddr
+                } else {
+                    const { data: byEmail } = await supabase
+                        .from('schooladmin')
+                        .select('*')
+                        .eq('email', user.email)
+                        .maybeSingle()
+                    adminData = byEmail
                 }
             }
 
-            if (admins && admins.length > 0) {
-                const adminData = admins[0] as AdminData
+            if (adminData) {
                 const resolvedAdmin: AdminData = {
-                    ...adminData,
+                    ...adminData as any,
                     id: adminData.id
                 }
                 setAdmin(resolvedAdmin)
