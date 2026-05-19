@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { toast } from "@/hooks/use-toast"
-import { Lock, Mail, Eye, EyeOff } from "lucide-react"
+import { Lock, Mail, Eye, EyeOff, UserPlus } from "lucide-react"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { useAuth } from "@/hooks/use-auth"
 
@@ -61,22 +61,13 @@ export default function LoginPage() {
           const { data: adminData } = await supabase
             .from('schooladmin')
             .select('*')
-            .eq('emailaddress', user.email)
+            .eq('email', user.email)
             .maybeSingle()
             
           if (!adminData) {
-              const { data: adminByEmail } = await supabase
-                .from('schooladmin')
-                .select('*')
-                .eq('email', user.email)
-                .maybeSingle()
-                
-              if (!adminByEmail) {
-                // If not found in schooladmin, maybe check if they are a teacher?
-                // For now, let's just say only admins here.
-                await supabase.auth.signOut()
-                throw new Error("No admin account found for this user.")
-              }
+              // If not found in schooladmin, reject login
+              await supabase.auth.signOut()
+              throw new Error("No admin account found for this user.")
           }
       }
 
@@ -195,6 +186,14 @@ export default function LoginPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4 p-6 bg-gray-50 border-t rounded-b-lg">
+          <Button 
+            variant="outline" 
+            className="w-full" 
+            onClick={() => router.push("/add-admin")}
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add School (Demo)
+          </Button>
           <p className="text-xs text-center text-gray-400">
             &copy; {new Date().getFullYear()} Skultɛk School Management System. All rights reserved.
           </p>
