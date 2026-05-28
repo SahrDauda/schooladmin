@@ -67,6 +67,13 @@ export default function Dashboard() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false)
 
+  // Check hasloggedinbefore on admin data load
+  useEffect(() => {
+    if (admin && admin.hasloggedinbefore === false) {
+      setShowFirstLoginModal(true)
+    }
+  }, [admin])
+
   // Real-time Dashboard Data
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -354,7 +361,7 @@ export default function Dashboard() {
         isOpen={showFirstLoginModal}
         onClose={() => setShowFirstLoginModal(false)}
         userId={admin?.id || ""}
-        userEmail={admin?.email || ""}
+        userEmail={admin?.emailaddress || admin?.email || ""}
       />
     </DashboardLayout>
   )

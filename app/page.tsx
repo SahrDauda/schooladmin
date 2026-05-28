@@ -94,12 +94,35 @@ export default function LoginPage() {
     }
   }
 
-  if (authLoading) {
+  // Splash screen with timeout - prevent hanging indefinitely
+  const [splashTimeout, setSplashTimeout] = useState(false)
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashTimeout(true)
+    }, 3000) // Max 3 seconds for session check
+    
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Show splash only briefly, then proceed
+  if (authLoading && !splashTimeout) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
-              <div className="animate-pulse flex flex-col items-center">
-                  <SchoolTechLogo size="lg" />
-                  <p className="mt-4 text-gray-500">Checking session...</p>
+          <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800">
+              <div className="flex flex-col items-center space-y-6">
+                  <div className="relative">
+                      <div className="absolute inset-0 bg-white/20 rounded-full blur-xl animate-pulse" />
+                      <SchoolTechLogo size="lg" className="relative z-10" />
+                  </div>
+                  <div className="text-center space-y-2">
+                      <h1 className="text-3xl font-bold text-white tracking-tight">Skultek</h1>
+                      <p className="text-blue-100 text-sm font-medium">School Management System</p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4">
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
               </div>
           </div>
       )
