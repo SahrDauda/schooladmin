@@ -69,7 +69,8 @@ export default function Dashboard() {
 
   // Check hasloggedinbefore on admin data load
   useEffect(() => {
-    if (admin && admin.hasloggedinbefore === false) {
+    const hasSkipped = sessionStorage.getItem("skippedFirstLogin") === "true"
+    if (admin && admin.hasloggedinbefore === false && !hasSkipped) {
       setShowFirstLoginModal(true)
     }
   }, [admin])
@@ -79,7 +80,11 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         const info = await getCurrentSchoolInfo()
-        setSchoolInfo({ name: info.schoolName, stage: info.stage || "Senior Secondary", id: info.school_id })
+        setSchoolInfo({
+          name: info.schoolName || admin?.schoolname || admin?.schoolName || "Skultek Academy",
+          stage: info.stage || "Senior Secondary",
+          id: info.school_id
+        })
         
         if (info.school_id && info.school_id !== "unknown") {
           // 1. Parallel collection fetching
@@ -134,9 +139,11 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-black tracking-tight text-slate-900">{schoolInfo.name}</h1>
+              <h1 className="text-4xl font-black tracking-tight text-slate-900">
+                {schoolInfo.name || admin?.schoolname || admin?.schoolName || "Skultek Academy"}
+              </h1>
               <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase px-3 py-1 font-bold tracking-widest text-[10px]">
-                {schoolInfo.stage}
+                {schoolInfo.stage || "Senior Secondary"}
               </Badge>
             </div>
             <p className="text-slate-500 font-medium flex items-center gap-2">

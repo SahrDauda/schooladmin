@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { toast } from "@/hooks/use-toast"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
 
 interface Notification {
   id: string
@@ -68,6 +69,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [markingAsRead, setMarkingAsRead] = useState<string | null>(null)
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  const [schoolInfo, setSchoolInfo] = useState({ name: "Loading...", stage: "" })
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -145,6 +147,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       fetchAdminData()
       fetchNotifications()
+
+      const fetchSchoolData = async () => {
+        try {
+          const info = await getCurrentSchoolInfo()
+          setSchoolInfo({
+            name: info.schoolName || "Skultek Academy",
+            stage: info.stage || "Senior Secondary"
+          })
+        } catch (err) {
+          console.error("Error fetching school data in layout:", err)
+        }
+      }
+      fetchSchoolData()
     }
   }, [pathname, router])
 
@@ -167,23 +182,28 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [])
 
   const handleLogout = async () => {
+    // 1. Immediately clear local storage and session storage to wipe auth state
     try {
-      // Attempt Supabase sign out
-      await supabase.auth.signOut()
-    } catch (error) {
-      console.error("Logout error:", error)
-    } finally {
-      // Always clear local storage and redirect, regardless of sign out success
       localStorage.clear()
-
-      toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out",
-      })
-
-      // Use replace to prevent back navigation
-      window.location.replace("/")
+      sessionStorage.clear()
+    } catch (err) {
+      console.error("Error clearing storage:", err)
     }
+
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out",
+    })
+
+    // 2. Fire and forget the Supabase Auth signOut in the background (prevents promise hangs)
+    try {
+      supabase.auth.signOut()
+    } catch (error) {
+      console.error("Silent background logout error:", error)
+    }
+
+    // 3. Immediately redirect to login screen
+    window.location.replace("/")
   }
 
   const handleNavigation = () => {
@@ -368,8 +388,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex-1 md:text-center">
-            <h1 className="text-lg font-semibold">School Admin Panel</h1>
+          <div className="flex-1 flex items-center justify-between ml-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              <span className="font-bold text-slate-800 text-sm md:text-lg tracking-tight">
+                {schoolInfo.name || "Skultek Academy"}
+              </span>
+              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase px-2 py-0.5 font-bold tracking-wider text-[9px] hidden sm:inline-flex">
+                {schoolInfo.stage || "Senior Secondary"}
+              </Badge>
+            </div>
+            
+            <div className="hidden md:flex items-center gap-2 text-slate-500 text-xs font-semibold mr-4 bg-slate-50 px-3 py-1.5 rounded-full border">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              <span>2023-2024 Academic Session &bull; Second Term</span>
+            </div>
           </div>
 
           {/* Notifications Dropdown */}

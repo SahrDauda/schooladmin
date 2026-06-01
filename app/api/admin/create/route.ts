@@ -2,9 +2,30 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export async function POST(request: NextRequest) {
+  if (!supabaseAdmin) {
+    return NextResponse.json(
+      { error: "Server Configuration Error: SUPABASE_SERVICE_ROLE_KEY is missing from .env.local in schooladmin. Please add it to enable admin creation." },
+      { status: 500 }
+    )
+  }
+
   try {
     const body = await request.json()
-    const { adminname, email, password, gender, role, schoolName, schoolStage } = body
+    const { 
+      adminname, 
+      email, 
+      password, 
+      gender, 
+      role, 
+      schoolName, 
+      schoolStage,
+      schoolAddress,
+      emisCode,
+      contactEmail,
+      contactPhone,
+      logoUrl,
+      adminImage
+    } = body
 
     // Validate required fields
     if (!adminname || !email || !password || !schoolName || !schoolStage) {
@@ -14,12 +35,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 1. Create the school first
+    // 1. Create the school first with full details
     const { data: schoolData, error: schoolError } = await supabaseAdmin
       .from("schools")
       .insert({
         name: schoolName,
         stage: schoolStage,
+        address: schoolAddress || null,
+        emis_code: emisCode || null,
+        contact_email: contactEmail || null,
+        contact_phone: contactPhone || null,
+        logo_url: logoUrl || null,
       })
       .select()
       .single()
@@ -40,6 +66,7 @@ export async function POST(request: NextRequest) {
       user_metadata: {
         name: adminname,
         role: role || "Principal",
+        avatar_url: adminImage || null,
       },
     })
 
@@ -62,7 +89,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. Create schooladmin record
+    // 3. Create schooladmin record with full details
     const { error: adminError } = await supabaseAdmin
       .from("schooladmin")
       .insert({
@@ -73,6 +100,7 @@ export async function POST(request: NextRequest) {
         role: role || "Principal",
         school_id: schoolData.id,
         schoolname: schoolName,
+        admin_images: adminImage || null,
         hasloggedinbefore: false,
         status: "Active",
       })

@@ -23,6 +23,12 @@ export default function AddAdminPage() {
         role: "Principal",
         schoolName: "",
         schoolStage: "",
+        schoolAddress: "",
+        emisCode: "",
+        contactEmail: "",
+        contactPhone: "",
+        logoUrl: "",
+        adminImage: "",
     })
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,6 +70,12 @@ export default function AddAdminPage() {
                     role: formData.role,
                     schoolName: formData.schoolName,
                     schoolStage: formData.schoolStage,
+                    schoolAddress: formData.schoolAddress,
+                    emisCode: formData.emisCode,
+                    contactEmail: formData.contactEmail,
+                    contactPhone: formData.contactPhone,
+                    logoUrl: formData.logoUrl,
+                    adminImage: formData.adminImage,
                 }),
             })
 
@@ -91,6 +103,12 @@ export default function AddAdminPage() {
                 role: "Principal",
                 schoolName: "",
                 schoolStage: "",
+                schoolAddress: "",
+                emisCode: "",
+                contactEmail: "",
+                contactPhone: "",
+                logoUrl: "",
+                adminImage: "",
             })
 
         } catch (error: any) {
@@ -106,7 +124,7 @@ export default function AddAdminPage() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4 py-12">
             <Card className="w-full max-w-2xl shadow-lg">
                 <CardHeader>
                     <div className="flex items-center justify-between">
@@ -119,7 +137,7 @@ export default function AddAdminPage() {
                             Back
                         </Button>
                     </div>
-                    <CardDescription>Create a new school administrator</CardDescription>
+                    <CardDescription>Create a new school administrator and register its school credentials</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {createdAdmin ? (
@@ -163,61 +181,103 @@ export default function AddAdminPage() {
                                 </AlertDescription>
                             </Alert>
 
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <Label htmlFor="adminname">Admin Name <span className="text-red-500">*</span></Label>
-                                        <Input id="adminname" value={formData.adminname} onChange={handleInputChange} placeholder="John Doe" required />
-                                    </div>
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                {/* Administrator Profile Section */}
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 border-b pb-2">Admin Profile Information</h3>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="adminname">Admin Name <span className="text-red-500">*</span></Label>
+                                            <Input id="adminname" value={formData.adminname} onChange={handleInputChange} placeholder="John Doe" required />
+                                        </div>
 
-                                    <div>
-                                        <Label htmlFor="emailaddress">Email <span className="text-red-500">*</span></Label>
-                                        <Input id="emailaddress" type="email" value={formData.emailaddress} onChange={handleInputChange} placeholder="admin@school.com" required />
-                                    </div>
+                                        <div>
+                                            <Label htmlFor="emailaddress">Email <span className="text-red-500">*</span></Label>
+                                            <Input id="emailaddress" type="email" value={formData.emailaddress} onChange={handleInputChange} placeholder="admin@school.com" required />
+                                        </div>
 
-                                    <div>
-                                        <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
-                                        <Input id="password" type="password" value={formData.password} onChange={handleInputChange} placeholder="Min 6 chars" minLength={6} required />
-                                    </div>
+                                        <div>
+                                            <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
+                                            <Input id="password" type="password" value={formData.password} onChange={handleInputChange} placeholder="Min 6 chars" minLength={6} required />
+                                        </div>
 
-                                    <div>
-                                        <Label htmlFor="gender">Gender</Label>
-                                        <Select onValueChange={(value) => handleSelectChange("gender", value)} value={formData.gender}>
-                                            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Male">Male</SelectItem>
-                                                <SelectItem value="Female">Female</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        <div>
+                                            <Label htmlFor="gender">Gender</Label>
+                                            <Select onValueChange={(value) => handleSelectChange("gender", value)} value={formData.gender}>
+                                                <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Male">Male</SelectItem>
+                                                    <SelectItem value="Female">Female</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                                    <div>
-                                        <Label htmlFor="role">Role</Label>
-                                        <Select onValueChange={(value) => handleSelectChange("role", value)} value={formData.role}>
-                                            <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Principal">Principal</SelectItem>
-                                                <SelectItem value="Vice Principal">Vice Principal</SelectItem>
-                                                <SelectItem value="Admin">Admin</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        <div>
+                                            <Label htmlFor="role">Role</Label>
+                                            <Select onValueChange={(value) => handleSelectChange("role", value)} value={formData.role}>
+                                                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Principal">Principal</SelectItem>
+                                                    <SelectItem value="Vice Principal">Vice Principal</SelectItem>
+                                                    <SelectItem value="Admin">Admin</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                                    <div>
-                                        <Label htmlFor="schoolName">School Name <span className="text-red-500">*</span></Label>
-                                        <Input id="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="School Name" required />
+                                        <div>
+                                            <Label htmlFor="adminImage">Admin Avatar URL</Label>
+                                            <Input id="adminImage" value={formData.adminImage} onChange={handleInputChange} placeholder="https://example.com/avatar.jpg" />
+                                        </div>
                                     </div>
+                                </div>
 
-                                    <div className="md:col-span-2">
-                                        <Label htmlFor="schoolStage">School Stage <span className="text-red-500">*</span></Label>
-                                        <Select onValueChange={(value) => handleSelectChange("schoolStage", value)} value={formData.schoolStage}>
-                                            <SelectTrigger><SelectValue placeholder="Select school stage" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Primary">Primary</SelectItem>
-                                                <SelectItem value="Junior Secondary">Junior Secondary</SelectItem>
-                                                <SelectItem value="Senior Secondary">Senior Secondary</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                {/* School Details Section */}
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 border-b pb-2">School Registration Details</h3>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="schoolName">School Name <span className="text-red-500">*</span></Label>
+                                            <Input id="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="St. Mary's Academy" required />
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="schoolStage">School Stage <span className="text-red-500">*</span></Label>
+                                            <Select onValueChange={(value) => handleSelectChange("schoolStage", value)} value={formData.schoolStage}>
+                                                <SelectTrigger><SelectValue placeholder="Select school stage" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Primary">Primary</SelectItem>
+                                                    <SelectItem value="Junior Secondary">Junior Secondary</SelectItem>
+                                                    <SelectItem value="Senior Secondary">Senior Secondary</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="emisCode">EMIS Code</Label>
+                                            <Input id="emisCode" value={formData.emisCode} onChange={handleInputChange} placeholder="EMIS102938" />
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="logoUrl">School Logo URL</Label>
+                                            <Input id="logoUrl" value={formData.logoUrl} onChange={handleInputChange} placeholder="https://example.com/logo.png" />
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="contactEmail">School Contact Email</Label>
+                                            <Input id="contactEmail" type="email" value={formData.contactEmail} onChange={handleInputChange} placeholder="info@school.edu" />
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="contactPhone">School Contact Phone</Label>
+                                            <Input id="contactPhone" value={formData.contactPhone} onChange={handleInputChange} placeholder="+123456789" />
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <Label htmlFor="schoolAddress">School Address</Label>
+                                            <Input id="schoolAddress" value={formData.schoolAddress} onChange={handleInputChange} placeholder="123 Education Way, City, Country" />
+                                        </div>
                                     </div>
                                 </div>
 

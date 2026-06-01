@@ -37,7 +37,6 @@ const teacherSchema = z.object({
   qualification: z.string().min(1, "Qualification is required"),
   subject: z.string().min(1, "Subject is required"),
   joining_date: z.string().min(1, "Joining date is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
 })
 
 export default function TeachersPage() {
@@ -68,7 +67,6 @@ export default function TeachersPage() {
     email: "",
     level: "",
     subject: "",
-    password: "",
     district_preference: "",
     school_preference: "",
     application_type: "",
@@ -134,9 +132,14 @@ export default function TeachersPage() {
           .single()
 
         if (adminData) {
+          const schoolsData = adminData.schools as any
+          const schoolName = Array.isArray(schoolsData)
+            ? (schoolsData[0]?.name || "")
+            : (schoolsData?.name || "")
+
           setSchoolInfo({
             school_id: adminData.school_id,
-            schoolName: adminData.schools?.name || ""
+            schoolName: schoolName
           })
           setFormData(prev => ({ ...prev, school_id: adminData.school_id }))
         }
@@ -292,16 +295,15 @@ export default function TeachersPage() {
         passportPictureUrl = publicUrlData.publicUrl
       }
 
-      // Call Backend API to create Teacher with Auth account
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000"
-      
-      const response = await fetch(`${backendUrl}/api/v1/admin/create-teacher`, {
+      // Call local API to create Teacher with Auth account and send credentials email
+      const response = await fetch("/api/teachers/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           ...formData,
+          nin_number: formData.nin, // Map form 'nin' to DB 'nin_number'
           school_id: schoolInfo.school_id,
           photo_url: passportPictureUrl,
         }),
@@ -315,7 +317,7 @@ export default function TeachersPage() {
 
       toast({ 
         title: "Success", 
-        description: "Teacher account and record created successfully." 
+        description: "Teacher account created and credentials email successfully sent!" 
       })
       
       await fetchTeachers()
@@ -519,7 +521,6 @@ export default function TeachersPage() {
                         <div><Label htmlFor="phone">Phone *</Label><Input id="phone" value={formData.phone} onChange={handleInputChange} required /></div>
                         <div><Label htmlFor="email">Email</Label><Input id="email" type="email" value={formData.email} onChange={handleInputChange} /></div>
                         <div className="md:col-span-2"><Label htmlFor="address">Address *</Label><Input id="address" value={formData.address} onChange={handleInputChange} required /></div>
-                        <div><Label htmlFor="password">Login Password *</Label><Input id="password" type="password" value={formData.password} onChange={handleInputChange} required placeholder="At least 6 characters" /></div>
                       </div>
                       <div className="flex justify-end pt-4">
                         <Button onClick={() => setActiveTab("position")}>Next</Button>
