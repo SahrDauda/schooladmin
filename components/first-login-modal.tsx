@@ -30,6 +30,38 @@ export default function FirstLoginModal({ isOpen, onClose, userId, userEmail }: 
     const [isLoading, setIsLoading] = useState(false)
     const router = useRouter()
 
+    const handleSkip = async () => {
+        setIsLoading(true)
+        try {
+            // Update hasloggedinbefore flag even when skipping
+            const { error: dbError } = await supabase
+                .from('schooladmin')
+                .update({ hasloggedinbefore: true })
+                .eq('id', userId)
+
+            if (dbError) throw dbError
+
+            toast({
+                title: "Setup Skipped",
+                description: "You can change your password later from Profile settings.",
+            })
+
+            onClose()
+            
+            // Refresh to update admin state
+            window.location.reload()
+        } catch (error: any) {
+            console.error("Error skipping first login:", error)
+            toast({
+                title: "Error",
+                description: error.message || "Failed to skip setup",
+                variant: "destructive",
+            })
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handlePasswordChange = async (e: React.FormEvent) => {
         e.preventDefault()
 
@@ -217,6 +249,22 @@ export default function FirstLoginModal({ isOpen, onClose, userId, userEmail }: 
                         </Button>
                         <p className="text-xs text-muted-foreground text-center">
                             Link your Google account ({userEmail}) for one-click login.
+                        </p>
+                    </div>
+
+                    {/* Skip Option */}
+                    <div className="pt-2 border-t">
+                        <Button
+                            variant="ghost"
+                            type="button"
+                            className="w-full text-muted-foreground hover:text-foreground"
+                            onClick={handleSkip}
+                            disabled={isLoading}
+                        >
+                            Skip for now
+                        </Button>
+                        <p className="text-[10px] text-muted-foreground text-center mt-1">
+                            You can change your password later from Profile settings.
                         </p>
                     </div>
                 </div>

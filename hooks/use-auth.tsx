@@ -39,6 +39,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter()
 
     useEffect(() => {
+        // Set a timeout to prevent infinite loading
+        const loadingTimeout = setTimeout(() => {
+            if (loading) {
+                console.log("Auth loading timeout reached, setting loading to false")
+                setLoading(false)
+            }
+        }, 5000) // Max 5 seconds for auth check
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setSession(session)
             setUser(session?.user ?? null)
@@ -132,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
 
         return () => {
+            clearTimeout(loadingTimeout)
             subscription.unsubscribe()
         }
     }, [router])
