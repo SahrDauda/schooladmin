@@ -81,7 +81,7 @@ export default function Dashboard() {
       try {
         const info = await getCurrentSchoolInfo()
         setSchoolInfo({
-          name: info.schoolName || admin?.schoolname || admin?.schoolName || "Skultek Academy",
+          name: info.schoolName || (admin as any)?.schoolname || (admin as any)?.schoolName || "Skultek Academy",
           stage: info.stage || "Senior Secondary",
           id: info.school_id
         })
@@ -140,7 +140,7 @@ export default function Dashboard() {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-4xl font-black tracking-tight text-slate-900">
-                {schoolInfo.name || admin?.schoolname || admin?.schoolName || "Skultek Academy"}
+                {schoolInfo.name || (admin as any)?.schoolname || (admin as any)?.schoolName || "Skultek Academy"}
               </h1>
               <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase px-3 py-1 font-bold tracking-widest text-[10px]">
                 {schoolInfo.stage || "Senior Secondary"}

@@ -21,8 +21,8 @@ import { toast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { z } from "zod"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getCurrentSchoolInfo } from "@/lib/school-utils"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getCurrentSchoolInfo, getCurrentSchoolInfoSync } from "@/lib/school-utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
 interface Subject {
@@ -67,35 +67,22 @@ const subjectSchema = z.object({
 
 // Stage-specific level options
 const getLevelOptions = (stage: string) => {
-  switch (stage) {
-    case "Primary":
-      return [
-        "All",
-        "Prep 1",
-        "Prep 2",
-        "Prep 3",
-        "Prep 4",
-        "Prep 5",
-        "Prep 6"
-      ]
-    case "Junior Secondary":
-      return [
-        "All",
-        "JSS 1",
-        "JSS 2",
-        "JSS 3"
-      ]
-    case "Senior Secondary":
-      return [
-        "All",
-        "SSS 1",
-        "SSS 2",
-        "SSS 3"
-      ]
-    default:
-      return [
-        "Not Specified"
-      ]
+  const s = stage ? stage.trim().toLowerCase() : "";
+  
+  if (s.includes("primary") || s.includes("prep")) {
+    return ["All", "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6"];
+  } else if (s.includes("junior")) {
+    return ["All", "JSS 1", "JSS 2", "JSS 3"];
+  } else if (s.includes("senior")) {
+    return ["All", "SSS 1", "SSS 2", "SSS 3"];
+  } else {
+    // Return all levels as fallback so the admin is never locked out of adding subjects
+    return [
+      "All",
+      "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6",
+      "JSS 1", "JSS 2", "JSS 3",
+      "SSS 1", "SSS 2", "SSS 3"
+    ];
   }
 }
 
@@ -105,6 +92,9 @@ export default function SubjectsPage() {
 
   // State for departments
   const [departments, setDepartments] = useState<Department[]>([])
+
+  // State for classes
+  const [classes, setClasses] = useState<any[]>([])
 
   // State for teachers
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -130,7 +120,9 @@ export default function SubjectsPage() {
   const [isSubmittingDepartment, setIsSubmittingDepartment] = useState(false)
 
   // State for school info
-  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>({ school_id: "", schoolName: "", stage: "" })
+  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>(() => {
+    return getCurrentSchoolInfoSync()
+  })
 
   // State for form data
   const [formData, setFormData] = useState({
@@ -183,7 +175,21 @@ export default function SubjectsPage() {
           .order('name')
 
         if (subjectsError) throw subjectsError
-        setSubjects(subjectsData || [])
+        const mapped = (subjectsData || []).map((s: any) => ({
+          ...s,
+          level: s.category || "",
+        }))
+        setSubjects(mapped)
+
+        // Fetch classes
+        const { data: classesData, error: classesError } = await supabase
+          .from('classes')
+          .select('*')
+          .eq('school_id', schoolInfo.school_id)
+          .order('name')
+
+        if (classesError) throw classesError
+        setClasses(classesData || [])
 
         // Fetch departments (only for Senior Secondary)
         if (schoolInfo.stage === "Senior Secondary") {
@@ -426,10 +432,12 @@ export default function SubjectsPage() {
       // Validate form data
       subjectSchema.parse(formData)
 
+      // The subjects table only has: id, name, code, category, school_id, created_at, updated_at
       const subjectData = {
-        ...formData,
+        name: formData.name,
+        code: formData.code,
+        category: formData.level || null,
         school_id: schoolInfo.school_id,
-        // schoolname: schoolInfo.schoolName, // Not needed if not in schema, but kept for compatibility if needed
       }
 
       let data, error
@@ -438,7 +446,12 @@ export default function SubjectsPage() {
         // Update existing subject
         const result = await supabase
           .from('subjects')
-          .update({ ...subjectData, updated_at: new Date().toISOString() })
+          .update({ 
+            name: subjectData.name,
+            code: subjectData.code,
+            category: subjectData.category,
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', selectedSubject.id)
           .select()
           .single()
@@ -467,9 +480,13 @@ export default function SubjectsPage() {
 
       // Refresh subjects list
       if (data) {
+        const mappedData = {
+          ...data,
+          level: data.category || "",
+        }
         const updatedSubjects = selectedSubject
-          ? subjects.map(s => s.id === selectedSubject.id ? data : s)
-          : [...subjects, data]
+          ? subjects.map(s => s.id === selectedSubject.id ? mappedData : s)
+          : [...subjects, mappedData]
 
         updatedSubjects.sort((a, b) => a.name.localeCompare(b.name))
         setSubjects(updatedSubjects)
@@ -719,7 +736,15 @@ export default function SubjectsPage() {
   })
 
   // Get unique departments and levels for filters
-  const departmentFilters = ["all", ...[...new Set(subjects.map((s) => s.department))].filter(Boolean)]
+  const departmentFilters = [
+    "all",
+    "Science",
+    "Commercial",
+    "Arts",
+    ...[...new Set(subjects.map((s) => s.department))].filter(
+      (dept): dept is string => !!dept && !["science", "commercial", "arts"].includes(dept.trim().toLowerCase())
+    )
+  ]
   const levels = ["all", ...[...new Set(subjects.map((s) => s.level))].filter(Boolean)]
 
   // Get stage-specific level options
@@ -934,31 +959,50 @@ export default function SubjectsPage() {
                       <SelectValue placeholder="Select Department" />
                     </SelectTrigger>
                     <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.name}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="Science">Science</SelectItem>
+                      <SelectItem value="Commercial">Commercial</SelectItem>
+                      <SelectItem value="Arts">Arts</SelectItem>
+                      {departments
+                        .filter((d) => !["science", "commercial", "arts"].includes(d.name.trim().toLowerCase()))
+                        .map((dept) => (
+                          <SelectItem key={dept.id} value={dept.name}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="level">Level</Label>
+                <Label htmlFor="level">Level / Class *</Label>
                 <Select
                   value={formData.level}
                   onValueChange={(value) => handleSelectChange("level", value)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Level" />
+                    <SelectValue placeholder="Select Level or Specific Class" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {levelOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-h-[300px]">
+                    <SelectGroup>
+                      <SelectLabel className="font-bold text-xs uppercase tracking-wider text-indigo-600 px-2 py-1.5">General Levels</SelectLabel>
+                      {levelOptions.map((option) => (
+                        <SelectItem key={`level-${option}`} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    
+                    {classes.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="font-bold text-xs uppercase tracking-wider text-emerald-600 px-2 py-1.5 border-t mt-2 pt-2">Specific Classes</SelectLabel>
+                        {classes.map((cls) => (
+                          <SelectItem key={`class-${cls.id}`} value={cls.name}>
+                            {cls.name} {cls.section ? `(${cls.section})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

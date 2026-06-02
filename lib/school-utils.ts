@@ -69,6 +69,9 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
             // If stage is not in schools table, we might need to add it or infer it
             // For now, let's assume it might be there or we leave it empty
             schoolStage = (schoolData as any).stage || ""
+            if (typeof window !== "undefined" && schoolStage) {
+              localStorage.setItem("schoolStage", schoolStage)
+            }
           }
         } catch (error) {
           console.warn("Failed to read schools table:", error)
@@ -78,7 +81,7 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
       return {
         school_id: schoolId || resolvedAdminDocId!,
         schoolName: schoolName || resolvedAdminData.schoolname || resolvedAdminData.schoolName || "",
-        stage: schoolStage,
+        stage: schoolStage || (typeof window !== "undefined" ? localStorage.getItem("schoolStage") || "" : ""),
       }
     }
 
@@ -101,11 +104,13 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
 
 export function getCurrentSchoolInfoSync(): SchoolInfo {
   const adminId = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
+  const stage = typeof window !== "undefined" ? localStorage.getItem("schoolStage") : null
+  const schoolName = typeof window !== "undefined" ? localStorage.getItem("adminName") : null
 
   return {
     school_id: adminId || "unknown",
-    schoolName: "",
-    stage: "",
+    schoolName: schoolName || "",
+    stage: stage || "",
   }
 }
 

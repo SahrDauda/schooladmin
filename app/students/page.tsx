@@ -51,32 +51,21 @@ import * as XLSX from "xlsx"
 
 // Stage-specific level options
 const getLevelOptions = (stage: string) => {
-  switch (stage) {
-    case "Primary":
-      return [
-        "Prep 1",
-        "Prep 2",
-        "Prep 3",
-        "Prep 4",
-        "Prep 5",
-        "Prep 6"
-      ]
-    case "Junior Secondary":
-      return [
-        "JSS 1",
-        "JSS 2",
-        "JSS 3"
-      ]
-    case "Senior Secondary":
-      return [
-        "SSS 1",
-        "SSS 2",
-        "SSS 3"
-      ]
-    default:
-      return [
-        "Not Specified"
-      ]
+  const s = stage ? stage.trim().toLowerCase() : "";
+  
+  if (s.includes("primary") || s.includes("prep")) {
+    return ["Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6"];
+  } else if (s.includes("junior")) {
+    return ["JSS 1", "JSS 2", "JSS 3"];
+  } else if (s.includes("senior")) {
+    return ["SSS 1", "SSS 2", "SSS 3"];
+  } else {
+    // Return all levels as fallback so the admin is never locked out of adding students
+    return [
+      "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6",
+      "JSS 1", "JSS 2", "JSS 3",
+      "SSS 1", "SSS 2", "SSS 3"
+    ];
   }
 }
 
@@ -408,7 +397,9 @@ export default function StudentsPage() {
   )
   const [schoolId, setSchoolId] = useState("")
   const [schoolName, setSchoolName] = useState("")
-  const [schoolStage, setSchoolStage] = useState("")
+  const [schoolStage, setSchoolStage] = useState(() => {
+    return typeof window !== "undefined" ? localStorage.getItem("schoolStage") || "" : ""
+  })
   const [isSearchingNIN, setIsSearchingNIN] = useState(false)
   const [ninSearchQuery, setNinSearchQuery] = useState("")
   const [isExporting, setIsExporting] = useState(false)
@@ -755,7 +746,7 @@ export default function StudentsPage() {
               const { data: schools } = await supabase
                 .from('schools')
                 .select('*')
-                .eq('school_id', schoolId)
+                .eq('id', schoolId)
 
               if (schools && schools.length > 0) {
                 const schoolData = schools[0]

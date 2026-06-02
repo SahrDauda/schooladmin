@@ -87,6 +87,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const adminData = admins as any as AdminData
                         console.log("Admin document data:", adminData)
 
+                        let schoolStage = ""
+                        if (adminData.school_id) {
+                            try {
+                                const { data: school } = await supabase
+                                    .from('schools')
+                                    .select('stage')
+                                    .eq('id', adminData.school_id)
+                                    .single()
+                                if (school) {
+                                    schoolStage = school.stage || ""
+                                }
+                            } catch (e) {
+                                console.error("Error fetching school stage in auth:", e)
+                            }
+                        }
+
                         const resolvedAdmin: AdminData = {
                             ...adminData,
                             id: adminData.id 
@@ -100,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             if (resolvedAdmin.gender) localStorage.setItem("adminGender", resolvedAdmin.gender)
                             localStorage.setItem("adminRole", resolvedAdmin.role || "Principal")
                             if (session.user.email) localStorage.setItem("adminEmail", session.user.email)
+                            if (schoolStage) {
+                                localStorage.setItem("schoolStage", schoolStage)
+                            }
                         } catch { }
                     } else {
                         // Check if user is a teacher before signing out
@@ -194,6 +213,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             if (adminData) {
+                let schoolStage = ""
+                if (adminData.school_id) {
+                    try {
+                        const { data: school } = await supabase
+                            .from('schools')
+                            .select('stage')
+                            .eq('id', adminData.school_id)
+                            .single()
+                        if (school) {
+                            schoolStage = school.stage || ""
+                        }
+                    } catch (e) {
+                        console.error("Error fetching school stage in refresh:", e)
+                    }
+                }
+
                 const resolvedAdmin: AdminData = {
                     ...adminData as any,
                     id: adminData.id
@@ -206,6 +241,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     localStorage.setItem("adminName", name)
                     if (resolvedAdmin.gender) localStorage.setItem("adminGender", resolvedAdmin.gender)
                     localStorage.setItem("adminRole", resolvedAdmin.role || "Principal")
+                    if (schoolStage) {
+                        localStorage.setItem("schoolStage", schoolStage)
+                    }
                 } catch { }
             }
         } catch (error) {

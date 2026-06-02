@@ -10,7 +10,7 @@ import {
   type ClassWithDetails,
   type ClassValidationResult
 } from "@/lib/class-utils"
-import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { getCurrentSchoolInfo, getCurrentSchoolInfoSync } from "@/lib/school-utils"
 
 interface UseClassesReturn {
   // State
@@ -38,10 +38,8 @@ export const useClasses = (): UseClassesReturn => {
   const [teachers, setTeachers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>({ 
-    school_id: "", 
-    schoolName: "", 
-    stage: "" 
+  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>(() => {
+    return getCurrentSchoolInfoSync()
   })
 
   // Load school info
