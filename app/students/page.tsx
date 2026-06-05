@@ -657,7 +657,7 @@ export default function StudentsPage() {
         }
       }
 
-      let query = supabase.from('students').select('*')
+      let query = supabase.from('students').select('*, classes(name)')
 
       if (currentSchoolId) {
         query = query.eq('school_id', currentSchoolId)
@@ -667,8 +667,30 @@ export default function StudentsPage() {
 
       if (error) throw error
 
+      // Map database columns to frontend fields
+      const mappedStudents = (studentsList || []).map((student: any) => ({
+        ...student,
+        id: student.id,
+        firstname: student.firstname,
+        lastname: student.lastname,
+        gender: student.gender,
+        class: student.classes?.name || "N/A",
+        dob: student.dateofbirth,
+        homeaddress: student.address,
+        phonenumber: student.guardian_phone,
+        emailaddress: student.guardian_email,
+        nin: student.admission_number,
+        disability: student.is_disabled ? "Yes" : "No",
+        disability_type: student.is_disabled ? "Specified" : "",
+        sick: student.health_status && student.health_status !== "No" ? "Yes" : "No",
+        sick_type: student.health_status && student.health_status !== "No" ? student.health_status : "",
+        adm_no: student.admission_number,
+        passport_picture: student.passport_url,
+        status: student.status,
+      }))
+
       // Sort by created_at in descending order (newest first)
-      const sortedStudents = (studentsList || []).sort((a, b) => {
+      const sortedStudents = mappedStudents.sort((a, b) => {
         const dateA = new Date(a.created_at || 0)
         const dateB = new Date(b.created_at || 0)
         return dateB.getTime() - dateA.getTime()
@@ -783,7 +805,7 @@ export default function StudentsPage() {
   // Refresh students list after adding a new student
   const refreshStudents = async () => {
     try {
-      let query = supabase.from('students').select('*')
+      let query = supabase.from('students').select('*, classes(name)')
 
       if (schoolId) {
         query = query.eq('school_id', schoolId)
@@ -793,8 +815,30 @@ export default function StudentsPage() {
 
       if (error) throw error
 
+      // Map database columns to frontend fields
+      const mappedStudents = (studentsList || []).map((student: any) => ({
+        ...student,
+        id: student.id,
+        firstname: student.firstname,
+        lastname: student.lastname,
+        gender: student.gender,
+        class: student.classes?.name || "N/A",
+        dob: student.dateofbirth,
+        homeaddress: student.address,
+        phonenumber: student.guardian_phone,
+        emailaddress: student.guardian_email,
+        nin: student.admission_number,
+        disability: student.is_disabled ? "Yes" : "No",
+        disability_type: student.is_disabled ? "Specified" : "",
+        sick: student.health_status && student.health_status !== "No" ? "Yes" : "No",
+        sick_type: student.health_status && student.health_status !== "No" ? student.health_status : "",
+        adm_no: student.admission_number,
+        passport_picture: student.passport_url,
+        status: student.status,
+      }))
+
       // Sort by created_at in descending order (newest first)
-      const sortedStudents = (studentsList || []).sort((a, b) => {
+      const sortedStudents = mappedStudents.sort((a, b) => {
         const dateA = new Date(a.created_at || 0)
         const dateB = new Date(b.created_at || 0)
         return dateB.getTime() - dateA.getTime()
@@ -896,14 +940,23 @@ export default function StudentsPage() {
       if (studentData.nin && studentData.nin.trim()) {
         const { data: ninDuplicates } = await supabase
           .from('students')
-          .select('*')
-          .eq('nin', studentData.nin.trim())
+          .select('*, classes(name)')
+          .eq('admission_number', studentData.nin.trim()) // Fallback to admission_number since nin doesn't exist in DB
 
         if (ninDuplicates && ninDuplicates.length > 0) {
           const duplicate = ninDuplicates[0]
           setDuplicateStudent({
             ...duplicate,
             id: duplicate.id,
+            firstname: duplicate.firstname,
+            lastname: duplicate.lastname,
+            gender: duplicate.gender,
+            class: duplicate.classes?.name || "N/A",
+            dob: duplicate.dateofbirth,
+            homeaddress: duplicate.address,
+            phonenumber: duplicate.guardian_phone,
+            emailaddress: duplicate.guardian_email,
+            nin: duplicate.admission_number,
             reason: "NIN"
           })
           setIsDuplicateModalOpen(true)
@@ -919,21 +972,29 @@ export default function StudentsPage() {
         const email = studentData.emailaddress?.toLowerCase().trim()
 
         if (name && dob && address && email) {
-          const { data: allStudents } = await supabase.from('students').select('*')
+          const { data: allStudents } = await supabase.from('students').select('*, classes(name)')
 
           if (allStudents) {
             for (const existingStudent of allStudents) {
               const existingName = `${existingStudent.firstname} ${existingStudent.lastname}`.toLowerCase().trim()
-              const existingAddress = existingStudent.homeaddress?.toLowerCase().trim()
-              const existingEmail = existingStudent.emailaddress?.toLowerCase().trim()
+              const existingAddress = existingStudent.address?.toLowerCase().trim()
+              const existingEmail = existingStudent.guardian_email?.toLowerCase().trim()
 
               if (existingName === name &&
-                existingStudent.dob === dob &&
-                existingAddress === address &&
-                existingEmail === email) {
+                existingStudent.dateofbirth === dob &&
+                existingAddress === address) { // Checking without email since email wasn't heavily collected
                 setDuplicateStudent({
                   ...existingStudent,
                   id: existingStudent.id,
+                  firstname: existingStudent.firstname,
+                  lastname: existingStudent.lastname,
+                  gender: existingStudent.gender,
+                  class: existingStudent.classes?.name || "N/A",
+                  dob: existingStudent.dateofbirth,
+                  homeaddress: existingStudent.address,
+                  phonenumber: existingStudent.guardian_phone,
+                  emailaddress: existingStudent.guardian_email,
+                  nin: existingStudent.admission_number,
                   reason: "Personal Information"
                 })
                 setIsDuplicateModalOpen(true)
@@ -1018,19 +1079,27 @@ export default function StudentsPage() {
         }
       }
 
-      // Add timestamp and metadata
+      // Add timestamp and metadata - mapping strictly to DB columns
       const currentDate = new Date()
+      
+      // Find the selected class's ID
+      const matchedClass = classes.find(c => c.name === formData.class)
+      
       const studentData = {
-        ...formData,
-        ...schoolData, // Ensure school data is included
-        id: studentId,
-        parent_id: "", // Always blank for new students
+        firstname: formData.firstname,
+        lastname: formData.lastname,
+        gender: formData.gender,
+        dateofbirth: formData.dob || null,
+        address: formData.homeaddress,
+        guardian_email: formData.emailaddress,
+        guardian_phone: formData.phonenumber,
+        admission_number: formData.adm_no || studentId,
+        class_id: matchedClass?.id || null,
+        school_id: schoolData.school_id,
+        passport_url: passportPictureUrl,
         status: "Active",
-        passport_picture: passportPictureUrl,
-        created_at: currentDate.toISOString(),
-        date: currentDate.toLocaleDateString(),
-        month: currentDate.toLocaleString("default", { month: "long" }),
-        year: currentDate.getFullYear().toString(),
+        health_status: formData.sick_type || formData.sick || null,
+        is_disabled: !!formData.disability || !!formData.disability_type
       }
 
       // Check for duplicate student before saving
@@ -1198,15 +1267,21 @@ export default function StudentsPage() {
           // Generate a unique ID if not present
           const studentId = row.adm_no || `ST${Date.now().toString().slice(-6)}`
           // Add timestamp and metadata
-          const currentDate = new Date()
+          // Find class ID for this row's class
+          const matchedClass = classes.find(c => c.name === row.class)
+
           const studentData = {
-            ...row,
-            id: studentId,
+            firstname: row.first_name || row.firstname || '',
+            lastname: row.last_name || row.lastname || '',
+            gender: row.gender,
+            dateofbirth: row.date_of_birth || row.dob || null,
+            address: row.address || row.homeaddress || '',
+            guardian_phone: row.phone || row.phonenumber || '',
+            guardian_email: row.email || row.emailaddress || '',
+            admission_number: studentId,
+            class_id: matchedClass?.id || null,
+            school_id: schoolId,
             status: "Active",
-            created_at: currentDate.toISOString(),
-            date: currentDate.toLocaleDateString(),
-            month: currentDate.toLocaleString("default", { month: "long" }),
-            year: currentDate.getFullYear().toString(),
           }
 
           const { error } = await supabase.from('students').insert(studentData)
@@ -1296,18 +1371,30 @@ export default function StudentsPage() {
         }
       }
 
-      // Ensure school ID is preserved
-      const updatedData: Student = {
-        ...editFormData,
+      // Find the selected class's ID
+      const matchedClass = classes.find(c => c.name === editFormData.class)
+      
+      // Ensure mapped fields are passed to Supabase
+      const mappedUpdatedData = {
+        firstname: editFormData.firstname,
+        lastname: editFormData.lastname,
+        gender: editFormData.gender,
+        dateofbirth: editFormData.dob || null,
+        address: editFormData.homeaddress,
+        guardian_email: editFormData.emailaddress,
+        guardian_phone: editFormData.phonenumber,
+        admission_number: editFormData.adm_no,
+        class_id: matchedClass?.id || null,
         school_id: editFormData.school_id || schoolId,
-        schoolname: editFormData.schoolname || schoolName,
-        passport_picture: passportPictureUrl,
+        passport_url: passportPictureUrl,
+        health_status: editFormData.sick_type || editFormData.sick || null,
+        is_disabled: !!editFormData.disability || !!editFormData.disability_type,
         updated_at: new Date().toISOString(),
       }
 
       const { error } = await supabase
         .from('students')
-        .update(updatedData)
+        .update(mappedUpdatedData)
         .eq('id', selectedStudent!.id)
 
       if (error) throw error

@@ -8,9 +8,9 @@ export const classSchema = z.object({
   name: z.string().min(1, "Class name is required").max(100, "Class name too long"),
   level: z.string().min(1, "Level is required"),
   capacity: z.number().min(1, "Capacity must be at least 1").max(1000, "Capacity too high"),
-  form_teacher_id: z.string().optional(),
+  form_teacher_id: z.string().optional().nullable(),
   faculty: z.enum(["Science", "Arts", "Commercial"]).optional().nullable(),
-  school_id: z.string().min(1, "School ID is required"),
+  school_id: z.string().optional(), // injected into finalData separately
 })
 
 export const classUpdateSchema = classSchema.partial()

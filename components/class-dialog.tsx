@@ -264,7 +264,6 @@ export function ClassDialog({
                       <SelectItem value="Science">Science</SelectItem>
                       <SelectItem value="Arts">Arts</SelectItem>
                       <SelectItem value="Commercial">Commercial</SelectItem>
-                      <SelectItem value="Vocational">Vocational</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.faculty && (

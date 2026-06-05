@@ -10,7 +10,7 @@ import {
   type ClassWithDetails,
   type ClassValidationResult
 } from "@/lib/class-utils"
-import { getCurrentSchoolInfo, getCurrentSchoolInfoSync } from "@/lib/school-utils"
+import { useAuth } from "@/hooks/use-auth"
 
 interface UseClassesReturn {
   // State
@@ -34,32 +34,27 @@ interface UseClassesReturn {
 }
 
 export const useClasses = (): UseClassesReturn => {
+  const { admin } = useAuth()
   const [classes, setClasses] = useState<ClassWithDetails[]>([])
   const [teachers, setTeachers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>(() => {
-    return getCurrentSchoolInfoSync()
+  const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>({
+    school_id: "",
+    schoolName: "",
+    stage: ""
   })
 
-  // Load school info
+  // Load school info from auth context
   useEffect(() => {
-    const loadSchoolInfo = async () => {
-      try {
-        const info = await getCurrentSchoolInfo()
-        setSchoolInfo(info)
-      } catch (error) {
-        console.error("Error loading school info:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load school information",
-          variant: "destructive",
-        })
-      }
+    if (admin) {
+      setSchoolInfo({
+        school_id: admin.school_id,
+        schoolName: admin.schoolName || "",
+        stage: admin.schoolStage || ""
+      })
     }
-
-    loadSchoolInfo()
-  }, [])
+  }, [admin])
 
   // Refresh classes data
   const refreshClasses = useCallback(async () => {

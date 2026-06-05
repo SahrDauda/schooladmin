@@ -10,7 +10,7 @@ ALTER TABLE public.classes
 
 ALTER TABLE public.classes
   ADD CONSTRAINT classes_faculty_check
-    CHECK (faculty IS NULL OR faculty IN ('Science', 'Arts', 'Commercial', 'Vocational'));
+    CHECK (faculty IS NULL OR faculty IN ('Science', 'Arts', 'Commercial'));
 
 -- Verify the column was added
 SELECT column_name, data_type, is_nullable

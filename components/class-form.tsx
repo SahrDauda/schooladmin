@@ -47,6 +47,25 @@ export function ClassForm({
   const [warnings, setWarnings] = useState<string[]>([])
   const [isValidating, setIsValidating] = useState(false)
 
+  const isSSS = formData.level.startsWith("SSS") || schoolStage.toLowerCase().includes("senior")
+
+  // Auto-generate name for SSS classes in add mode
+  useEffect(() => {
+    if (mode === "add" && isSSS) {
+      const parts = [formData.level, formData.faculty, formData.section]
+        .map(p => p?.trim())
+        .filter(Boolean)
+      const generatedName = parts.join(" ")
+      
+      setFormData(prev => {
+        if (prev.name !== generatedName) {
+          return { ...prev, name: generatedName }
+        }
+        return prev
+      })
+    }
+  }, [formData.level, formData.faculty, formData.section, isSSS, mode])
+
   // Reset form when initialData changes
   useEffect(() => {
     if (initialData) {
@@ -81,9 +100,10 @@ export function ClassForm({
         (updated as any)[field] = value
       }
       
-      // If level changed to non-SSS, clear faculty
-      if (field === "level" && !value.startsWith("SSS")) {
+      // If level changed to non-SSS, clear faculty and name
+      if (field === "level" && !value.startsWith("SSS") && !schoolStage.toLowerCase().includes("senior")) {
         updated.faculty = ""
+        updated.name = ""
       }
       return updated
     })
@@ -102,7 +122,7 @@ export function ClassForm({
       // Basic validation
       const newErrors: { [key: string]: string } = {}
 
-      if (!formData.name.trim()) {
+      if (!isSSS && !formData.name.trim()) {
         newErrors.name = "Class name is required"
       }
 
@@ -206,20 +226,29 @@ export function ClassForm({
             </Alert>
           )}
 
+          {errors.name && isSSS && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{errors.name}</AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="name">Class Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="e.g. Mathematics"
-                className={errors.name ? "border-red-500" : ""}
-              />
-              {errors.name && (
-                <p className="text-sm text-red-500 mt-1">{errors.name}</p>
-              )}
-            </div>
+            {!(mode === "add" && isSSS) && (
+              <div>
+                <Label htmlFor="name">Class Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Mathematics"
+                  className={errors.name ? "border-red-500" : ""}
+                />
+                {errors.name && (
+                  <p className="text-sm text-red-500 mt-1">{errors.name}</p>
+                )}
+              </div>
+            )}
 
             <div>
               <Label htmlFor="level">Level *</Label>
@@ -259,7 +288,6 @@ export function ClassForm({
                     <SelectItem value="Science">Science</SelectItem>
                     <SelectItem value="Arts">Arts</SelectItem>
                     <SelectItem value="Commercial">Commercial</SelectItem>
-                    <SelectItem value="Vocational">Vocational</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.faculty && (

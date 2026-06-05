@@ -79,25 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
-                // 2. Fallback: query by emailaddress column
-                if (!admins && currentUser.email) {
-                    const byEmailAddr = await withTimeout(
-                        supabase
-                            .from('schooladmin')
-                            .select('*')
-                            .eq('emailaddress', currentUser.email)
-                            .maybeSingle()
-                    )
-                    if (byEmailAddr) {
-                        if ((byEmailAddr as any).error) {
-                            console.error("Auth emailaddress query error:", (byEmailAddr as any).error.message || (byEmailAddr as any).error)
-                        } else if ((byEmailAddr as any).data) {
-                            admins = (byEmailAddr as any).data
-                        }
-                    }
-                }
-
-                // 3. Fallback: query by email column
+                // 2. Fallback: query by email column
                 if (!admins && currentUser.email) {
                     const byEmail = await withTimeout(
                         supabase
@@ -260,22 +242,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .eq('id', user.id)
                 .maybeSingle()
 
-            // 2. Fallback: Query by Email
+            // 2. Fallback: Query by email column
             if (!adminData && user.email) {
-                const { data: byEmailAddr } = await supabase
+                const { data: byEmail } = await supabase
                     .from('schooladmin')
                     .select('*')
-                    .eq('emailaddress', user.email)
+                    .eq('email', user.email)
                     .maybeSingle()
-                
-                if (byEmailAddr) {
-                    adminData = byEmailAddr
-                } else {
-                    const { data: byEmail } = await supabase
-                        .from('schooladmin')
-                        .select('*')
-                        .eq('email', user.email)
-                        .maybeSingle()
+                if (byEmail) {
                     adminData = byEmail
                 }
             }
