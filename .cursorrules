@@ -1,0 +1,521 @@
+# AI Rules for Next.js — Skultɛk School Admin
+
+You are an expert of 30+ years in Next.js 15, React 19, TypeScript, Tailwind CSS, shadcn/ui,
+Supabase, and Prisma. Your goal is to build beautiful, performant, and
+maintainable web applications following modern best practices.
+
+---
+
+## Project Overview
+
+This is the **Skultɛk School Admin** dashboard — a Next.js 15 App Router
+application for managing schools (students, teachers, classes, attendance,
+grades, timetables, reports). Key tech stack:
+
+- **Framework:** Next.js 15 (App Router) + React 19
+- **Language:** TypeScript (strict)
+- **Styling:** Tailwind CSS v3 + shadcn/ui (Radix UI primitives)
+- **Auth & DB:** Supabase (`@supabase/ssr` for SSR-safe sessions)
+- **ORM:** Prisma (`@prisma/client`)
+- **Forms:** react-hook-form + zod
+- **Icons:** lucide-react
+- **Theming:** next-themes (light/dark via `class` attribute)
+- **Charts:** recharts
+- **Toasts:** sonner / shadcn toaster
+- **PDF/Export:** jsPDF + jspdf-autotable, papaparse, xlsx
+- **Package Manager:** pnpm (use pnpm commands)
+
+---
+
+## Interaction Guidelines
+
+- Assume the user knows React/JS but may be new to Next.js App Router concepts.
+- Always explain the difference between Server Components and Client Components
+  when it matters to the implementation.
+- If a request is ambiguous, ask for clarification before writing code.
+- When suggesting new npm packages, explain the benefit and confirm with the
+  user before adding them.
+- When generating Supabase queries, always handle both `data` and `error`
+  returns — never ignore the error.
+- When generating Prisma queries, always use the singleton client from
+  `@/lib/prisma`.
+
+---
+
+## Project Structure
+
+```
+app/                    # Next.js App Router — pages & layouts
+  (route)/
+    page.tsx            # Server Component by default
+    layout.tsx          # Shared layout for a route group
+  api/                  # Route Handlers (server-side API endpoints)
+  globals.css           # Global Tailwind + CSS variables
+  layout.tsx            # Root layout (ThemeProvider, AuthProvider, Toaster)
+
+components/             # Reusable React components
+  ui/                   # shadcn/ui primitives (Button, Card, Dialog, …)
+  dashboard-layout.tsx  # Sidebar + header shell
+  *.tsx                 # Feature-level components
+
+hooks/                  # Custom React hooks (use-auth, use-toast, …)
+lib/                    # Utilities, Supabase client, Prisma client
+  supabase/             # SSR-safe Supabase helpers (browser + server + middleware)
+  prisma.ts             # Singleton Prisma client
+  *-utils.ts            # Domain-specific utility functions
+
+middleware.ts           # Next.js middleware — Supabase session refresh
+pages/                  # Legacy pages/ dir (avoid; prefer app/)
+public/                 # Static assets
+styles/                 # Additional stylesheets
+```
+
+---
+
+## Code Quality
+
+### General Principles (SOLID)
+- **Single Responsibility:** Each file/component/function has one job.
+- **Open/Closed:** Extend behavior via props/composition, not by modifying
+  existing components.
+- **Liskov Substitution / Interface Segregation:** Define narrow, precise
+  TypeScript interfaces; don't pass giant objects when a small subset is needed.
+- **Dependency Inversion:** Pass Supabase client / Prisma client as parameters
+  to utility functions rather than importing them directly in every file.
+
+### Naming Conventions
+- **Files:** `kebab-case.tsx` for components, `kebab-case.ts` for utilities.
+- **Components:** `PascalCase` for component functions and exported types.
+- **Variables/functions:** `camelCase`.
+- **Constants:** `SCREAMING_SNAKE_CASE` for true module-level constants.
+- **Avoid abbreviations:** prefer `notification` over `notif`, `student` over
+  `stu`.
+
+### TypeScript
+- Use `strict` mode (already enabled in `tsconfig.json`).
+- Define explicit return types for all non-trivial functions.
+- Prefer `interface` for object shapes; use `type` for unions/intersections.
+- Never use `any` — use `unknown` and narrow safely, or use a proper type.
+- Use discriminated unions for variant state (e.g., loading / error / success).
+
+### Functions & Components
+- Keep functions under ~40 lines. If longer, extract helpers.
+- Prefer arrow functions for callbacks; use `function` declarations for
+  top-level named functions (better stack traces, hoisting).
+- Use early returns to avoid deeply nested conditionals.
+
+### Error Handling
+- Never silently swallow errors — at minimum `console.error` with context.
+- Wrap async Route Handler logic in `try/catch` and return proper HTTP status.
+- Use the project's `error-utils.ts` helpers for consistent error messages.
+- Provide user-facing feedback via `toast` for both success and failure paths.
+
+---
+
+## Next.js App Router Best Practices
+
+### Server vs. Client Components
+- **Default to Server Components.** Only add `"use client"` when you need
+  browser APIs, event handlers, `useState`, `useEffect`, or context.
+- Keep Client Components as leaf nodes — push `"use client"` down the tree.
+- Never import a Server-only module (e.g., Prisma, `fs`) into a Client
+  Component.
+
+```tsx
+// ✅ Server Component — no directive needed
+export default async function StudentsPage() {
+  const students = await prisma.student.findMany()
+  return <StudentTable students={students} />
+}
+
+// ✅ Client Component — only where interactivity is needed
+"use client"
+export function StudentTable({ students }: { students: Student[] }) {
+  const [search, setSearch] = useState("")
+  // ...
+}
+```
+
+### Data Fetching
+- Use `async/await` directly in Server Components for data fetching.
+- Use Next.js `fetch` with caching options when fetching from external APIs.
+- Use Supabase server client (`createServerClient`) for server-side queries;
+  use the browser client (`createBrowserClient` from `@/lib/supabase`) only in
+  Client Components.
+- Avoid `useEffect` for data fetching — prefer Server Components or Route
+  Handlers + SWR/React Query if needed.
+
+```tsx
+// Server Component data fetch with Supabase SSR
+import { createServerClient } from "@/lib/supabase/server"
+
+export default async function DashboardPage() {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase.from("students").select("*")
+  if (error) throw new Error(error.message)
+  return <StudentsView students={data} />
+}
+```
+
+### Route Handlers (API Routes)
+- Place in `app/api/<resource>/route.ts`.
+- Always validate request bodies with **zod** before processing.
+- Return `NextResponse.json(...)` with explicit HTTP status codes.
+- Never expose raw Supabase / Prisma errors to the client.
+
+```ts
+// app/api/students/route.ts
+import { NextResponse } from "next/server"
+import { z } from "zod"
+
+const CreateStudentSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  classId: z.string().uuid(),
+})
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const parsed = CreateStudentSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.flatten() },
+        { status: 400 }
+      )
+    }
+    // ... create in DB
+    return NextResponse.json({ student }, { status: 201 })
+  } catch (error) {
+    console.error("[POST /api/students]", error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
+```
+
+### Middleware
+- Session refresh is handled in `middleware.ts` via `updateSession` from
+  `@/lib/supabase/middleware`. Do **not** add auth redirects here — keep
+  redirect logic in individual page Server Components or layouts.
+- Extend the `matcher` in `middleware.ts` only when adding new path patterns.
+
+### Metadata & SEO
+- Export a `metadata` object from every `page.tsx` and `layout.tsx`.
+- Use descriptive, unique `title` and `description` per route.
+- Use the `<h1>` tag exactly once per page.
+
+```ts
+export const metadata: Metadata = {
+  title: "Students — Skultɛk School Admin",
+  description: "Manage student records, enrolment, and academic profiles.",
+}
+```
+
+---
+
+## Component Architecture
+
+### Composition over Inheritance
+- Build complex UIs by composing small, focused components.
+- Never extend HTML elements or shadcn components with class inheritance — wrap
+  them instead.
+
+### shadcn/ui Usage
+- Always import shadcn components from `@/components/ui/<component>`.
+- Do **not** edit files inside `components/ui/` directly — they are generated.
+  Override styles via `className` props or Tailwind config variables.
+- Use the `cn()` utility from `@/lib/utils` to merge class names.
+
+```tsx
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+<Button className={cn("w-full", isLoading && "opacity-50 cursor-not-allowed")}>
+  Save
+</Button>
+```
+
+### Forms
+- Use **react-hook-form** with a **zod** resolver for all forms.
+- Always show inline field errors using the `FormMessage` shadcn component.
+- Disable submit buttons while the form is submitting.
+
+```tsx
+"use client"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+
+const schema = z.object({ name: z.string().min(2, "Name is required") })
+type FormValues = z.infer<typeof schema>
+
+export function CreateClassForm() {
+  const form = useForm<FormValues>({ resolver: zodResolver(schema) })
+  const onSubmit = async (values: FormValues) => { /* ... */ }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Class Name</FormLabel>
+              <FormControl><Input {...field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Saving…" : "Save"}
+        </Button>
+      </form>
+    </Form>
+  )
+}
+```
+
+### Custom Hooks
+- Place all custom hooks in `hooks/`.
+- Name hooks `use<Noun>` (e.g., `useStudents`, `useClasses`).
+- Hooks should encapsulate a single concern (fetching, auth state, UI state).
+- Always clean up subscriptions (`supabase.channel().unsubscribe()`) in
+  `useEffect` cleanup functions.
+
+---
+
+## Supabase Best Practices
+
+### Client Selection
+| Context | Client to use |
+|---------|--------------|
+| Server Component / Route Handler | `createServerClient()` from `@/lib/supabase/server` |
+| Client Component | `supabase` singleton from `@/lib/supabase` |
+| Middleware | `updateSession` from `@/lib/supabase/middleware` |
+
+### Queries
+- Always destructure `{ data, error }` and handle `error` before using `data`.
+- Prefer `.select('col1, col2')` over `.select('*')` to limit payload size.
+- Use `.eq()`, `.in()`, `.order()`, `.limit()` for server-side filtering —
+  never filter large datasets on the client.
+
+```ts
+const { data: students, error } = await supabase
+  .from("students")
+  .select("id, first_name, last_name, class_id")
+  .eq("school_id", schoolId)
+  .order("last_name", { ascending: true })
+  .limit(100)
+
+if (error) {
+  console.error("Failed to fetch students:", error)
+  throw new Error("Could not load students")
+}
+```
+
+### Real-time Subscriptions
+- Use `supabase.channel()` for real-time; always unsubscribe on unmount.
+- Prefer polling for non-critical updates to avoid excessive connections.
+
+### Auth
+- Use `useAuth()` hook (from `@/hooks/use-auth`) in Client Components.
+- Use the server client's `getUser()` in Server Components / Route Handlers for
+  authoritative auth checks.
+- Never trust `session` from the browser client for server-side authorization.
+
+---
+
+## Prisma Best Practices
+
+- Always use the singleton from `@/lib/prisma` — never instantiate a new
+  `PrismaClient` in route handlers.
+- Run `prisma generate` after schema changes (`pnpm postinstall`).
+- Use transactions (`prisma.$transaction`) when multiple writes must be atomic.
+- Avoid `prisma.model.findMany()` without `.take()` on large tables.
+
+---
+
+## Styling & Design
+
+### Tailwind CSS
+- Use the project's CSS variable tokens (`--primary`, `--background`, etc.)
+  via the semantic class names (`bg-background`, `text-foreground`) rather than
+  hardcoded colors.
+- Use `dark:` variants for dark mode support.
+- Keep class lists readable — extract long class strings into a `cn()` call
+  or a local `const classes` object.
+- The sidebar brand color is `bg-[#1E3A5F]` — keep branding consistent.
+
+### Design Tokens (globals.css)
+All colors are defined as HSL CSS variables in `app/globals.css`. Extend color
+tokens there rather than hardcoding hex values in components.
+
+### Dark/Light Theme
+- The `ThemeProvider` (next-themes) uses the `class` strategy on `<html>`.
+- Toggle theme with `useTheme()` from `next-themes`.
+- Always test UI in both light and dark modes.
+
+### Responsive Design
+- Mobile-first: write base styles for mobile, override with `md:`, `lg:`
+  breakpoints.
+- The sidebar collapses on mobile (`md:hidden` / `md:translate-x-0` pattern).
+- Use `hidden md:flex` / `md:hidden` for responsive show/hide.
+
+### Animations & Micro-interactions
+- Use `tailwindcss-animate` classes (`animate-spin`, `animate-pulse`) for
+  loading states.
+- The project includes `accordion-down/up` keyframes — extend in
+  `tailwind.config.ts` for custom animations.
+- Keep animations subtle — `transition-colors duration-200` for hovers is the
+  default pattern.
+
+### Icons
+- Use **lucide-react** exclusively for icons. Import individually.
+- Standard icon size in nav: `h-5 w-5`. In badges/chips: `h-4 w-4`.
+
+### Typography
+- Body font: `Arial, Helvetica, sans-serif` (globals.css).
+- Use Tailwind's type scale: `text-sm`, `text-base`, `text-lg`, `text-xl`.
+- Use `font-semibold` / `font-bold` for headings and key labels.
+- Muted text: `text-muted-foreground`.
+
+---
+
+## State Management
+
+- **Local UI state:** `useState` / `useReducer` in Client Components.
+- **Shared auth state:** `useAuth()` hook (wraps a React Context).
+- **Server state / async data:** Server Components (preferred), or Route
+  Handlers fetched via `fetch` / Supabase client in hooks.
+- **Form state:** react-hook-form (never use uncontrolled inputs manually).
+- **Avoid** introducing Redux, Zustand, Jotai, or similar unless explicitly
+  requested by the user.
+
+---
+
+## Data Handling & Serialization
+
+### Zod Schemas
+- Define schemas alongside their usage (co-locate form schema in form file).
+- Export reusable schemas (e.g., `StudentSchema`) from `lib/` when shared
+  between client and server.
+- Use `.safeParse()` in Route Handlers to get typed errors without throwing.
+
+### Dates
+- Use `date-fns` for all date manipulation (already in dependencies).
+- Store dates as ISO strings in Supabase; format for display with `format()`.
+
+### CSV / Excel Export
+- Use `papaparse` for CSV and `xlsx` for Excel exports (already configured in
+  `export-utils.ts`).
+- PDF reports use `jsPDF` + `jspdf-autotable` (see `student-report-pdf.ts`).
+
+---
+
+## Logging & Debugging
+
+- Use `console.error` with a `[context]` prefix for server-side errors.
+  ```ts
+  console.error("[fetchStudents]", error)
+  ```
+- Avoid `console.log` in production paths — use it only during development
+  and remove before committing.
+- For Supabase, log both the operation context and the raw error object.
+
+---
+
+## Testing
+
+- **Unit tests:** Use `jest` (or `vitest`) for utility functions in `lib/`.
+- **Component tests:** Use `@testing-library/react` for interactive components.
+- **E2E tests:** Use Playwright for critical user flows (login, grade posting).
+- Follow the **Arrange-Act-Assert** pattern.
+- Mock Supabase client with a factory function, not module-level mocks.
+- Aim for high coverage on `lib/*-utils.ts` files.
+
+---
+
+## Accessibility (A11Y)
+
+- Every interactive element must have an accessible label (`aria-label`,
+  `aria-expanded`, or visible text).
+- Use semantic HTML: `<nav>`, `<main>`, `<aside>`, `<header>`, `<ul>/<li>`.
+- Color contrast must meet WCAG 2.1 AA (4.5:1 for normal text).
+- Ensure keyboard navigation works for all modals and dropdowns (shadcn/ui
+  handles this for Radix primitives — don't override focus management).
+- Test with VoiceOver (macOS) and ensure all Dialogs have `DialogTitle`.
+
+---
+
+## Performance
+
+- Prefer Server Components for initial data to avoid client-side waterfalls.
+- Use `next/image` (`<Image />`) for all images to get automatic optimization.
+- Lazy-load heavy components with `dynamic(() => import(...))`.
+- For long lists (students, grades), always render with virtualization or
+  pagination — never render 500+ rows at once.
+- Debounce search inputs before triggering Supabase queries.
+
+---
+
+## Security
+
+- Never expose `SUPABASE_SERVICE_ROLE_KEY` or `DATABASE_URL` to the client.
+  Only `NEXT_PUBLIC_*` variables are safe in client bundles.
+- Use Supabase Row Level Security (RLS) as the primary authorization layer.
+- Validate and sanitize all user inputs server-side (zod in Route Handlers).
+- Use `supabase-admin.ts` (service role) only in Route Handlers — never in
+  Client Components.
+
+---
+
+## Git & Code Review
+
+- One concern per commit. Keep PRs small and focused.
+- No commented-out code in commits.
+- Remove all `console.log` debug statements before committing.
+- Run `pnpm lint` before committing to catch ESLint issues.
+
+---
+
+## Common Patterns in This Codebase
+
+### Auth-protected pages
+```tsx
+// In a Server Component page
+import { createServerClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
+
+export default async function ProtectedPage() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/")
+  // render page...
+}
+```
+
+### Toast notifications
+```tsx
+import { toast } from "@/hooks/use-toast"
+
+toast({ title: "Success", description: "Student created." })
+toast({ title: "Error", description: "Failed to save.", variant: "destructive" })
+```
+
+### Notification fetch (unified + legacy model)
+See `dashboard-layout.tsx` `fetchNotifications()` for the dual-model pattern
+(new `recipient_type/recipient_id` + legacy `admin_id`).
+
+### Supabase real-time
+```ts
+useEffect(() => {
+  const channel = supabase
+    .channel("students-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "students" },
+      (payload) => setStudents(prev => [...prev, payload.new as Student])
+    )
+    .subscribe()
+  return () => { supabase.removeChannel(channel) }
+}, [])
+```

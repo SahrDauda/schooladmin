@@ -93,20 +93,7 @@ export const useClasses = (): UseClassesReturn => {
     }
   }, [schoolInfo.school_id, refreshClasses])
 
-  // Check for refresh flag from students page
-  useEffect(() => {
-    const checkRefreshFlag = () => {
-      const refreshFlag = localStorage.getItem("refreshClasses")
-      if (refreshFlag === "true") {
-        localStorage.removeItem("refreshClasses")
-        refreshClasses()
-      }
-    }
 
-    checkRefreshFlag()
-    const interval = setInterval(checkRefreshFlag, 2000)
-    return () => clearInterval(interval)
-  }, [refreshClasses])
 
   // Add new class
   const addClass = useCallback(async (classData: any): Promise<boolean> => {

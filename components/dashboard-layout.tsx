@@ -36,6 +36,7 @@ import { supabase } from "@/lib/supabase"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { toast } from "@/hooks/use-toast"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { useAuth } from "@/hooks/use-auth"
 
 interface Notification {
   id: string
@@ -70,6 +71,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [schoolInfo, setSchoolInfo] = useState({ name: "Loading...", stage: "" })
+  const { admin, loading } = useAuth()
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -79,89 +81,37 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Subject Assignments", href: "/subject-assignments", icon: BookOpen },
     { name: "Attendance", href: "/attendance", icon: ClipboardCheck },
     { name: "Timetable", href: "/timetable", icon: Calendar },
-    { name: "Grades", href: "/grades", icon: FileText },
-    { name: "Admin Grades", href: "/admin-grades", icon: FileText },
+    { name: "Grades", href: "/admin-grades", icon: FileText },
     { name: "Subjects", href: "/subjects", icon: BookOpen },
     { name: "Academic Setup", href: "/academic-setup", icon: Settings },
     { name: "Notifications", href: "/notifications", icon: Bell },
     { name: "Reports", href: "/reports", icon: MessageSquare },
   ]
 
+
   useEffect(() => {
-    const adminId = localStorage.getItem("adminId")
-    if (!adminId && pathname !== "/") {
+    if (!loading && !admin && pathname !== "/") {
       router.push("/")
       return
     }
 
-    const storedName = localStorage.getItem("adminName")
-    const storedRole = localStorage.getItem("adminRole")
-    const storedGender = localStorage.getItem("adminGender")
-
-    if (storedName) setAdminName(storedName)
-    if (storedGender) setAdminGender(storedGender)
-    // Always set role to "Principal" regardless of database value
-    setAdminRole("Principal")
-
-    if (adminId) {
-      const fetchAdminData = async () => {
-        try {
-          const { data: adminData, error } = await supabase
-            .from('schooladmin')
-            .select('*')
-            .eq('id', adminId)
-            .single()
-
-          if (error) throw error
-
-          if (adminData) {
-            if (adminData.adminname) {
-              setAdminName(adminData.adminname)
-              localStorage.setItem("adminName", adminData.adminname)
-            } else if (adminData.adminName) {
-              setAdminName(adminData.adminName)
-              localStorage.setItem("adminName", adminData.adminName)
-            } else if (adminData.name) {
-              setAdminName(adminData.name)
-              localStorage.setItem("adminName", adminData.name)
-            }
-
-            // Set gender for title
-            if (adminData.gender) {
-              setAdminGender(adminData.gender)
-              localStorage.setItem("adminGender", adminData.gender)
-            }
-            // Always set role to "Principal" and store it
-            setAdminRole("Principal")
-            localStorage.setItem("adminRole", "Principal")
-
-            // Set admin image
-            if (adminData.admin_images) {
-              setAdminImage(adminData.admin_images)
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching admin data:", error)
-        }
+    if (admin) {
+      setAdminName(admin.adminname || admin.adminName || admin.name || "Admin User")
+      // Always set role to "Principal" regardless of database value (or use admin.role)
+      setAdminRole("Principal")
+      setAdminGender(admin.gender || "")
+      if (admin.admin_images) {
+        setAdminImage(admin.admin_images)
       }
 
-      fetchAdminData()
-      fetchNotifications()
+      setSchoolInfo({
+        name: admin.schoolName || "Skultek Academy",
+        stage: admin.schoolStage || "Senior Secondary"
+      })
 
-      const fetchSchoolData = async () => {
-        try {
-          const info = await getCurrentSchoolInfo()
-          setSchoolInfo({
-            name: info.schoolName || "Skultek Academy",
-            stage: info.stage || "Senior Secondary"
-          })
-        } catch (err) {
-          console.error("Error fetching school data in layout:", err)
-        }
-      }
-      fetchSchoolData()
+      fetchNotifications(admin.id)
     }
-  }, [pathname, router])
+  }, [admin, loading, pathname, router])
 
   useEffect(() => {
     const handleResize = () => {
@@ -173,18 +123,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // Fetch notifications when adminId is available
+  // Fetch notifications when admin is available
   useEffect(() => {
-    const adminId = localStorage.getItem("adminId")
-    if (adminId) {
-      fetchNotifications()
+    if (admin?.id) {
+      fetchNotifications(admin.id)
     }
-  }, [])
+  }, [admin?.id])
 
   const handleLogout = async () => {
-    // 1. Immediately clear local storage and session storage to wipe auth state
+    // 1. Immediately clear session storage to wipe auth state
     try {
-      localStorage.clear()
       sessionStorage.clear()
     } catch (err) {
       console.error("Error clearing storage:", err)
@@ -232,8 +180,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   // Fetch notifications (unified recipient model with legacy fallback)
-  const fetchNotifications = async () => {
-    const adminId = localStorage.getItem("adminId")
+  const fetchNotifications = async (adminId: string) => {
     if (!adminId) {
       console.log("No adminId found, skipping notification fetch")
       return
@@ -391,23 +338,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex-1 flex items-center justify-between ml-2">
             <div className="flex items-center gap-2 md:gap-3">
               <span className="font-bold text-slate-800 text-sm md:text-lg tracking-tight">
-                {schoolInfo.name || "Skultek Academy"}
+                School Admin
               </span>
-              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 uppercase px-2 py-0.5 font-bold tracking-wider text-[9px] hidden sm:inline-flex">
-                {schoolInfo.stage || "Senior Secondary"}
-              </Badge>
-            </div>
-            
-            <div className="hidden md:flex items-center gap-2 text-slate-500 text-xs font-semibold mr-4 bg-slate-50 px-3 py-1.5 rounded-full border">
-              <Calendar className="h-3.5 w-3.5 text-slate-400" />
-              <span>2023-2024 Academic Session &bull; Second Term</span>
             </div>
           </div>
 
           {/* Notifications Dropdown */}
           <DropdownMenu onOpenChange={(open) => {
-            if (open) {
-              fetchNotifications()
+            if (open && admin?.id) {
+              fetchNotifications(admin.id)
             }
           }}>
             <DropdownMenuTrigger asChild>
@@ -584,7 +523,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      <main className={cn("pt-16", "md:ml-64", "min-h-screen", "p-6")}>{children}</main>
+      <main className={cn("pt-24", "md:ml-64", "min-h-screen", "px-6 pb-6")}>{children}</main>
 
       {/* Notification Details Modal */}
       <Dialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>

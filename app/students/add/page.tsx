@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { generateAdmissionNumber } from "@/lib/school-utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useAuth } from "@/hooks/use-auth"
 
 const STEPS = [
   { id: 1, name: "Bio-data", icon: User },
@@ -39,6 +40,7 @@ const STEPS = [
 
 export default function AddStudentPage() {
   const router = useRouter()
+  const { admin, loading: authLoading } = useAuth()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [schoolId, setSchoolId] = useState("")
@@ -85,7 +87,9 @@ export default function AddStudentPage() {
   })
 
   useEffect(() => {
-    const adminId = localStorage.getItem("adminId")
+    if (authLoading) return
+
+    const adminId = admin?.id
     if (!adminId) {
       router.push("/")
       return
@@ -93,7 +97,6 @@ export default function AddStudentPage() {
 
     const initData = async () => {
       try {
-        const { data: admin } = await supabase.from('schooladmin').select('*').eq('id', adminId).single()
         if (admin) {
           const sId = admin.school_id || adminId
           setSchoolId(sId)
@@ -117,7 +120,7 @@ export default function AddStudentPage() {
       }
     }
     initData()
-  }, [])
+  }, [admin, authLoading, router])
 
   useEffect(() => {
     if (schoolStage === "primary") {

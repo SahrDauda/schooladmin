@@ -22,6 +22,7 @@ interface ClassDialogProps {
   classData: ClassWithDetails | null
   teachers: any[]
   levelOptions: string[]
+  schoolStage?: string
   isOpen: boolean
   onClose: () => void
   onUpdate: (classId: string, data: any, previousTeacherId?: string) => Promise<boolean>
@@ -33,6 +34,7 @@ export function ClassDialog({
   classData,
   teachers,
   levelOptions,
+  schoolStage = "",
   isOpen,
   onClose,
   onUpdate,
@@ -46,6 +48,7 @@ export function ClassDialog({
     section: "",
     capacity: "",
     teacher_id: "",
+    faculty: "",
     description: "",
   })
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -57,10 +60,11 @@ export function ClassDialog({
       setEditFormData({
         name: classData.name || "",
         level: classData.level || "",
-        section: classData.section || "",
+        section: (classData as any).section || "",
         capacity: classData.capacity?.toString() || "",
-        teacher_id: classData.teacher_id || "",
-        description: classData.description || "",
+        teacher_id: classData.form_teacher_id || "",
+        faculty: classData.faculty || "",
+        description: (classData as any).description || "",
       })
       setErrors({})
       setIsEditing(false)
@@ -77,10 +81,14 @@ export function ClassDialog({
   }
 
   const handleSelectChange = (field: string, value: string) => {
-    setEditFormData(prev => ({ 
-      ...prev, 
-      [field]: value === "none" ? "" : value 
-    }))
+    setEditFormData(prev => { 
+      const updated = { ...prev, [field]: value === "none" ? "" : value }
+      // Clear faculty if level changes to non-SSS
+      if (field === "level" && !value.startsWith("SSS") && !schoolStage.toLowerCase().includes("senior")) {
+        updated.faculty = ""
+      }
+      return updated
+    })
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }))
     }
@@ -95,6 +103,12 @@ export function ClassDialog({
 
     if (!editFormData.level) {
       newErrors.level = "Level is required"
+    }
+
+    const isSeniorSchool = schoolStage.toLowerCase().includes("senior")
+    const isSSSLevel = editFormData.level.startsWith("SSS")
+    if ((isSeniorSchool || isSSSLevel) && !editFormData.faculty) {
+      newErrors.faculty = "Faculty is required for Senior Secondary classes"
     }
 
     if (!editFormData.capacity || Number(editFormData.capacity) < 1) {
@@ -113,9 +127,12 @@ export function ClassDialog({
     const submitData = {
       ...editFormData,
       capacity: Number(editFormData.capacity),
+      form_teacher_id: editFormData.teacher_id || null,
+      faculty: editFormData.faculty || null,
     }
+    delete (submitData as any).teacher_id
 
-    const success = await onUpdate(classData.id, submitData, classData.teacher_id)
+    const success = await onUpdate(classData.id, submitData, classData.form_teacher_id)
     if (success) {
       setIsEditing(false)
     }
@@ -232,6 +249,30 @@ export function ClassDialog({
                 )}
               </div>
 
+              {(schoolStage.toLowerCase().includes("senior") || editFormData.level.startsWith("SSS")) && (
+                <div>
+                  <Label htmlFor="edit_faculty">Faculty *</Label>
+                  <Select
+                    value={editFormData.faculty || "none"}
+                    onValueChange={(value) => handleSelectChange("faculty", value)}
+                  >
+                    <SelectTrigger className={errors.faculty ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select faculty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select faculty</SelectItem>
+                      <SelectItem value="Science">Science</SelectItem>
+                      <SelectItem value="Arts">Arts</SelectItem>
+                      <SelectItem value="Commercial">Commercial</SelectItem>
+                      <SelectItem value="Vocational">Vocational</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.faculty && (
+                    <p className="text-sm text-red-500 mt-1">{errors.faculty}</p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="edit_teacher_id">Class Teacher</Label>
                 <Select
@@ -328,12 +369,19 @@ export function ClassDialog({
 
               <div>
                 <Label className="font-bold">Class Teacher</Label>
-                <p className="text-sm">{classData.teacher_id ? getTeacherName(classData.teacher_id) : "Not Assigned"}</p>
+                <p className="text-sm">{classData.form_teacher_id ? getTeacherName(classData.form_teacher_id) : "Not Assigned"}</p>
               </div>
+
+              {classData.faculty && (
+                <div>
+                  <Label className="font-bold">Faculty</Label>
+                  <p className="text-sm">{classData.faculty}</p>
+                </div>
+              )}
 
               <div className="md:col-span-2">
                 <Label className="font-bold">Description</Label>
-                <p className="text-sm">{classData.description || "No description provided"}</p>
+                <p className="text-sm">{(classData as any).description || "No description provided"}</p>
               </div>
             </div>
 

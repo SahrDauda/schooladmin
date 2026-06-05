@@ -16,6 +16,7 @@ interface ClassFormProps {
   initialData?: Partial<ClassWithDetails>
   teachers: any[]
   levelOptions: string[]
+  schoolStage?: string
   onSubmit: (data: any) => Promise<boolean>
   onCancel: () => void
   isSubmitting?: boolean
@@ -25,18 +26,21 @@ export function ClassForm({
   mode, 
   initialData, 
   teachers, 
-  levelOptions, 
+  levelOptions,
+  schoolStage = "",
   onSubmit, 
   onCancel, 
   isSubmitting = false 
 }: ClassFormProps) {
+  const init = initialData as any
   const [formData, setFormData] = useState({
-    name: initialData?.name || "",
-    level: initialData?.level || "",
-    section: initialData?.section || "",
-    capacity: initialData?.capacity?.toString() || "",
-    teacher_id: initialData?.teacher_id || "",
-    description: initialData?.description || "",
+    name: init?.name || "",
+    level: init?.level || "",
+    section: init?.section || "",
+    capacity: init?.capacity?.toString() || "",
+    teacher_id: init?.teacher_id || "",
+    description: init?.description || "",
+    faculty: init?.faculty || "",
   })
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -46,13 +50,15 @@ export function ClassForm({
   // Reset form when initialData changes
   useEffect(() => {
     if (initialData) {
+      const initReset = initialData as any
       setFormData({
-        name: initialData.name || "",
-        level: initialData.level || "",
-        section: initialData.section || "",
-        capacity: initialData.capacity?.toString() || "",
-        teacher_id: initialData.teacher_id || "",
-        description: initialData.description || "",
+        name: initReset.name || "",
+        level: initReset.level || "",
+        section: initReset.section || "",
+        capacity: initReset.capacity?.toString() || "",
+        teacher_id: initReset.teacher_id || "",
+        description: initReset.description || "",
+        faculty: initReset.faculty || "",
       })
     }
   }, [initialData])
@@ -67,11 +73,20 @@ export function ClassForm({
   }
 
   const handleSelectChange = (field: string, value: string) => {
-    if (field === "teacher_id" && value === "none") {
-      setFormData(prev => ({ ...prev, [field]: "" }))
-    } else {
-      setFormData(prev => ({ ...prev, [field]: value }))
-    }
+    setFormData(prev => {
+      const updated = { ...prev }
+      if (field === "teacher_id" && value === "none") {
+        updated[field] = ""
+      } else {
+        (updated as any)[field] = value
+      }
+      
+      // If level changed to non-SSS, clear faculty
+      if (field === "level" && !value.startsWith("SSS")) {
+        updated.faculty = ""
+      }
+      return updated
+    })
     // Clear error when user makes selection
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }))
@@ -93,6 +108,13 @@ export function ClassForm({
 
       if (!formData.level) {
         newErrors.level = "Level is required"
+      }
+
+      // Faculty is required when school is Senior Secondary OR the selected level is SSS
+      const isSeniorSchool = schoolStage.toLowerCase().includes("senior")
+      const isSSSLevel = formData.level.startsWith("SSS")
+      if ((isSeniorSchool || isSSSLevel) && !formData.faculty) {
+        newErrors.faculty = "Faculty is required for Senior Secondary classes"
       }
 
       if (!formData.capacity || Number(formData.capacity) < 1) {
@@ -153,7 +175,12 @@ export function ClassForm({
     const submitData = {
       ...formData,
       capacity: Number(formData.capacity),
+      // Map form field name to DB column name
+      form_teacher_id: formData.teacher_id || null,
+      faculty: formData.faculty || null,
     }
+    // Remove the raw teacher_id key so we don't confuse the backend
+    delete submitData.teacher_id
 
     const success = await onSubmit(submitData)
     if (success) {
@@ -215,6 +242,31 @@ export function ClassForm({
                 <p className="text-sm text-red-500 mt-1">{errors.level}</p>
               )}
             </div>
+
+            {/* Show faculty whenever school is Senior Secondary OR a SSS level is chosen */}
+            {(schoolStage.toLowerCase().includes("senior") || formData.level.startsWith("SSS")) && (
+              <div>
+                <Label htmlFor="faculty">Faculty *</Label>
+                <Select 
+                  value={formData.faculty || "none"} 
+                  onValueChange={(value) => handleSelectChange("faculty", value === "none" ? "" : value)}
+                >
+                  <SelectTrigger className={errors.faculty ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select faculty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select faculty</SelectItem>
+                    <SelectItem value="Science">Science</SelectItem>
+                    <SelectItem value="Arts">Arts</SelectItem>
+                    <SelectItem value="Commercial">Commercial</SelectItem>
+                    <SelectItem value="Vocational">Vocational</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.faculty && (
+                  <p className="text-sm text-red-500 mt-1">{errors.faculty}</p>
+                )}
+              </div>
+            )}
 
             <div>
               <Label htmlFor="section">Section</Label>

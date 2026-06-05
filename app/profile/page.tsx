@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast"
 import DashboardLayout from "@/components/dashboard-layout"
 import { supabase } from "@/lib/supabase"
 import { UserCog, Edit, Save, X, Camera } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 
 interface AdminProfile {
   id: string
@@ -76,9 +77,11 @@ export default function ProfilePage() {
   const [profilePicture, setProfilePicture] = useState<File | null>(null)
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("")
 
+  const { admin } = useAuth()
+
   useEffect(() => {
     const loadProfile = async () => {
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id
       if (!adminId) {
         toast({
           title: "Error",
@@ -136,8 +139,12 @@ export default function ProfilePage() {
       }
     }
 
-    loadProfile()
-  }, [])
+    if (admin?.id) {
+      loadProfile()
+    } else {
+      setIsLoading(false)
+    }
+  }, [admin?.id])
 
   const handleInputChange = (field: string, value: string) => {
     setEditFormData((prev) => ({ ...prev, [field]: value }))
@@ -196,7 +203,7 @@ export default function ProfilePage() {
     setIsSaving(true)
 
     try {
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id
       if (!adminId) throw new Error("No admin ID found")
 
       // Handle profile picture upload
@@ -248,10 +255,7 @@ export default function ProfilePage() {
       // Update local state
       setProfile((prev) => prev ? { ...prev, ...updateData } : null)
 
-      // Update localStorage
-      if (editFormData.adminname) {
-        localStorage.setItem("adminName", editFormData.adminname)
-      }
+      // Removed localStorage update as it's no longer used
 
       toast({
         title: "Success",

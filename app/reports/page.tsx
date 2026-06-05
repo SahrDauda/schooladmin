@@ -30,6 +30,7 @@ import {
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/hooks/use-auth"
 import {
   LineChart,
   Line,
@@ -61,6 +62,7 @@ export default function ReportsPage() {
     attendance: [] as any[],
     performance: [] as any[],
   })
+  const { admin } = useAuth()
 
   useEffect(() => {
     fetchReportData()
@@ -69,8 +71,7 @@ export default function ReportsPage() {
   const fetchReportData = async () => {
     setLoading(true)
     try {
-      const adminId = localStorage.getItem("adminId")
-      const { data: admin } = await supabase.from('schooladmin').select('school_id').eq('id', adminId).single()
+      const adminId = admin?.id
       const schoolId = admin?.school_id || adminId
 
       // Fetch in parallel

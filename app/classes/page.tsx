@@ -88,6 +88,7 @@ export default function ClassesPage() {
                   mode="add"
                   teachers={teachers}
                   levelOptions={levelOptions}
+                  schoolStage={schoolInfo.stage || ""}
                   onSubmit={handleAddClass}
                   onCancel={() => setIsAddDialogOpen(false)}
                   isSubmitting={isSubmitting}
@@ -114,6 +115,7 @@ export default function ClassesPage() {
               classData={selectedClass}
               teachers={teachers}
               levelOptions={levelOptions}
+              schoolStage={schoolInfo.stage || ""}
               isOpen={isViewDialogOpen}
               onClose={() => {
                 setIsViewDialogOpen(false)

@@ -38,6 +38,7 @@ import {
 import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/hooks/use-auth"
 import { z } from "zod"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -303,8 +304,9 @@ interface Student {
 }
 
 export default function StudentsPage() {
-  const searchParams = useSearchParams()
+  const { admin, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const initialFilter = searchParams?.get("filter")
 
   const [searchQuery, setSearchQuery] = useState("")
@@ -397,9 +399,7 @@ export default function StudentsPage() {
   )
   const [schoolId, setSchoolId] = useState("")
   const [schoolName, setSchoolName] = useState("")
-  const [schoolStage, setSchoolStage] = useState(() => {
-    return typeof window !== "undefined" ? localStorage.getItem("schoolStage") || "" : ""
-  })
+  const [schoolStage, setSchoolStage] = useState("")
   const [isSearchingNIN, setIsSearchingNIN] = useState(false)
   const [ninSearchQuery, setNinSearchQuery] = useState("")
   const [isExporting, setIsExporting] = useState(false)
@@ -638,7 +638,7 @@ export default function StudentsPage() {
     setIsLoading(true)
     try {
       // Get current admin's school ID
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id
       let currentSchoolId = ""
       let currentSchoolName = ""
 
@@ -694,7 +694,7 @@ export default function StudentsPage() {
     const fetchClasses = async () => {
       try {
         // Get current admin's school ID
-        const adminId = localStorage.getItem("adminId")
+        const adminId = admin?.id
         let currentSchoolId = ""
 
         if (adminId) {
@@ -729,7 +729,7 @@ export default function StudentsPage() {
     // Fetch school admin data to auto-populate fields
     const fetchSchoolAdmin = async () => {
       try {
-        const adminId = localStorage.getItem("adminId")
+        const adminId = admin?.id
         if (adminId) {
           const { data: adminData } = await supabase
             .from('schooladmin')
@@ -962,7 +962,7 @@ export default function StudentsPage() {
       const studentId = formData.adm_no || `ST${Date.now().toString().slice(-6)}`
 
       // Ensure school information is included
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id
       let schoolData = {
         school_id: formData.school_id,
         schoolname: formData.schoolname,
@@ -1057,7 +1057,7 @@ export default function StudentsPage() {
       await refreshStudents()
 
       // Trigger classes page refresh by setting a flag
-      localStorage.setItem("refreshClasses", "true")
+      // localStorage.setItem("refreshClasses", "true") removed
 
       // Reset form and close dialog
       const currentYear = new Date().getFullYear().toString()
@@ -1320,7 +1320,7 @@ export default function StudentsPage() {
       await refreshStudents()
 
       // Trigger classes page refresh by setting a flag
-      localStorage.setItem("refreshClasses", "true")
+      // localStorage.setItem("refreshClasses", "true") removed
 
       setIsViewStudentOpen(false)
       setIsEditing(false)
@@ -1586,7 +1586,7 @@ export default function StudentsPage() {
       const parentId = `PAR${Date.now().toString().slice(-6)}`
 
       // Get current admin's school data
-      const adminId = localStorage.getItem("adminId")
+      const adminId = admin?.id
       let schoolData = {
         school_id: schoolId,
         schoolname: schoolName,

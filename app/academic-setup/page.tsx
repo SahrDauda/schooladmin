@@ -33,6 +33,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import { useAuth } from "@/hooks/use-auth"
 
 interface GradeSettings {
   id?: string
@@ -52,6 +53,7 @@ interface Room {
 
 export default function AcademicSetupPage() {
   const router = useRouter()
+  const { admin, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [schoolId, setSchoolId] = useState<string | null>(null)
@@ -71,7 +73,9 @@ export default function AcademicSetupPage() {
   const [newRoom, setNewRoom] = useState({ name: "", capacity: 30, type: "Classroom" })
 
   useEffect(() => {
-    const adminId = localStorage.getItem("adminId")
+    if (authLoading) return
+
+    const adminId = admin?.id
     if (!adminId) {
       router.push("/")
       return
@@ -81,13 +85,10 @@ export default function AcademicSetupPage() {
       setLoading(true)
       try {
         // 1. Get School ID
-        const { data: adminData } = await supabase
-          .from('schooladmin')
-          .select('school_id')
-          .eq('id', adminId)
-          .single()
-        
-        const currentSchoolId = adminData?.school_id || adminId
+        let currentSchoolId = adminId
+        if (admin) {
+          currentSchoolId = admin.school_id || adminId
+        }
         setSchoolId(currentSchoolId)
 
         // 2. Fetch Grade Formula
@@ -124,7 +125,7 @@ export default function AcademicSetupPage() {
     }
 
     fetchData()
-  }, [router])
+  }, [admin, authLoading, router])
 
   const handleSaveFormula = async () => {
     if (!schoolId) return

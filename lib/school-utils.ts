@@ -8,13 +8,10 @@ export interface SchoolInfo {
 
 export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
   try {
-    // Prefer values set by AuthProvider; fallback to existing localStorage keys
-    const adminIdFromStorage = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
-
     const { data: { user } } = await supabase.auth.getUser()
     const uid = user?.id || null
 
-    const candidateIds = [adminIdFromStorage, uid].filter(Boolean) as string[]
+    const candidateIds = [uid].filter(Boolean) as string[]
 
     if (candidateIds.length === 0) {
       return {
@@ -27,7 +24,7 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
     let resolvedAdminData: any | null = null
     let resolvedAdminDocId: string | null = null
 
-    // Try reading admin profile by possible IDs (localStorage and/or UID)
+    // Try reading admin profile by possible IDs
     for (const candId of candidateIds) {
       try {
         const { data: aDoc, error } = await supabase
@@ -69,9 +66,7 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
             // If stage is not in schools table, we might need to add it or infer it
             // For now, let's assume it might be there or we leave it empty
             schoolStage = (schoolData as any).stage || ""
-            if (typeof window !== "undefined" && schoolStage) {
-              localStorage.setItem("schoolStage", schoolStage)
-            }
+            schoolStage = (schoolData as any).stage || ""
           }
         } catch (error) {
           console.warn("Failed to read schools table:", error)
@@ -81,7 +76,7 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
       return {
         school_id: schoolId || resolvedAdminDocId!,
         schoolName: schoolName || resolvedAdminData.schoolname || resolvedAdminData.schoolName || "",
-        stage: schoolStage || (typeof window !== "undefined" ? localStorage.getItem("schoolStage") || "" : ""),
+        stage: schoolStage || "",
       }
     }
 
@@ -103,14 +98,11 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
 }
 
 export function getCurrentSchoolInfoSync(): SchoolInfo {
-  const adminId = typeof window !== "undefined" ? localStorage.getItem("adminId") : null
-  const stage = typeof window !== "undefined" ? localStorage.getItem("schoolStage") : null
-  const schoolName = typeof window !== "undefined" ? localStorage.getItem("adminName") : null
-
+  // Synchronous access is disabled when localStorage is removed
   return {
-    school_id: adminId || "unknown",
-    schoolName: schoolName || "",
-    stage: stage || "",
+    school_id: "unknown",
+    schoolName: "",
+    stage: "",
   }
 }
 

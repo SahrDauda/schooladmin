@@ -11,6 +11,7 @@ import DashboardLayout from "@/components/dashboard-layout"
 import { toast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/use-auth"
 
 interface Notification {
   id: string
@@ -32,8 +33,10 @@ export default function NotificationsPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
 
+  const { admin } = useAuth()
+
   const fetchNotifications = async () => {
-    const adminId = localStorage.getItem("adminId")
+    const adminId = admin?.id
     if (!adminId) return
 
     setLoading(true)

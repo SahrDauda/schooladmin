@@ -9,6 +9,7 @@ import { toast } from "@/hooks/use-toast"
 import { QRCodeSVG } from "qrcode.react"
 import { getCurrentSchoolInfo } from "@/lib/school-utils"
 import Image from "next/image"
+import { useAuth } from "@/hooks/use-auth"
 
 interface QRCodeData {
   qr_code_id: string
@@ -24,11 +25,13 @@ export default function TeacherAttendanceQR() {
   const [timeLeft, setTimeLeft] = useState(0)
   const [autoRefresh, setAutoRefresh] = useState(false)
 
+  const { admin } = useAuth()
+
   const generateQRCode = async () => {
     try {
-      // Get admin info from localStorage
-      const adminId = localStorage.getItem("adminId")
-      const adminName = localStorage.getItem("adminName") || "Principal"
+      // Get admin info from Context
+      const adminId = admin?.id
+      const adminName = admin?.adminName || admin?.name || "Principal"
 
       if (!adminId) {
         toast({

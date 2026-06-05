@@ -20,8 +20,10 @@ import {
     removeStudentFromSubject,
 } from "@/lib/subject-utils"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function SubjectAssignmentsPage() {
+    const { admin, loading: authLoading } = useAuth()
     const [isLoading, setIsLoading] = useState(true)
     const [students, setStudents] = useState<any[]>([])
     const [subjects, setSubjects] = useState<any[]>([])
@@ -32,27 +34,16 @@ export default function SubjectAssignmentsPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [filterSubject, setFilterSubject] = useState("all")
     const [schoolInfo, setSchoolInfo] = useState<any>({})
-    const [admin, setAdmin] = useState<any>(null)
-
     useEffect(() => {
         const fetchData = async () => {
+            if (authLoading) return
             setIsLoading(true)
             try {
-                const adminId = localStorage.getItem("adminId")
+                if (admin) {
+                    const schoolId = admin.school_id || admin.id
+                    const schoolName = admin.schoolName || ""
 
-                if (adminId) {
-                    const { data: adminData } = await supabase
-                        .from('schooladmin')
-                        .select('*')
-                        .eq('id', adminId)
-                        .single()
-
-                    if (adminData) {
-                        setAdmin(adminData)
-                        const schoolId = adminData.school_id || adminId
-                        const schoolName = adminData.schoolName || ""
-
-                        setSchoolInfo({ school_id: schoolId, school_name: schoolName })
+                    setSchoolInfo({ school_id: schoolId, school_name: schoolName })
 
                         // Fetch students, subjects, and assignments
                         const [studentsRes, subjectsRes, assignmentsRes] = await Promise.all([
@@ -64,13 +55,12 @@ export default function SubjectAssignmentsPage() {
                         setStudents(studentsRes.data || [])
                         setSubjects(subjectsRes.data || [])
                         setAssignments(assignmentsRes)
-                    }
                 }
             } catch (error) {
                 console.error("Error fetching data:", error)
                 toast({
                     title: "Error",
-                    description: "Failed to fetch data",
+                    description: "Failed to load data",
                     variant: "destructive",
                 })
             } finally {
@@ -79,7 +69,7 @@ export default function SubjectAssignmentsPage() {
         }
 
         fetchData()
-    }, [admin])
+    }, [admin, authLoading])
 
     const handleAssignStudents = async () => {
         if (!selectedSubject || selectedStudents.length === 0) {

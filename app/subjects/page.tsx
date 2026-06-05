@@ -119,6 +119,9 @@ export default function SubjectsPage() {
   })
   const [isSubmittingDepartment, setIsSubmittingDepartment] = useState(false)
 
+  // State for hydration mismatch prevention
+  const [isMounted, setIsMounted] = useState(false)
+
   // State for school info
   const [schoolInfo, setSchoolInfo] = useState<{ school_id: string; schoolName: string; stage?: string }>(() => {
     return getCurrentSchoolInfoSync()
@@ -149,6 +152,7 @@ export default function SubjectsPage() {
 
   // Load school info
   useEffect(() => {
+    setIsMounted(true)
     const loadSchoolInfo = async () => {
       const info = await getCurrentSchoolInfo()
       console.log("🏫 School info loaded:", info)
@@ -749,7 +753,7 @@ export default function SubjectsPage() {
 
   // Get stage-specific level options
   const levelOptions = getLevelOptions(schoolInfo.stage || "")
-  const isSeniorSecondary = schoolInfo.stage === "Senior Secondary"
+  const isSeniorSecondary = isMounted && schoolInfo.stage === "Senior Secondary"
 
   return (
     <DashboardLayout>
