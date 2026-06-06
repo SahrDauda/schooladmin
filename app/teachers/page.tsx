@@ -50,6 +50,7 @@ export default function TeachersPage() {
   const [selectedSubject, setSelectedSubject] = useState("all")
   const [schoolInfo, setSchoolInfo] = useState({ school_id: "", schoolName: "" })
   const [activeTab, setActiveTab] = useState("personal")
+  const [isAddTeacherOpen, setIsAddTeacherOpen] = useState(false)
 
   // Initial Form State
   const initialFormState = {
@@ -327,6 +328,7 @@ export default function TeachersPage() {
       setPassportPicture(null)
       setPassportPicturePreview("")
       setActiveTab("personal")
+      setIsAddTeacherOpen(false)
 
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -471,7 +473,7 @@ export default function TeachersPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-2xl font-semibold">Teachers</CardTitle>
             <div className="flex gap-2">
-              <Dialog>
+              <Dialog open={isAddTeacherOpen} onOpenChange={setIsAddTeacherOpen}>
                 <DialogTrigger asChild>
                   <Button>
                     <UserPlus className="w-4 h-4 mr-2" />
@@ -607,7 +609,7 @@ export default function TeachersPage() {
           </CardHeader>
           <CardContent>
             {/* Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <Card><CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Total Teachers</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalTeachers}</div></CardContent></Card>
               <Card><CardHeader><CardTitle className="text-sm font-medium text-green-600">Active</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{activeTeachers}</div></CardContent></Card>
               <Card><CardHeader><CardTitle className="text-sm font-medium text-blue-600">Male</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{maleTeachers}</div></CardContent></Card>

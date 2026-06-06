@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 interface Subject {
   id: string
+  class_subjects?: any[]
   name: string
   code: string
   department?: string
@@ -109,6 +110,7 @@ export default function SubjectsPage() {
   const [isAssignTeacherDialogOpen, setIsAssignTeacherDialogOpen] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null)
   const [selectedTeacher, setSelectedTeacher] = useState<string>("")
+  const [classAssignments, setClassAssignments] = useState<Record<string, string>>({})
 
   // State for department dialogs
   const [isAddDepartmentDialogOpen, setIsAddDepartmentDialogOpen] = useState(false)
@@ -174,7 +176,7 @@ export default function SubjectsPage() {
         // Fetch subjects
         const { data: subjectsData, error: subjectsError } = await supabase
           .from('subjects')
-          .select('*')
+          .select('*, class_subjects(*, classes(name), teachers(firstname, lastname, name))')
           .eq('school_id', schoolInfo.school_id)
           .order('name')
 
@@ -564,90 +566,60 @@ export default function SubjectsPage() {
 
   const handleOpenAssignTeacherDialog = (subject: Subject) => {
     setSelectedSubject(subject)
-    setSelectedTeacher(subject.assigned_teacher || "")
+    
+    // Pre-populate assignments based on class_subjects
+    const initialAssignments: Record<string, string> = {}
+    if (subject.class_subjects) {
+      subject.class_subjects.forEach(cs => {
+        if (cs.class_id && cs.teacher_id) {
+          initialAssignments[cs.class_id] = cs.teacher_id
+        }
+      })
+    }
+    setClassAssignments(initialAssignments)
     setIsAssignTeacherDialogOpen(true)
   }
 
   const handleAssignTeacher = async () => {
-    if (!selectedSubject || !selectedTeacher) return
+    if (!selectedSubject) return
 
     try {
-      const teacher = teachers.find(t => t.id === selectedTeacher)
-      if (!teacher) {
-        toast({
-          title: "Error",
-          description: "Selected teacher not found",
-          variant: "destructive",
-        })
-        return
+      // For each key in classAssignments, we upsert into class_subjects
+      const entries = Object.entries(classAssignments)
+      
+      // Delete old assignments first to avoid conflicts, or handle them via ON CONFLICT
+      // Actually, deleting all assignments for this subject and re-inserting is easiest
+      await supabase.from('class_subjects').delete().eq('subject_id', selectedSubject.id)
+
+      const inserts = entries.filter(([class_id, teacher_id]) => teacher_id).map(([class_id, teacher_id]) => ({
+        class_id,
+        subject_id: selectedSubject.id,
+        teacher_id,
+        school_id: schoolInfo.school_id
+      }))
+
+      if (inserts.length > 0) {
+        const { error: insertError } = await supabase.from('class_subjects').insert(inserts)
+        if (insertError) throw insertError
       }
-
-      const teacherName = teacher.firstname && teacher.lastname
-        ? `${teacher.firstname} ${teacher.lastname}`
-        : teacher.name || "Teacher"
-      const teacherEmail = teacher.email || ""
-
-      // Update subject with assigned teacher
-      const { error: subjectError } = await supabase
-        .from('subjects')
-        .update({
-          assigned_teacher: selectedTeacher,
-          assigned_teacher_name: teacherName,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedSubject.id)
-
-      if (subjectError) throw subjectError
-
-      // Update teacher document with assigned subject
-      // Note: This overwrites any previous subject assignment for the teacher, matching previous logic
-      const { error: teacherError } = await supabase
-        .from('teachers')
-        .update({
-          subject: selectedSubject.name,
-          subject_id: selectedSubject.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedTeacher)
-
-      if (teacherError) throw teacherError
-
-      // Send notification to teacher
-      try {
-        const { sendTeacherSubjectAssignmentNotification } = await import("@/lib/notification-utils")
-        await sendTeacherSubjectAssignmentNotification(
-          selectedTeacher,
-          teacherName,
-          teacherEmail,
-          selectedSubject.name,
-          selectedSubject.code,
-          schoolInfo.school_id
-        )
-      } catch (error) {
-        console.error("Error sending teacher notification:", error)
-        // Don't fail the assignment if notification fails
-      }
-
-      // Update local state
-      setSubjects(subjects.map(subject =>
-        subject.id === selectedSubject.id
-          ? { ...subject, assigned_teacher: selectedTeacher, assigned_teacher_name: teacherName }
-          : subject
-      ))
 
       toast({
         title: "Success",
-        description: `Teacher assigned to ${selectedSubject.name}`,
+        description: `Teachers assigned to ${selectedSubject.name}`,
       })
 
+      // Refetch subjects to get updated class_subjects
+      // For simplicity, trigger a reload or refetch
+      window.location.reload()
+      
       setIsAssignTeacherDialogOpen(false)
       setSelectedSubject(null)
-      setSelectedTeacher("")
+      setClassAssignments({})
     } catch (error) {
       console.error("Error assigning teacher:", error)
       toast({
         title: "Error",
-        description: "Failed to assign teacher",
+        description: "Failed to assign teachers",
         variant: "destructive",
       })
     }
@@ -842,17 +814,19 @@ export default function SubjectsPage() {
                           {isSeniorSecondary && <TableCell>{subject.department || "-"}</TableCell>}
                           <TableCell>{subject.level || "-"}</TableCell>
                           <TableCell>
-                            {subject.assigned_teacher_name ? (
+                            {subject.class_subjects && subject.class_subjects.length > 0 ? (
                               <div className="flex items-center gap-2">
-                                <span>{subject.assigned_teacher_name}</span>
+                                <span className="text-sm">
+                                  {subject.class_subjects.length} class{subject.class_subjects.length !== 1 ? 'es' : ''} assigned
+                                </span>
                                 <Button
                                   variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-destructive"
-                                  onClick={() => handleUnassignTeacher(subject)}
-                                  title="Unassign Teacher"
+                                  size="sm"
+                                  className="h-6 px-2 text-primary"
+                                  onClick={() => handleOpenAssignTeacherDialog(subject)}
+                                  title="Edit Assignments"
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Pencil className="h-3 w-3 mr-1" /> Edit
                                 </Button>
                               </div>
                             ) : (
@@ -1120,35 +1094,60 @@ export default function SubjectsPage() {
 
         {/* Assign Teacher Dialog */}
         <Dialog open={isAssignTeacherDialogOpen} onOpenChange={setIsAssignTeacherDialogOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Assign Teacher</DialogTitle>
+              <DialogTitle>Assign Teacher(s)</DialogTitle>
               <DialogDescription>
-                Assign a teacher to {selectedSubject?.name}
+                Assign a teacher to {selectedSubject?.name} for each class in its level ({selectedSubject?.level}).
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Select Teacher</Label>
-                <Select value={selectedTeacher} onValueChange={setSelectedTeacher}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a teacher" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teachers.map((teacher) => (
-                      <SelectItem key={teacher.id} value={teacher.id}>
-                        {teacher.firstname} {teacher.lastname}
-                      </SelectItem>
+              {(() => {
+                // Find classes that belong to this subject's level
+                // Assuming classes table has 'name' or we can match level. 
+                // For simplicity, we just filter classes where name starts with the level, or just list all classes if level is All.
+                const subjectLevel = selectedSubject?.level || "All";
+                const relevantClasses = subjectLevel === "All" 
+                  ? classes 
+                  : classes.filter(c => c.name.startsWith(subjectLevel));
+                
+                if (relevantClasses.length === 0) {
+                  return <div className="text-muted-foreground p-4 text-center">No classes found for this level.</div>;
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {relevantClasses.map(cls => (
+                      <div key={cls.id} className="grid grid-cols-[1fr_2fr] gap-4 items-center">
+                        <Label>{cls.name} {cls.section ? `(${cls.section})` : ''}</Label>
+                        <Select 
+                          value={classAssignments[cls.id] || "unassigned"} 
+                          onValueChange={(val) => setClassAssignments(prev => ({ ...prev, [cls.id]: val === "unassigned" ? "" : val }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a teacher" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unassigned">-- Unassigned --</SelectItem>
+                            {teachers.map((teacher) => (
+                              <SelectItem key={teacher.id} value={teacher.id}>
+                                {teacher.firstname} {teacher.lastname}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <DialogFooter>
+                  </div>
+                );
+              })()}
+              
+              <DialogFooter className="mt-4 pt-4 border-t">
                 <Button variant="outline" onClick={() => setIsAssignTeacherDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAssignTeacher} disabled={!selectedTeacher}>
-                  Assign Teacher
+                <Button onClick={handleAssignTeacher}>
+                  Save Assignments
                 </Button>
               </DialogFooter>
             </div>

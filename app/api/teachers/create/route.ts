@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
               <p>Below are your secure credentials to log into the Staff & Teacher Portal:</p>
               
               <div style="background-color: #f4f7fa; padding: 20px; border-radius: 8px; border-left: 4px solid #1E3A5F; margin: 20px 0;">
-                <p style="margin: 8px 0;"><strong>Teacher Portal Link:</strong> <a href="${window?.location?.origin || 'http://localhost:3000'}" style="color: #1E3A5F; font-weight: bold; text-decoration: none;">Click Here to Access Portal</a></p>
+                <p style="margin: 8px 0;"><strong>Teacher Portal Link:</strong> <a href="${request.headers.get("origin") || 'http://localhost:3000'}" style="color: #1E3A5F; font-weight: bold; text-decoration: none;">Click Here to Access Portal</a></p>
                 <p style="margin: 8px 0;"><strong>Your Username / Email:</strong> <code style="font-size: 14px; background: #e8ecef; padding: 2px 6px; border-radius: 3px;">${email}</code></p>
                 <p style="margin: 8px 0;"><strong>Temporary Password:</strong> <code style="font-size: 15px; font-weight: bold; color: #e11d48; background: #ffe4e6; padding: 2px 8px; border-radius: 3px;">${temporaryPassword}</code></p>
               </div>

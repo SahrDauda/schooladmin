@@ -338,7 +338,7 @@ export default function AttendancePage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
