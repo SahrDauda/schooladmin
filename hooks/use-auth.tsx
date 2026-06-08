@@ -15,7 +15,7 @@ interface AdminData {
     role: string
     school_id: string
     hasloggedinbefore?: boolean
-    firstLoginAt?: any
+    firstLoginAt?: unknown
     gender?: string
     admin_images?: string
     schoolStage?: string
@@ -33,6 +33,96 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+async function fetchAdminProfile(currentUser: User): Promise<AdminData | null> {
+    try {
+        let adminData: Record<string, unknown> | null = null
+
+        const { data: byId, error: byIdError } = await supabase
+            .from("schooladmin")
+            .select("*")
+            .eq("id", currentUser.id)
+            .maybeSingle()
+
+        if (byIdError) {
+            console.error("[fetchAdminProfile] UUID query error:", byIdError.message)
+        } else if (byId) {
+            adminData = byId
+        }
+
+        if (!adminData && currentUser.email) {
+            const normalizedEmail = currentUser.email.trim().toLowerCase()
+
+            const { data: byEmail, error: byEmailError } = await supabase
+                .from("schooladmin")
+                .select("*")
+                .eq("email", normalizedEmail)
+                .maybeSingle()
+
+            if (byEmailError) {
+                console.error("[fetchAdminProfile] email query error:", byEmailError.message)
+            } else if (byEmail) {
+                adminData = byEmail
+            }
+        }
+
+        if (!adminData && currentUser.email) {
+            const { data: byEmailAddress, error: byEmailAddressError } = await supabase
+                .from("schooladmin")
+                .select("*")
+                .eq("emailaddress", currentUser.email.trim().toLowerCase())
+                .maybeSingle()
+
+            if (byEmailAddressError) {
+                console.error("[fetchAdminProfile] emailaddress query error:", byEmailAddressError.message)
+            } else if (byEmailAddress) {
+                adminData = byEmailAddress
+            }
+        }
+
+        if (adminData) {
+            let schoolStage = ""
+            const schoolId = adminData.school_id as string | undefined
+
+            if (schoolId) {
+                const { data: school, error: schoolError } = await supabase
+                    .from("schools")
+                    .select("stage")
+                    .eq("id", schoolId)
+                    .maybeSingle()
+
+                if (schoolError) {
+                    console.error("[fetchAdminProfile] school stage error:", schoolError.message)
+                } else if (school) {
+                    schoolStage = school.stage || ""
+                }
+            }
+
+            return {
+                ...(adminData as AdminData),
+                id: adminData.id as string,
+                schoolStage,
+                schoolName: (adminData.schoolname as string) || (adminData.schoolName as string) || "",
+            }
+        }
+
+        const userRole = currentUser.user_metadata?.role
+        if (userRole === "Teacher" || userRole === "Staff") {
+            return {
+                id: currentUser.id,
+                emailaddress: currentUser.email || "",
+                role: userRole,
+                school_id: "",
+            } as AdminData
+        }
+
+        console.warn("[fetchAdminProfile] No admin record for:", currentUser.email)
+        return null
+    } catch (error) {
+        console.error("[fetchAdminProfile]", error)
+        return null
+    }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [session, setSession] = useState<Session | null>(null)
@@ -43,132 +133,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         let active = true
 
-        const fetchAdminProfile = async (currentUser: User): Promise<AdminData | null> => {
-            try {
-                // Coerce a PostgrestBuilder into a real Promise so
-                // Promise.race (used inside withTimeout) accepts it.
-                const toPromise = <T,>(q: PromiseLike<T>): Promise<T> =>
-                    Promise.resolve(q)
+        const loadAdminProfile = async (currentUser: User, replaceExisting = true) => {
+            const profile = await fetchAdminProfile(currentUser)
+            if (!active) return
 
-                // Race a query against a 5 s timeout.
-                const withTimeout = <T,>(
-                    q: PromiseLike<T>,
-                    ms = 5000
-                ): Promise<T | null> =>
-                    Promise.race([
-                        toPromise(q),
-                        new Promise<null>((resolve) =>
-                            setTimeout(() => resolve(null), ms)
-                        ),
-                    ])
-
-                // 1. Primary: query by UUID
-                let admins: any = null
-                const byId = await withTimeout(
-                    supabase
-                        .from('schooladmin')
-                        .select('*')
-                        .eq('id', currentUser.id)
-                        .maybeSingle()
-                )
-                if (byId) {
-                    if ((byId as any).error) {
-                        console.error("Auth UUID query error:", (byId as any).error.message || (byId as any).error)
-                    } else if ((byId as any).data) {
-                        admins = (byId as any).data
-                    }
-                }
-
-                // 2. Fallback: query by email column
-                if (!admins && currentUser.email) {
-                    const byEmail = await withTimeout(
-                        supabase
-                            .from('schooladmin')
-                            .select('*')
-                            .eq('email', currentUser.email)
-                            .maybeSingle()
-                    )
-                    if (byEmail) {
-                        if ((byEmail as any).error) {
-                            console.error("Auth email query error:", (byEmail as any).error.message || (byEmail as any).error)
-                        } else if ((byEmail as any).data) {
-                            admins = (byEmail as any).data
-                        }
-                    }
-                }
-
-                if (admins) {
-                    const adminData = admins as any
-                    console.log("Admin document data:", adminData)
-
-                    let schoolStage = ""
-                    if (adminData.school_id) {
-                        try {
-                            const { data: school } = await supabase
-                                .from('schools')
-                                .select('stage')
-                                .eq('id', adminData.school_id)
-                                .single()
-                            if (school) {
-                                schoolStage = school.stage || ""
-                            }
-                        } catch (e) {
-                            console.error("Error fetching school stage in auth:", e)
-                        }
-                    }
-
-                    return {
-                        ...adminData,
-                        id: adminData.id,
-                        schoolStage: schoolStage,
-                        schoolName: adminData.schoolname || adminData.schoolName || ""
-                    }
-                }
-
-                // Fallback: check metadata role
-                const userRole = currentUser.user_metadata?.role
-                if (userRole === "Teacher" || userRole === "Staff") {
-                    console.log("User is a Staff member, allowing access")
-                    return {
-                        id: currentUser.id,
-                        emailaddress: currentUser.email || "",
-                        role: userRole,
-                        school_id: "",
-                    } as any
-                }
-
-                console.warn("No admin document found for user:", currentUser.email)
-                return null
-            } catch (error) {
-                console.error("Error in fetchAdminProfile:", error)
-                return null
+            if (profile) {
+                setAdmin(profile)
+            } else if (replaceExisting) {
+                setAdmin(null)
             }
         }
 
         const initializeAuth = async () => {
             try {
-                const { data: { session: initialSession } } = await supabase.auth.getSession()
-                
+                const { data: { session: initialSession }, error } = await supabase.auth.getSession()
+
+                if (error) {
+                    console.error("[initializeAuth]", error.message)
+                }
+
                 if (!active) return
 
                 if (initialSession?.user) {
                     setSession(initialSession)
                     setUser(initialSession.user)
-                    
-                    const adminProfile = await fetchAdminProfile(initialSession.user)
-                    if (active) {
-                        setAdmin(adminProfile)
-                    }
+                    await loadAdminProfile(initialSession.user)
                 } else {
                     setSession(null)
                     setUser(null)
                     setAdmin(null)
                 }
             } catch (error) {
-                console.error("Error initializing auth session:", error)
-                if (active) {
-                    setAdmin(null)
-                }
+                console.error("[initializeAuth]", error)
             } finally {
                 if (active) {
                     setLoading(false)
@@ -178,52 +174,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         initializeAuth()
 
-        // Set a backup timeout to prevent infinite loading in case initialization hangs
-        const loadingTimeout = setTimeout(() => {
-            if (active) {
-                setLoading((currentLoading) => {
-                    if (currentLoading) {
-                        console.log("Auth loading timeout reached, forcing loading to false")
-                        return false
-                    }
-                    return currentLoading
-                })
-            }
-        }, 6000)
-
-        // Listen for auth events (sign in, sign out, token refresh, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
             if (!active) return
 
-            // Handle actual authentication state changes
-            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-                setSession(newSession)
-                setUser(newSession?.user ?? null)
-                
-                if (newSession?.user) {
-                    // Only set loading to true if we are not already showing dashboard (e.g. initial login)
-                    const adminProfile = await fetchAdminProfile(newSession.user)
-                    if (active) {
-                        setAdmin(adminProfile)
-                    }
-                }
-            } else if (event === "SIGNED_OUT") {
+            if (event === "SIGNED_OUT") {
                 setSession(null)
                 setUser(null)
                 setAdmin(null)
+                setLoading(false)
+                return
+            }
+
+            if (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+                setSession(newSession)
+                setUser(newSession?.user ?? null)
+
+                if (newSession?.user) {
+                    // Never wipe an existing admin profile when a background refresh fails.
+                    await loadAdminProfile(newSession.user, event === "SIGNED_IN" || event === "INITIAL_SESSION")
+                } else {
+                    setAdmin(null)
+                }
+
+                if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+                    setLoading(false)
+                }
             }
         })
 
         return () => {
             active = false
-            clearTimeout(loadingTimeout)
             subscription.unsubscribe()
         }
-    }, [router])
+    }, [])
 
     const signOut = async () => {
         try {
             await supabase.auth.signOut()
+            setSession(null)
+            setUser(null)
             setAdmin(null)
             router.push("/")
         } catch (error) {
@@ -234,53 +223,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const refreshAdminData = async () => {
         if (!user) return
 
-        try {
-            // 1. Primary Check: Query by UUID
-            let { data: adminData } = await supabase
-                .from('schooladmin')
-                .select('*')
-                .eq('id', user.id)
-                .maybeSingle()
-
-            // 2. Fallback: Query by email column
-            if (!adminData && user.email) {
-                const { data: byEmail } = await supabase
-                    .from('schooladmin')
-                    .select('*')
-                    .eq('email', user.email)
-                    .maybeSingle()
-                if (byEmail) {
-                    adminData = byEmail
-                }
-            }
-
-            if (adminData) {
-                let schoolStage = ""
-                if (adminData.school_id) {
-                    try {
-                        const { data: school } = await supabase
-                            .from('schools')
-                            .select('stage')
-                            .eq('id', adminData.school_id)
-                            .single()
-                        if (school) {
-                            schoolStage = school.stage || ""
-                        }
-                    } catch (e) {
-                        console.error("Error fetching school stage in refresh:", e)
-                    }
-                }
-
-                const resolvedAdmin: AdminData = {
-                    ...adminData as any,
-                    id: adminData.id,
-                    schoolStage: schoolStage,
-                    schoolName: (adminData as any).schoolname || adminData.schoolName || ""
-                }
-                setAdmin(resolvedAdmin)
-            }
-        } catch (error) {
-            console.error("Error refreshing admin data:", error)
+        const profile = await fetchAdminProfile(user)
+        if (profile) {
+            setAdmin(profile)
         }
     }
 
@@ -290,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         admin,
         loading,
         signOut,
-        refreshAdminData
+        refreshAdminData,
     }
 
     return (

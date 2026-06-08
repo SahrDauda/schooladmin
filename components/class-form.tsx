@@ -192,15 +192,13 @@ export function ClassForm({
     const isValid = await validateForm()
     if (!isValid) return
 
-    const submitData = {
-      ...formData,
+    const submitData: Record<string, unknown> = {
+      name: formData.name,
+      level: formData.level,
       capacity: Number(formData.capacity),
-      // Map form field name to DB column name
       form_teacher_id: formData.teacher_id || null,
       faculty: formData.faculty || null,
     }
-    // Remove the raw teacher_id key so we don't confuse the backend
-    delete submitData.teacher_id
 
     const success = await onSubmit(submitData)
     if (success) {

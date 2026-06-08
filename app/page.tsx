@@ -11,22 +11,25 @@ import { toast } from "@/hooks/use-toast"
 import { Lock, Mail, Eye, EyeOff, UserPlus } from "lucide-react"
 import { SchoolTechLogo } from "@/components/school-tech-logo"
 import { useAuth } from "@/hooks/use-auth"
+import { validateLoginFields, resolveLoginFailureMessage } from "@/lib/auth-error-utils"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { admin, loading: authLoading } = useAuth()
+  const { admin, loading: authLoading, user } = useAuth()
   const [emailaddress, setEmailAddress] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
-    if (admin) {
+    if (!authLoading && user) {
       router.push("/dashboard")
     }
-  }, [admin, router])
+  }, [user, authLoading, router])
 
   const handleForgotPassword = () => {
     router.push("/forgot-password")
@@ -36,18 +39,37 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setErrorMessage("")
+    setEmailError("")
+    setPasswordError("")
+
+    const validationError = validateLoginFields(emailaddress, password)
+    if (validationError) {
+      if (validationError.field === "email") setEmailError(validationError.message)
+      if (validationError.field === "password") setPasswordError(validationError.message)
+      if (!validationError.field) setErrorMessage(validationError.message)
+      setLoading(false)
+      return
+    }
 
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: emailaddress,
+        email: emailaddress.trim(),
         password: password,
       })
 
-      if (authError) throw authError
+      if (authError) {
+        const failure = await resolveLoginFailureMessage(emailaddress, authError)
+        if (failure.field === "email") setEmailError(failure.message)
+        if (failure.field === "password") setPasswordError(failure.message)
+        if (!failure.field) setErrorMessage(failure.message)
+        toast({
+          title: "Login Failed",
+          description: failure.message,
+          variant: "destructive",
+        })
+        return
+      }
 
-      // signInWithPassword succeeded — onAuthStateChange in the AuthProvider
-      // will verify the admin record and redirect away if the user is not
-      // a valid admin. We just navigate to the dashboard here.
       router.push("/dashboard")
     } catch (err) {
       const error = err as Error
@@ -55,7 +77,7 @@ export default function LoginPage() {
       setErrorMessage(error.message || "Login failed. Please try again.")
       toast({
         title: "Login Failed",
-        description: error.message || "Invalid email or password",
+        description: error.message || "Login failed. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -83,11 +105,15 @@ export default function LoginPage() {
                     id="emailaddress"
                     type="email"
                     placeholder="Admin Email"
-                    className="pl-10 h-11"
+                    className={`pl-10 h-11 ${emailError ? "border-red-500" : ""}`}
                     value={emailaddress}
-                    onChange={(e) => setEmailAddress(e.target.value)}
+                    onChange={(e) => {
+                      setEmailAddress(e.target.value)
+                      if (emailError) setEmailError("")
+                    }}
                     required
                   />
+                  {emailError && <p className="text-sm text-red-500">{emailError}</p>}
                 </div>
               </div>
               <div className="space-y-2">
@@ -97,9 +123,12 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Password"
-                    className="pl-10 h-11 pr-10"
+                    className={`pl-10 h-11 pr-10 ${passwordError ? "border-red-500" : ""}`}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      if (passwordError) setPasswordError("")
+                    }}
                     required
                   />
                   <button
@@ -110,6 +139,7 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
+                {passwordError && <p className="text-sm text-red-500">{passwordError}</p>}
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">

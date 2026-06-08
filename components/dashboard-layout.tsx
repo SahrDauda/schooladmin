@@ -71,7 +71,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [schoolInfo, setSchoolInfo] = useState({ name: "Loading...", stage: "" })
-  const { admin, loading } = useAuth()
+  const { admin, loading, user } = useAuth()
 
   const sidebarItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -90,7 +90,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
 
   useEffect(() => {
-    if (!loading && !admin && pathname !== "/") {
+    if (!loading && !user && pathname !== "/") {
       router.push("/")
       return
     }
@@ -111,7 +111,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       fetchNotifications(admin.id)
     }
-  }, [admin, loading, pathname, router])
+  }, [admin, loading, user, pathname, router])
 
   useEffect(() => {
     const handleResize = () => {

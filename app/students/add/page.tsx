@@ -40,7 +40,7 @@ const STEPS = [
 
 export default function AddStudentPage() {
   const router = useRouter()
-  const { admin, loading: authLoading } = useAuth()
+  const { admin, loading: authLoading, user } = useAuth()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [schoolId, setSchoolId] = useState("")
@@ -89,11 +89,14 @@ export default function AddStudentPage() {
   useEffect(() => {
     if (authLoading) return
 
-    const adminId = admin?.id
-    if (!adminId) {
+    if (!user) {
       router.push("/")
       return
     }
+
+    if (!admin?.id) return
+
+    const adminId = admin.id
 
     const initData = async () => {
       try {
@@ -120,7 +123,7 @@ export default function AddStudentPage() {
       }
     }
     initData()
-  }, [admin, authLoading, router])
+  }, [admin, authLoading, router, user])
 
   useEffect(() => {
     if (schoolStage === "primary") {

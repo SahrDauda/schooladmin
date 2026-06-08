@@ -53,7 +53,7 @@ interface Room {
 
 export default function AcademicSetupPage() {
   const router = useRouter()
-  const { admin, loading: authLoading } = useAuth()
+  const { admin, loading: authLoading, user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [schoolId, setSchoolId] = useState<string | null>(null)
@@ -75,19 +75,20 @@ export default function AcademicSetupPage() {
   useEffect(() => {
     if (authLoading) return
 
-    const adminId = admin?.id
-    if (!adminId) {
+    if (!user) {
       router.push("/")
       return
     }
+
+    if (!admin?.id) return
 
     const fetchData = async () => {
       setLoading(true)
       try {
         // 1. Get School ID
-        let currentSchoolId = adminId
-        if (admin) {
-          currentSchoolId = admin.school_id || adminId
+        let currentSchoolId = admin.id
+        if (admin.school_id) {
+          currentSchoolId = admin.school_id
         }
         setSchoolId(currentSchoolId)
 
@@ -125,7 +126,7 @@ export default function AcademicSetupPage() {
     }
 
     fetchData()
-  }, [admin, authLoading, router])
+  }, [admin, authLoading, router, user])
 
   const handleSaveFormula = async () => {
     if (!schoolId) return

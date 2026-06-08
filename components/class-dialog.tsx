@@ -124,13 +124,13 @@ export function ClassDialog({
 
     if (!validateForm() || !classData) return
 
-    const submitData = {
-      ...editFormData,
+    const submitData: Record<string, unknown> = {
+      name: editFormData.name,
+      level: editFormData.level,
       capacity: Number(editFormData.capacity),
       form_teacher_id: editFormData.teacher_id || null,
       faculty: editFormData.faculty || null,
     }
-    delete (submitData as any).teacher_id
 
     const success = await onUpdate(classData.id, submitData, classData.form_teacher_id)
     if (success) {

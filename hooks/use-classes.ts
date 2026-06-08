@@ -137,12 +137,14 @@ export const useClasses = (): UseClassesReturn => {
             const teacherEmail = teacher.email || teacher.emailaddress || ""
 
             const { sendTeacherClassAssignmentNotification } = await import("@/lib/notification-utils")
+            const assignedClass = classes.find((cls) => cls.id === classId)
             await sendTeacherClassAssignmentNotification(
               teacherChangeInfo.newTeacherId,
               teacherName,
               teacherEmail,
-              updateData.name,
-              updateData.level
+              updateData.name || assignedClass?.name || "your class",
+              updateData.level || assignedClass?.level || "",
+              schoolInfo.school_id
             )
           }
         } catch (error) {
@@ -169,7 +171,7 @@ export const useClasses = (): UseClassesReturn => {
     } finally {
       setIsSubmitting(false)
     }
-  }, [schoolInfo, teachers, refreshClasses])
+  }, [schoolInfo, teachers, classes, refreshClasses])
 
   // Delete class
   const deleteClassData = useCallback(async (classId: string): Promise<boolean> => {

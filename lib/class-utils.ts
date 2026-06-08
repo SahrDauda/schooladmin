@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { z } from "zod"
-import { toast } from "@/hooks/use-toast"
 import { logClassAction } from "@/lib/audit-utils"
+import { getErrorMessage } from "@/lib/error-utils"
 
 // Validation schemas
 export const classSchema = z.object({
@@ -90,9 +90,8 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
       }
     }
 
-    // Validate teacher assignment
-    if (validatedData.form_teacher_id || data.form_teacher_id) {
-      const teacherId = validatedData.form_teacher_id || data.form_teacher_id
+    const teacherId = validatedData.form_teacher_id ?? data.form_teacher_id ?? data.teacher_id
+    if (teacherId) {
 
       const { data: teacherDoc, error: teacherError } = await supabase
         .from('teachers')
@@ -148,6 +147,25 @@ export const validateClassData = async (data: any, schoolId: string, existingCla
       warnings
     }
   }
+}
+
+function buildClassUpdatePayload(updateData: Record<string, unknown>): Record<string, unknown> {
+  const formTeacherId =
+    updateData.form_teacher_id !== undefined
+      ? updateData.form_teacher_id
+      : updateData.teacher_id
+
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (updateData.name !== undefined) payload.name = updateData.name
+  if (updateData.level !== undefined) payload.level = updateData.level
+  if (updateData.capacity !== undefined) payload.capacity = Number(updateData.capacity)
+  if (formTeacherId !== undefined) payload.form_teacher_id = formTeacherId || null
+  if (updateData.faculty !== undefined) payload.faculty = updateData.faculty || null
+
+  return payload
 }
 
 // Data fetching functions
@@ -298,13 +316,9 @@ export const updateClass = async (
       throw new Error(validation.errors.join(", "))
     }
 
-    // Prepare update data
-    const finalData = {
-      ...updateData,
-      updated_at: new Date().toISOString(),
-    }
+    const finalData = buildClassUpdatePayload(updateData)
+    const newTeacherId = finalData.form_teacher_id as string | null | undefined
 
-    // Update in Supabase
     const { error } = await supabase
       .from('classes')
       .update(finalData)
@@ -312,15 +326,14 @@ export const updateClass = async (
 
     if (error) throw error
 
-    // Return teacher change info for notification
     return {
       previousTeacherId,
-      newTeacherId: updateData.form_teacher_id,
-      hasTeacherChanged: previousTeacherId !== updateData.form_teacher_id
+      newTeacherId: newTeacherId ?? undefined,
+      hasTeacherChanged: String(previousTeacherId || "") !== String(newTeacherId || ""),
     }
   } catch (error) {
-    console.error("Error updating class:", error)
-    throw error
+    console.error("Error updating class:", getErrorMessage(error))
+    throw new Error(getErrorMessage(error))
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { PageSkeleton } from "@/components/loading-skeleton"
 
 interface ProtectedRouteProps {
@@ -11,36 +11,32 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requireAuth = true }: ProtectedRouteProps) {
-    const { user, admin, loading } = useAuth()
+    const { user, admin, loading, refreshAdminData } = useAuth()
     const router = useRouter()
-    const [loadingTimeout, setLoadingTimeout] = useState(false)
-
-    // Timeout to prevent infinite loading
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setLoadingTimeout(true)
-        }, 5000) // Max 5 seconds
-        
-        return () => clearTimeout(timer)
-    }, [])
 
     useEffect(() => {
-        // Only redirect after loading is complete OR timeout reached
-        if ((!loading || loadingTimeout) && requireAuth) {
-            if (!user || !admin) {
-                router.push("/")
-            }
+        if (!loading && requireAuth && !user) {
+            router.push("/")
         }
-    }, [user, admin, loading, loadingTimeout, requireAuth, router])
+    }, [user, loading, requireAuth, router])
 
-    // Show skeleton only while loading (with timeout protection)
-    if (loading && !loadingTimeout) {
+    useEffect(() => {
+        if (!loading && user && !admin) {
+            void refreshAdminData()
+        }
+    }, [loading, user, admin, refreshAdminData])
+
+    if (loading) {
         return <PageSkeleton />
     }
 
-    if (requireAuth && (!user || !admin)) {
-        return null // Will redirect to login
+    if (requireAuth && !user) {
+        return null
+    }
+
+    if (requireAuth && user && !admin) {
+        return <PageSkeleton />
     }
 
     return <>{children}</>
-} 
+}
