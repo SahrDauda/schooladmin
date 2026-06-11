@@ -29,6 +29,8 @@ grades, timetables, reports). Key tech stack:
 
 ## Interaction Guidelines
 
+
+
 - Assume the user knows React/JS but may be new to Next.js App Router concepts.
 - Always explain the difference between Server Components and Client Components
   when it matters to the implementation.
