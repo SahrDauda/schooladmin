@@ -261,20 +261,6 @@ export const deleteStudent = async (
   }
 }
 
-// Dashboard metrics
-export const getStudentMetrics = (students: StudentWithDetails[]) => {
-  const totalStudents = students.length
-  const activeStudents = students.filter(s => s.status?.toLowerCase() === "active").length
-  const inactiveStudents = students.filter(s => s.status?.toLowerCase() === "inactive").length
-  const withSpecialNeeds = students.filter(s => s.is_disabled || s.health_status).length
-
-  return {
-    totalStudents,
-    activeStudents,
-    inactiveStudents,
-    withSpecialNeeds
-  }
-}
 
 // Parent operations
 export const addParentToStudent = async (
@@ -335,5 +321,40 @@ export const addParentToStudent = async (
   } catch (error) {
     console.error("Error adding parent:", error)
     throw new Error("Failed to link parent to student")
+  }
+}
+
+export const getNextAdmissionNumber = async (schoolId: string): Promise<string> => {
+  try {
+    // Get the most recently added student for this school to find the highest admission number
+    const lastStudent = await prisma.students.findFirst({
+      where: { school_id: schoolId },
+      orderBy: { created_at: 'desc' },
+      select: { admission_number: true }
+    })
+
+    const year = new Date().getFullYear().toString()
+    let nextNum = 1
+
+    if (lastStudent?.admission_number) {
+      // Assuming pattern is something like [prefix][year][number] or just [year][number]
+      // Let's just extract the trailing digits
+      const match = lastStudent.admission_number.match(/(\d+)$/)
+      if (match) {
+        nextNum = parseInt(match[1], 10) + 1
+      }
+    } else {
+      // If no students exist, fallback to counting (should be 0 anyway)
+      const count = await prisma.students.count({
+        where: { school_id: schoolId }
+      })
+      nextNum = count + 1
+    }
+
+    // Format as YEAR + 3-digit padded number (e.g., 2024001)
+    return `${year}${nextNum.toString().padStart(3, '0')}`
+  } catch (error) {
+    console.error("Error generating admission number:", error)
+    return `${new Date().getFullYear()}${Date.now().toString().slice(-3)}`
   }
 }

@@ -5,13 +5,26 @@ import {
   createStudent,
   updateStudent,
   deleteStudent,
-  getStudentMetrics,
+  getNextAdmissionNumber,
   type StudentWithDetails,
   type StudentValidationResult
 } from "@/lib/student-utils"
 import { useAuth } from "@/hooks/use-auth"
 import { supabase } from "@/lib/supabase"
-import { generateAdmissionNumber } from "@/lib/school-utils"
+
+export const getStudentMetrics = (students: StudentWithDetails[]) => {
+  const totalStudents = students.length
+  const activeStudents = students.filter(s => s.status?.toLowerCase() === "active").length
+  const inactiveStudents = students.filter(s => s.status?.toLowerCase() === "inactive").length
+  const withSpecialNeeds = students.filter(s => s.is_disabled || s.health_status).length
+
+  return {
+    totalStudents,
+    activeStudents,
+    inactiveStudents,
+    withSpecialNeeds
+  }
+}
 
 interface UseStudentsReturn {
   // State
@@ -230,8 +243,7 @@ export const useStudents = (): UseStudentsReturn => {
 
   const generateNewAdmissionNumber = useCallback(async () => {
     if (!schoolInfo.school_id) return ""
-    const currentYear = new Date().getFullYear().toString()
-    return await generateAdmissionNumber(schoolInfo.school_id, currentYear)
+    return await getNextAdmissionNumber(schoolInfo.school_id)
   }, [schoolInfo.school_id])
 
   // Calculate metrics
