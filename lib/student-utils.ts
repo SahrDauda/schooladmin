@@ -180,16 +180,26 @@ export const createStudent = async (
       throw new Error(validation.errors.join(", "))
     }
 
+    // Extract fields not mapped in Prisma
+    const { disability_type, health_status, ...prismaData } = studentData
+
     const student = await prisma.students.create({
       data: {
-        ...studentData,
+        ...prismaData,
+        health_status: health_status, // mapped
         school_id: schoolInfo.school_id
       }
     })
 
+    // Save unmapped fields via Supabase directly
+    if (disability_type !== undefined) {
+      const { supabase } = await import("@/lib/supabase")
+      await supabase.from('students').update({ disability_type }).eq('id', student.id)
+    }
+
     if (userId && userName) {
       await logStudentAction("create", student.id, userId, userName, schoolInfo.school_id, {
-        after: student
+        after: { ...student, disability_type }
       })
     }
 
@@ -215,15 +225,27 @@ export const updateStudent = async (
 
     const beforeUpdate = await prisma.students.findUnique({ where: { id: studentId } })
 
+    // Extract fields not mapped in Prisma
+    const { disability_type, health_status, ...prismaData } = updateData
+
     const student = await prisma.students.update({
       where: { id: studentId },
-      data: updateData
+      data: {
+        ...prismaData,
+        health_status: health_status
+      }
     })
+
+    // Save unmapped fields via Supabase directly
+    if (disability_type !== undefined) {
+      const { supabase } = await import("@/lib/supabase")
+      await supabase.from('students').update({ disability_type }).eq('id', studentId)
+    }
 
     if (userId && userName) {
       await logStudentAction("update", studentId, userId, userName, schoolInfo.school_id, {
         before: beforeUpdate,
-        after: student
+        after: { ...student, disability_type }
       })
     }
   } catch (error) {
