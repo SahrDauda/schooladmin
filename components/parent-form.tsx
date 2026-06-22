@@ -15,10 +15,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Loader2 } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/hooks/use-auth"
 import { toast } from "@/hooks/use-toast"
-import type { StudentWithDetails } from "@/lib/student-utils"
+import { addParentToStudent, type StudentWithDetails } from "@/lib/student-utils"
 
 interface ParentFormProps {
   student: StudentWithDetails | null
@@ -58,41 +57,13 @@ export function ParentForm({ student, isOpen, onClose, onSuccess }: ParentFormPr
 
     setIsSubmitting(true)
     try {
-      const parentId = `PAR${Date.now()}`
-      const currentDate = new Date()
-
-      const parentData = {
-        ...formData,
-        id: parentId,
-        school_id: admin.school_id,
-        school_name: admin.schoolName || "",
-        status: "Active",
-        created_at: currentDate.toISOString(),
-        date: currentDate.toLocaleDateString(),
-        month: currentDate.toLocaleString("default", { month: "long" }),
-        year: currentDate.getFullYear().toString(),
-      }
-
-      // Save parent to Supabase since it's not fully mapped in Prisma schema yet
-      const { error: parentError } = await supabase
-        .from('parents')
-        .insert(parentData)
-
-      if (parentError) throw parentError
-
-      // Update student via Supabase to bypass Prisma schema limitations on parent_id
-      const { error: studentError } = await supabase
-        .from('students')
-        .update({
-          parent_id: parentId,
-          parent_name: `${formData.firstname} ${formData.lastname}`,
-          parent_relationship: formData.relationship_with_student || "Parent",
-          parent_phone: formData.phonenumber,
-          parent_email: formData.emailaddress
-        })
-        .eq('id', student.id)
-
-      if (studentError) throw studentError
+      await addParentToStudent(
+        student.id,
+        formData,
+        { school_id: admin.school_id, schoolName: admin.schoolName || "" },
+        admin.id,
+        admin.adminname || "Admin"
+      )
 
       toast({
         title: "Success",

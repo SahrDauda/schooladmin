@@ -153,7 +153,8 @@ export function StudentForm({
       is_disabled: formData.is_disabled === "true",
       dateofbirth: formData.dateofbirth ? new Date(formData.dateofbirth) : null,
       disability_type: finalDisabilityType,
-      health_status: finalHealthStatus
+      health_status: finalHealthStatus, // keep for backward compatibility
+      sick_type: finalHealthStatus      // map to sick_type column
     }
 
     await onSubmit(submissionData)

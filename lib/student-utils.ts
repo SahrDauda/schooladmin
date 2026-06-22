@@ -1,3 +1,5 @@
+"use server"
+
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { createAuditLog } from "@/lib/audit-utils"
@@ -20,6 +22,8 @@ export const studentSchema = z.object({
   school_id: z.string().uuid("Invalid school ID"),
   health_status: z.string().optional().nullable(),
   is_disabled: z.boolean().default(false),
+  disability_type: z.string().optional().nullable(),
+  sick_type: z.string().optional().nullable(),
   house: z.string().optional().nullable(),
 })
 
@@ -180,26 +184,16 @@ export const createStudent = async (
       throw new Error(validation.errors.join(", "))
     }
 
-    // Extract fields not mapped in Prisma
-    const { disability_type, health_status, ...prismaData } = studentData
-
     const student = await prisma.students.create({
       data: {
-        ...prismaData,
-        health_status: health_status, // mapped
+        ...studentData,
         school_id: schoolInfo.school_id
       }
     })
 
-    // Save unmapped fields via Supabase directly
-    if (disability_type !== undefined) {
-      const { supabase } = await import("@/lib/supabase")
-      await supabase.from('students').update({ disability_type }).eq('id', student.id)
-    }
-
     if (userId && userName) {
       await logStudentAction("create", student.id, userId, userName, schoolInfo.school_id, {
-        after: { ...student, disability_type }
+        after: student
       })
     }
 
@@ -225,27 +219,15 @@ export const updateStudent = async (
 
     const beforeUpdate = await prisma.students.findUnique({ where: { id: studentId } })
 
-    // Extract fields not mapped in Prisma
-    const { disability_type, health_status, ...prismaData } = updateData
-
     const student = await prisma.students.update({
       where: { id: studentId },
-      data: {
-        ...prismaData,
-        health_status: health_status
-      }
+      data: updateData
     })
-
-    // Save unmapped fields via Supabase directly
-    if (disability_type !== undefined) {
-      const { supabase } = await import("@/lib/supabase")
-      await supabase.from('students').update({ disability_type }).eq('id', studentId)
-    }
 
     if (userId && userName) {
       await logStudentAction("update", studentId, userId, userName, schoolInfo.school_id, {
         before: beforeUpdate,
-        after: { ...student, disability_type }
+        after: student
       })
     }
   } catch (error) {
@@ -291,5 +273,67 @@ export const getStudentMetrics = (students: StudentWithDetails[]) => {
     activeStudents,
     inactiveStudents,
     withSpecialNeeds
+  }
+}
+
+// Parent operations
+export const addParentToStudent = async (
+  studentId: string,
+  parentData: any,
+  schoolInfo: { school_id: string; schoolName: string },
+  userId?: string,
+  userName?: string
+): Promise<void> => {
+  try {
+    const parentId = `PAR${Date.now()}`
+    
+    // 1. Create the parent record
+    await prisma.parents.create({
+      data: {
+        id: parentId,
+        school_id: schoolInfo.school_id,
+        school_name: schoolInfo.schoolName,
+        status: "Active",
+        created_at: new Date(),
+        date: new Date().toLocaleDateString(),
+        month: new Date().toLocaleString("default", { month: "long" }),
+        year: new Date().getFullYear().toString(),
+        firstname: parentData.firstname,
+        lastname: parentData.lastname,
+        gender: parentData.gender,
+        relationship_with_student: parentData.relationship_with_student,
+        phonenumber: parentData.phonenumber,
+        emailaddress: parentData.emailaddress,
+        dateofbirth: parentData.dateofbirth || null,
+        occupation: parentData.occupation || null,
+        homeaddress: parentData.homeaddress || null,
+        nin: parentData.nin || null
+      }
+    })
+
+    // 2. Update the student record
+    const beforeUpdate = await prisma.students.findUnique({ where: { id: studentId } })
+    
+    const student = await prisma.students.update({
+      where: { id: studentId },
+      data: {
+        parent_id: parentId,
+        parent_name: `${parentData.firstname} ${parentData.lastname}`,
+        parent_relationship: parentData.relationship_with_student || "Parent",
+        parent_phone: parentData.phonenumber,
+        parent_email: parentData.emailaddress
+      }
+    })
+
+    if (userId && userName) {
+      await logStudentAction("update", studentId, userId, userName, schoolInfo.school_id, {
+        before: beforeUpdate,
+        after: student,
+        note: "Linked new parent profile"
+      })
+    }
+  } catch (error) {
+    console.error("Error adding parent:", error)
+    throw new Error("Failed to link parent to student")
   }
 }
