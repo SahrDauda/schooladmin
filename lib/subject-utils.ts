@@ -1,5 +1,12 @@
+"use server"
 
-import { supabase } from "@/lib/supabase"
+import { fetchApi } from "@/lib/api-client"
+import { cookies } from "next/headers"
+
+const getCookieHeader = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.getAll().map((c: any) => `${c.name}=${c.value}`).join('; ');
+}
 
 export interface SubjectAssignment {
     id?: string
@@ -31,42 +38,24 @@ export async function assignStudentToSubject(
     termId?: string
 ): Promise<string> {
     try {
-        // Check if assignment already exists
-        const { data: existingAssignments, error } = await supabase
-            .from('subject_assignments')
-            .select('id')
-            .eq('student_id', studentId)
-            .eq('subject_id', subjectId)
-            .eq('school_id', schoolId)
-        //.eq('status', 'active') // Check all statuses? Or just active?
+        const response = await fetchApi<string>('/subjects/assign', {
+            method: 'POST',
+            headers: { 'Cookie': await getCookieHeader() },
+            body: JSON.stringify({
+                studentId,
+                subjectId,
+                schoolId,
+                adminId,
+                sessionId,
+                termId
+            })
+        });
 
-        if (error) throw error
-
-        if (existingAssignments && existingAssignments.length > 0) {
-            // If exists but inactive, maybe reactivate? For now, just throw.
-            throw new Error("Student is already assigned to this subject")
+        if (!response.success || !response.data) {
+            throw new Error(response.message || "Failed to assign student to subject");
         }
 
-        const assignmentData: SubjectAssignment = {
-            student_id: studentId,
-            subject_id: subjectId,
-            school_id: schoolId,
-            assigned_by: adminId,
-            assigned_at: new Date().toISOString(),
-            session_id: sessionId,
-            term_id: termId,
-            status: "active"
-        }
-
-        const { data: newAssignment, error: insertError } = await supabase
-            .from('subject_assignments')
-            .insert(assignmentData)
-            .select()
-            .single()
-
-        if (insertError) throw insertError
-
-        return newAssignment.id
+        return response.data;
     } catch (error) {
         console.error("Error assigning student to subject:", error)
         throw error
@@ -78,12 +67,14 @@ export async function assignStudentToSubject(
  */
 export async function removeStudentFromSubject(assignmentId: string): Promise<void> {
     try {
-        const { error } = await supabase
-            .from('subject_assignments')
-            .delete()
-            .eq('id', assignmentId)
+        const response = await fetchApi(`/subjects/assignments/${assignmentId}`, {
+            method: 'DELETE',
+            headers: { 'Cookie': await getCookieHeader() }
+        });
 
-        if (error) throw error
+        if (!response.success) {
+            throw new Error(response.message || "Failed to remove assignment");
+        }
     } catch (error) {
         console.error("Error removing student from subject:", error)
         throw error
@@ -95,15 +86,14 @@ export async function removeStudentFromSubject(assignmentId: string): Promise<vo
  */
 export async function getSubjectAssignments(schoolId: string): Promise<SubjectAssignment[]> {
     try {
-        const { data: assignments, error } = await supabase
-            .from('subject_assignments')
-            .select('*')
-            .eq('school_id', schoolId)
-        //.eq('status', 'active')
+        const response = await fetchApi<SubjectAssignment[]>(`/subjects/assignments/school/${schoolId}`, {
+            headers: { 'Cookie': await getCookieHeader() }
+        });
 
-        if (error) throw error
-
-        return assignments as SubjectAssignment[]
+        if (response.success && response.data) {
+            return response.data;
+        }
+        return [];
     } catch (error) {
         console.error("Error fetching subject assignments:", error)
         throw error
@@ -115,29 +105,14 @@ export async function getSubjectAssignments(schoolId: string): Promise<SubjectAs
  */
 export async function getStudentsForSubject(subjectId: string, schoolId: string): Promise<any[]> {
     try {
-        const { data: assignments, error: assignmentsError } = await supabase
-            .from('subject_assignments')
-            .select('student_id')
-            .eq('subject_id', subjectId)
-            .eq('school_id', schoolId)
-        //.eq('status', 'active')
+        const response = await fetchApi<any[]>(`/subjects/${subjectId}/students/${schoolId}`, {
+            headers: { 'Cookie': await getCookieHeader() }
+        });
 
-        if (assignmentsError) throw assignmentsError
-
-        const studentIds = assignments.map(a => a.student_id)
-
-        if (studentIds.length === 0) return []
-
-        // Fetch student details
-        const { data: students, error: studentsError } = await supabase
-            .from('students')
-            .select('*')
-            .eq('school_id', schoolId)
-            .in('id', studentIds)
-
-        if (studentsError) throw studentsError
-
-        return students || []
+        if (response.success && response.data) {
+            return response.data;
+        }
+        return [];
     } catch (error) {
         console.error("Error fetching students for subject:", error)
         throw error
@@ -149,29 +124,14 @@ export async function getStudentsForSubject(subjectId: string, schoolId: string)
  */
 export async function getSubjectsForStudent(studentId: string, schoolId: string): Promise<any[]> {
     try {
-        const { data: assignments, error: assignmentsError } = await supabase
-            .from('subject_assignments')
-            .select('subject_id')
-            .eq('student_id', studentId)
-            .eq('school_id', schoolId)
-        //.eq('status', 'active')
+        const response = await fetchApi<any[]>(`/subjects/student/${studentId}/subjects/${schoolId}`, {
+            headers: { 'Cookie': await getCookieHeader() }
+        });
 
-        if (assignmentsError) throw assignmentsError
-
-        const subjectIds = assignments.map(a => a.subject_id)
-
-        if (subjectIds.length === 0) return []
-
-        // Fetch subject details
-        const { data: subjects, error: subjectsError } = await supabase
-            .from('subjects')
-            .select('*')
-            .eq('school_id', schoolId)
-            .in('id', subjectIds)
-
-        if (subjectsError) throw subjectsError
-
-        return subjects || []
+        if (response.success && response.data) {
+            return response.data;
+        }
+        return [];
     } catch (error) {
         console.error("Error fetching subjects for student:", error)
         throw error
@@ -190,26 +150,24 @@ export async function bulkAssignStudentsToSubject(
     termId?: string
 ): Promise<string[]> {
     try {
-        const assignmentIds: string[] = []
+        const response = await fetchApi<string[]>('/subjects/bulk-assign', {
+            method: 'POST',
+            headers: { 'Cookie': await getCookieHeader() },
+            body: JSON.stringify({
+                studentIds,
+                subjectId,
+                schoolId,
+                adminId,
+                sessionId,
+                termId
+            })
+        });
 
-        for (const studentId of studentIds) {
-            try {
-                const assignmentId = await assignStudentToSubject(
-                    studentId,
-                    subjectId,
-                    schoolId,
-                    adminId,
-                    sessionId,
-                    termId
-                )
-                assignmentIds.push(assignmentId)
-            } catch (error) {
-                console.error(`Failed to assign student ${studentId} to subject ${subjectId}: `, error)
-                // Continue with other assignments
-            }
+        if (!response.success || !response.data) {
+            throw new Error(response.message || "Failed to bulk assign");
         }
 
-        return assignmentIds
+        return response.data;
     } catch (error) {
         console.error("Error in bulk assignment:", error)
         throw error

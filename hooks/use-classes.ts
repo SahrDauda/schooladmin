@@ -6,10 +6,10 @@ import {
   createClass, 
   updateClass, 
   deleteClass,
-  getClassMetrics,
-  type ClassWithDetails,
-  type ClassValidationResult
+  type ClassValidationResult,
+  type ClassWithDetails
 } from "@/lib/class-utils"
+import { getClassMetrics } from "@/lib/class-helpers"
 import { useAuth } from "@/hooks/use-auth"
 
 interface UseClassesReturn {
@@ -225,7 +225,7 @@ export const useClasses = (): UseClassesReturn => {
   }, [teachers])
 
   const getLevelOptions = useCallback((): string[] => {
-    const { getLevelOptions } = require("@/lib/class-utils")
+    const { getLevelOptions } = require("@/lib/class-helpers")
     return getLevelOptions(schoolInfo.stage || "")
   }, [schoolInfo.stage])
 

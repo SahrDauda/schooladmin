@@ -1,8 +1,14 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { fetchApi } from "@/lib/api-client"
 import { z } from "zod"
 import { createAuditLog } from "@/lib/audit-utils"
+import { cookies } from "next/headers"
+
+const getCookieHeader = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.getAll().map((c: any) => `${c.name}=${c.value}`).join('; ');
+}
 
 // Validation schemas
 export const studentSchema = z.object({
@@ -64,88 +70,28 @@ export interface StudentValidationResult {
   warnings: string[]
 }
 
-// Validation functions
+// Validation is handled mostly by the backend now, but we keep the structure for frontend compatibility
 export const validateStudentData = async (data: any, schoolId: string, existingStudentId?: string): Promise<StudentValidationResult> => {
-  const errors: string[] = []
-  const warnings: string[] = []
-
-  try {
-    const isUpdate = Boolean(existingStudentId)
-    // Coerce date if provided as string
-    if (data.dateofbirth && typeof data.dateofbirth === 'string') {
-      data.dateofbirth = new Date(data.dateofbirth)
-    }
-    const validatedData = isUpdate ? studentUpdateSchema.parse(data) : studentSchema.parse(data)
-
-    // Check for duplicate admission numbers
-    if (validatedData.admission_number) {
-      const duplicateStudent = await prisma.students.findFirst({
-        where: {
-          school_id: schoolId,
-          admission_number: validatedData.admission_number,
-          NOT: existingStudentId ? { id: existingStudentId } : undefined
-        }
-      })
-
-      if (duplicateStudent) {
-        errors.push("A student with this admission number already exists")
-      }
-    }
-
-    if (validatedData.class_id) {
-      const classExists = await prisma.classes.findFirst({
-        where: {
-          id: validatedData.class_id,
-          school_id: schoolId
-        }
-      })
-      if (!classExists) {
-        errors.push("Selected class does not exist or does not belong to this school")
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    }
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      errors.push(...error.errors.map(e => e.message || "Required"))
-    } else {
-      errors.push("Validation failed")
-    }
-    return {
-      isValid: false,
-      errors,
-      warnings
-    }
+  // We can just return valid here, or ping the backend if we needed pre-validation.
+  // The Express API handles Zod validation and admission number collision internally.
+  return {
+    isValid: true,
+    errors: [],
+    warnings: []
   }
 }
 
 // Data fetching functions
 export const fetchStudentsWithDetails = async (schoolId: string): Promise<StudentWithDetails[]> => {
   try {
-    const students = await prisma.students.findMany({
-      where: { school_id: schoolId },
-      include: {
-        classes: {
-          select: {
-            name: true,
-            level: true
-          }
-        }
-      },
-      orderBy: {
-        created_at: 'desc'
-      }
-    })
-
-    return students.map(student => ({
-      ...student,
-      class_name: student.classes?.name,
-      class_level: student.classes?.level
-    }))
+    const response = await fetchApi<StudentWithDetails[]>(`/students/school/${schoolId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return [];
   } catch (error) {
     console.error("Error fetching students with details:", error)
     throw new Error("Failed to fetch students")
@@ -179,25 +125,23 @@ export const createStudent = async (
   userName?: string
 ): Promise<string> => {
   try {
-    const validation = await validateStudentData(studentData, schoolInfo.school_id)
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "))
+    const response = await fetchApi<any>('/students', {
+      method: 'POST',
+      headers: { 'Cookie': await getCookieHeader() },
+      body: JSON.stringify({ ...studentData, school_id: schoolInfo.school_id })
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create student");
     }
 
-    const student = await prisma.students.create({
-      data: {
-        ...studentData,
-        school_id: schoolInfo.school_id
-      }
-    })
-
     if (userId && userName) {
-      await logStudentAction("create", student.id, userId, userName, schoolInfo.school_id, {
-        after: student
+      await logStudentAction("create", response.data.id, userId, userName, schoolInfo.school_id, {
+        after: response.data
       })
     }
 
-    return student.id
+    return response.data.id;
   } catch (error) {
     console.error("Error creating student:", error)
     throw error
@@ -212,22 +156,24 @@ export const updateStudent = async (
   userName?: string
 ): Promise<void> => {
   try {
-    const validation = await validateStudentData(updateData, schoolInfo.school_id, studentId)
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "))
+    // Get existing for audit log
+    const getResponse = await fetchApi<any>(`/students/${studentId}`, { headers: { 'Cookie': await getCookieHeader() } });
+    const beforeUpdate = getResponse.data;
+
+    const response = await fetchApi<any>(`/students/${studentId}`, {
+      method: 'PUT',
+      headers: { 'Cookie': await getCookieHeader() },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to update student");
     }
-
-    const beforeUpdate = await prisma.students.findUnique({ where: { id: studentId } })
-
-    const student = await prisma.students.update({
-      where: { id: studentId },
-      data: updateData
-    })
 
     if (userId && userName) {
       await logStudentAction("update", studentId, userId, userName, schoolInfo.school_id, {
         before: beforeUpdate,
-        after: student
+        after: response.data
       })
     }
   } catch (error) {
@@ -243,16 +189,21 @@ export const deleteStudent = async (
   userName?: string
 ): Promise<void> => {
   try {
-    const student = await prisma.students.findUnique({ where: { id: studentId } })
-    if (!student) throw new Error("Student not found")
+    const getResponse = await fetchApi<any>(`/students/${studentId}`, { headers: { 'Cookie': await getCookieHeader() } });
+    const beforeDelete = getResponse.data;
 
-    await prisma.students.delete({
-      where: { id: studentId }
-    })
+    const response = await fetchApi(`/students/${studentId}`, {
+      method: 'DELETE',
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete student");
+    }
 
     if (userId && userName) {
       await logStudentAction("delete", studentId, userId, userName, schoolInfo.school_id, {
-        before: student
+        before: beforeDelete
       })
     }
   } catch (error) {
@@ -271,50 +222,23 @@ export const addParentToStudent = async (
   userName?: string
 ): Promise<void> => {
   try {
-    const parentId = `PAR${Date.now()}`
-    
-    // 1. Create the parent record
-    await prisma.parents.create({
-      data: {
-        id: parentId,
-        school_id: schoolInfo.school_id,
-        school_name: schoolInfo.schoolName,
-        status: "Active",
-        created_at: new Date(),
-        date: new Date().toLocaleDateString(),
-        month: new Date().toLocaleString("default", { month: "long" }),
-        year: new Date().getFullYear().toString(),
-        firstname: parentData.firstname,
-        lastname: parentData.lastname,
-        gender: parentData.gender,
-        relationship_with_student: parentData.relationship_with_student,
-        phonenumber: parentData.phonenumber,
-        emailaddress: parentData.emailaddress,
-        dateofbirth: parentData.dateofbirth || null,
-        occupation: parentData.occupation || null,
-        homeaddress: parentData.homeaddress || null,
-        nin: parentData.nin || null
-      }
-    })
+    const getResponse = await fetchApi<any>(`/students/${studentId}`, { headers: { 'Cookie': await getCookieHeader() } });
+    const beforeUpdate = getResponse.data;
 
-    // 2. Update the student record
-    const beforeUpdate = await prisma.students.findUnique({ where: { id: studentId } })
-    
-    const student = await prisma.students.update({
-      where: { id: studentId },
-      data: {
-        parent_id: parentId,
-        parent_name: `${parentData.firstname} ${parentData.lastname}`,
-        parent_relationship: parentData.relationship_with_student || "Parent",
-        parent_phone: parentData.phonenumber,
-        parent_email: parentData.emailaddress
-      }
-    })
+    const response = await fetchApi<any>(`/students/${studentId}/parent`, {
+      method: 'POST',
+      headers: { 'Cookie': await getCookieHeader() },
+      body: JSON.stringify({ parentData, schoolInfo })
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || "Failed to link parent to student");
+    }
 
     if (userId && userName) {
       await logStudentAction("update", studentId, userId, userName, schoolInfo.school_id, {
         before: beforeUpdate,
-        after: student,
+        after: response.data,
         note: "Linked new parent profile"
       })
     }
@@ -326,33 +250,15 @@ export const addParentToStudent = async (
 
 export const getNextAdmissionNumber = async (schoolId: string): Promise<string> => {
   try {
-    // Get the most recently added student for this school to find the highest admission number
-    const lastStudent = await prisma.students.findFirst({
-      where: { school_id: schoolId },
-      orderBy: { created_at: 'desc' },
-      select: { admission_number: true }
-    })
+    const response = await fetchApi<string>(`/students/next-admission/${schoolId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
 
-    const year = new Date().getFullYear().toString()
-    let nextNum = 1
-
-    if (lastStudent?.admission_number) {
-      // Assuming pattern is something like [prefix][year][number] or just [year][number]
-      // Let's just extract the trailing digits
-      const match = lastStudent.admission_number.match(/(\d+)$/)
-      if (match) {
-        nextNum = parseInt(match[1], 10) + 1
-      }
-    } else {
-      // If no students exist, fallback to counting (should be 0 anyway)
-      const count = await prisma.students.count({
-        where: { school_id: schoolId }
-      })
-      nextNum = count + 1
+    if (response.success && response.data) {
+      return response.data;
     }
-
-    // Format as YEAR + 3-digit padded number (e.g., 2024001)
-    return `${year}${nextNum.toString().padStart(3, '0')}`
+    
+    return `${new Date().getFullYear()}${Date.now().toString().slice(-3)}`;
   } catch (error) {
     console.error("Error generating admission number:", error)
     return `${new Date().getFullYear()}${Date.now().toString().slice(-3)}`

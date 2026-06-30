@@ -1,10 +1,18 @@
-import { supabase } from "@/lib/supabase"
+"use server"
+
 import { z } from "zod"
 import { logClassAction } from "@/lib/audit-utils"
 import { getErrorMessage } from "@/lib/error-utils"
+import { fetchApi } from "@/lib/api-client"
+import { cookies } from "next/headers"
+
+const getCookieHeader = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.getAll().map((c: any) => `${c.name}=${c.value}`).join('; ');
+}
 
 // Validation schemas
-export const classSchema = z.object({
+const classSchema = z.object({
   name: z.string().min(1, "Class name is required").max(100, "Class name too long"),
   level: z.string().min(1, "Level is required"),
   capacity: z.number().min(1, "Capacity must be at least 1").max(1000, "Capacity too high"),
@@ -13,7 +21,7 @@ export const classSchema = z.object({
   school_id: z.string().optional(), // injected into finalData separately
 })
 
-export const classUpdateSchema = classSchema.partial()
+const classUpdateSchema = classSchema.partial()
 
 // Types
 export interface Class {
@@ -43,109 +51,13 @@ export interface ClassValidationResult {
   warnings: string[]
 }
 
-// Stage-specific level options
-export const getLevelOptions = (stage: string) => {
-  const s = stage ? stage.trim().toLowerCase() : "";
-  
-  if (s.includes("primary") || s.includes("prep")) {
-    return ["Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6"];
-  } else if (s.includes("junior")) {
-    return ["JSS 1", "JSS 2", "JSS 3"];
-  } else if (s.includes("senior")) {
-    return ["SSS 1", "SSS 2", "SSS 3"];
-  } else {
-    // Return all levels as fallback so the admin is never locked out of adding classes/students
-    return [
-      "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6",
-      "JSS 1", "JSS 2", "JSS 3",
-      "SSS 1", "SSS 2", "SSS 3"
-    ];
-  }
-}
-
 // Validation functions
+// Validation is handled mostly by the backend now
 export const validateClassData = async (data: any, schoolId: string, existingClassId?: string): Promise<ClassValidationResult> => {
-  const errors: string[] = []
-  const warnings: string[] = []
-
-  try {
-    // Validate schema (full for create, partial for update)
-    const isUpdate = Boolean(existingClassId)
-    const validatedData = isUpdate ? classUpdateSchema.parse(data) : classSchema.parse(data)
-
-    // Check for duplicate class names only when both fields are present
-    if ((!isUpdate) || (validatedData.name && validatedData.level)) {
-      const { data: duplicateClasses, error } = await supabase
-        .from('classes')
-        .select('id')
-        .eq('school_id', schoolId)
-        .eq('name', validatedData.name || data.name)
-        .eq('level', validatedData.level || data.level)
-
-      if (!error && duplicateClasses) {
-        const duplicates = duplicateClasses.filter(doc => doc.id !== existingClassId)
-        if (duplicates.length > 0) {
-          errors.push("A class with this name and level already exists")
-        }
-      }
-    }
-
-    const teacherId = validatedData.form_teacher_id ?? data.form_teacher_id ?? data.teacher_id
-    if (teacherId) {
-
-      const { data: teacherDoc, error: teacherError } = await supabase
-        .from('teachers')
-        .select('*')
-        .eq('id', teacherId)
-        .single()
-
-      if (teacherError || !teacherDoc) {
-        errors.push("Selected teacher does not exist")
-      } else {
-        if (teacherDoc.school_id !== schoolId) {
-          errors.push("Selected teacher does not belong to this school")
-        }
-
-        // Check if teacher is already assigned to another class
-        const { data: teacherClasses, error: classError } = await supabase
-          .from('classes')
-          .select('id')
-          .eq('school_id', schoolId)
-          .eq('form_teacher_id', teacherId)
-
-        if (!classError && teacherClasses) {
-          const otherClasses = teacherClasses.filter(doc => doc.id !== existingClassId)
-          if (otherClasses.length > 0) {
-            warnings.push("This teacher is already assigned to another class")
-          }
-        }
-      }
-    }
-
-    // Validate capacity
-    if ((!isUpdate && (validatedData as any).capacity !== undefined) || (isUpdate && (data.capacity !== undefined))) {
-      const cap = isUpdate ? Number(data.capacity) : Number((validatedData as any).capacity)
-      if (Number.isNaN(cap) || cap < 1) {
-        errors.push("Class capacity must be at least 1")
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    }
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      errors.push(...error.errors.map(e => e.message || "Required"))
-    } else {
-      errors.push("Validation failed")
-    }
-    return {
-      isValid: false,
-      errors,
-      warnings
-    }
+  return {
+    isValid: true,
+    errors: [],
+    warnings: []
   }
 }
 
@@ -171,64 +83,14 @@ function buildClassUpdatePayload(updateData: Record<string, unknown>): Record<st
 // Data fetching functions
 export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWithDetails[]> => {
   try {
-    // Fetch classes
-    const { data: classesList, error: classesError } = await supabase
-      .from('classes')
-      .select('*')
-      .eq('school_id', schoolId)
-
-    if (classesError) throw classesError
-
-    // Fetch teachers for class details
-    const { data: teachers, error: teachersError } = await supabase
-      .from('teachers')
-      .select('*')
-      .eq('school_id', schoolId)
-
-    if (teachersError) throw teachersError
-
-    // Fetch students count by class_id
-    const { data: students, error: studentsError } = await supabase
-      .from('students')
-      .select('class_id')
-      .eq('school_id', schoolId)
-
-    if (studentsError) throw studentsError
-
-    // Count students by class_id
-    const studentCounts: { [classId: string]: number } = {}
-    students?.forEach((student: any) => {
-      if (student.class_id) {
-        studentCounts[student.class_id] = (studentCounts[student.class_id] || 0) + 1
-      }
-    })
-
-    // Combine data and calculate occupancy rates
-    const classesWithDetails: ClassWithDetails[] = (classesList || []).map((cls: any) => {
-      const studentCount = studentCounts[cls.id] || 0
-      const teacher = teachers?.find((t: any) => t.id === cls.form_teacher_id)
-
-      return {
-        ...cls,
-        students_count: studentCount,
-        teacher_name: teacher ? `${teacher.firstname || ''} ${teacher.lastname || ''}`.trim() : undefined,
-        teacher_email: teacher?.email,
-        occupancy_rate: cls.capacity > 0 ? Math.round((studentCount / cls.capacity) * 100) : 0
-      }
-    })
-
-    // Sort classes by level
-    return classesWithDetails.sort((a, b) => {
-      const levelA = a.level.split(" ").pop() || ""
-      const levelB = b.level.split(" ").pop() || ""
-      const typeA = a.level.split(" ")[0] || ""
-      const typeB = b.level.split(" ")[0] || ""
-
-      if (typeA !== typeB) {
-        return typeA.localeCompare(typeB)
-      }
-      return Number.parseInt(levelA) - Number.parseInt(levelB)
-    })
+    const response = await fetchApi<ClassWithDetails[]>(`/classes/school/${schoolId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return [];
   } catch (error) {
     console.error("Error fetching classes with details:", error)
     throw new Error("Failed to fetch classes")
@@ -237,14 +99,14 @@ export const fetchClassesWithDetails = async (schoolId: string): Promise<ClassWi
 
 export const fetchTeachers = async (schoolId: string) => {
   try {
-    const { data: teachers, error } = await supabase
-      .from('teachers')
-      .select('*')
-      .eq('school_id', schoolId)
-
-    if (error) throw error
-
-    return teachers || []
+    const response = await fetchApi<any[]>(`/classes/teachers/school/${schoolId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return [];
   } catch (error) {
     console.error("Error fetching teachers:", error)
     throw new Error("Failed to fetch teachers")
@@ -259,15 +121,6 @@ export const createClass = async (
   userName?: string
 ): Promise<string> => {
   try {
-    // Validate data
-    const validation = await validateClassData(classData, schoolInfo.school_id)
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "))
-    }
-
-    // Prepare data
-    // Note: ID is auto-generated by Supabase (UUID)
-    // Map teacher_id (form field) → form_teacher_id (DB column)
     const teacherId = classData.form_teacher_id || classData.teacher_id || null
     const finalData = {
       name: classData.name,
@@ -278,18 +131,18 @@ export const createClass = async (
       school_id: schoolInfo.school_id,
     }
 
-    // Save to Supabase
-    const { data, error } = await supabase
-      .from('classes')
-      .insert(finalData)
-      .select('id')
-      .single()
+    const response = await fetchApi<any>('/classes', {
+      method: 'POST',
+      headers: { 'Cookie': await getCookieHeader() },
+      body: JSON.stringify(finalData)
+    });
 
-    if (error) throw error
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create class");
+    }
 
-    const classId = data.id
+    const classId = response.data.id
 
-    // Log audit trail
     if (userId && userName) {
       await logClassAction("create", classId, userId, userName, schoolInfo.school_id, {
         after: finalData
@@ -297,7 +150,7 @@ export const createClass = async (
     }
 
     return classId
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating class:", error)
     throw error
   }
@@ -310,21 +163,18 @@ export const updateClass = async (
   previousTeacherId?: string
 ): Promise<{ previousTeacherId?: string; newTeacherId?: string; hasTeacherChanged: boolean }> => {
   try {
-    // Validate data
-    const validation = await validateClassData(updateData, schoolInfo.school_id, classId)
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "))
-    }
-
     const finalData = buildClassUpdatePayload(updateData)
     const newTeacherId = finalData.form_teacher_id as string | null | undefined
 
-    const { error } = await supabase
-      .from('classes')
-      .update(finalData)
-      .eq('id', classId)
+    const response = await fetchApi<any>(`/classes/${classId}`, {
+      method: 'PUT',
+      headers: { 'Cookie': await getCookieHeader() },
+      body: JSON.stringify({ ...finalData, school_id: schoolInfo.school_id })
+    });
 
-    if (error) throw error
+    if (!response.success) {
+      throw new Error(response.message || "Failed to update class");
+    }
 
     return {
       previousTeacherId,
@@ -339,26 +189,14 @@ export const updateClass = async (
 
 export const deleteClass = async (classId: string): Promise<void> => {
   try {
-    // Check if class has students
-    const { data: students, error: studentsError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('class_id', classId)
-      .limit(1)
+    const response = await fetchApi(`/classes/${classId}`, {
+      method: 'DELETE',
+      headers: { 'Cookie': await getCookieHeader() }
+    });
 
-    if (studentsError) throw studentsError
-
-    if (students && students.length > 0) {
-      throw new Error("Cannot delete class with enrolled students. Please reassign students first.")
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete class");
     }
-
-    // Delete class
-    const { error } = await supabase
-      .from('classes')
-      .delete()
-      .eq('id', classId)
-
-    if (error) throw error
   } catch (error) {
     console.error("Error deleting class:", error)
     throw error
@@ -368,15 +206,14 @@ export const deleteClass = async (classId: string): Promise<void> => {
 // Utility functions
 export const getClassById = async (classId: string): Promise<Class | null> => {
   try {
-    const { data: classDoc, error } = await supabase
-      .from('classes')
-      .select('*')
-      .eq('id', classId)
-      .single()
+    const response = await fetchApi<Class>(`/classes/${classId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
 
-    if (error || !classDoc) return null
-
-    return classDoc as Class
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return null;
   } catch (error) {
     console.error("Error fetching class by ID:", error)
     throw error
@@ -385,47 +222,21 @@ export const getClassById = async (classId: string): Promise<Class | null> => {
 
 export const checkClassCapacity = async (classId: string): Promise<{ current: number; capacity: number; available: number }> => {
   try {
-    const classData = await getClassById(classId)
-    if (!classData) {
-      throw new Error("Class not found")
+    const response = await fetchApi<any>(`/classes/${classId}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error("Class not found");
     }
 
-    // Count students in this class
-    const { count, error } = await supabase
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('class_id', classId)
-
-    if (error) throw error
-
-    const currentStudents = count || 0
-
     return {
-      current: currentStudents,
-      capacity: classData.capacity,
-      available: classData.capacity - currentStudents
+      current: response.data.current || 0,
+      capacity: response.data.capacity,
+      available: response.data.available || 0
     }
   } catch (error) {
     console.error("Error checking class capacity:", error)
     throw error
-  }
-}
-
-// Dashboard metrics
-export const getClassMetrics = (classes: ClassWithDetails[]) => {
-  const totalClasses = classes.length
-  const totalStudents = classes.reduce((sum, cls) => sum + (cls.students_count || 0), 0)
-  const totalCapacity = classes.reduce((sum, cls) => sum + (cls.capacity || 0), 0)
-  const averageOccupancy = totalCapacity > 0 ? Math.round((totalStudents / totalCapacity) * 100) : 0
-  const fullClasses = classes.filter(cls => (cls.students_count || 0) >= cls.capacity).length
-  const emptyClasses = classes.filter(cls => (cls.students_count || 0) === 0).length
-
-  return {
-    totalClasses,
-    totalStudents,
-    totalCapacity,
-    averageOccupancy,
-    fullClasses,
-    emptyClasses
   }
 }

@@ -21,7 +21,8 @@ import { toast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { z } from "zod"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getCurrentSchoolInfo, getCurrentSchoolInfoSync } from "@/lib/school-utils"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { getCurrentSchoolInfoSync } from "@/lib/school-helpers"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -67,25 +68,7 @@ const subjectSchema = z.object({
 })
 
 // Stage-specific level options
-const getLevelOptions = (stage: string) => {
-  const s = stage ? stage.trim().toLowerCase() : "";
-  
-  if (s.includes("primary") || s.includes("prep")) {
-    return ["All", "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6"];
-  } else if (s.includes("junior")) {
-    return ["All", "JSS 1", "JSS 2", "JSS 3"];
-  } else if (s.includes("senior")) {
-    return ["All", "SSS 1", "SSS 2", "SSS 3"];
-  } else {
-    // Return all levels as fallback so the admin is never locked out of adding subjects
-    return [
-      "All",
-      "Prep 1", "Prep 2", "Prep 3", "Prep 4", "Prep 5", "Prep 6",
-      "JSS 1", "JSS 2", "JSS 3",
-      "SSS 1", "SSS 2", "SSS 3"
-    ];
-  }
-}
+import { getLevelOptions } from "@/lib/class-helpers"
 
 export default function SubjectsPage() {
   // State for subjects
@@ -724,7 +707,7 @@ export default function SubjectsPage() {
   const levels = ["all", ...[...new Set(subjects.map((s) => s.level))].filter(Boolean)]
 
   // Get stage-specific level options
-  const levelOptions = getLevelOptions(schoolInfo.stage || "")
+  const levelOptions = getLevelOptions(schoolInfo.stage || "", true)
   const isSeniorSecondary = isMounted && schoolInfo.stage === "Senior Secondary"
 
   return (

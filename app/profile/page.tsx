@@ -13,6 +13,7 @@ import DashboardLayout from "@/components/dashboard-layout"
 import { supabase } from "@/lib/supabase"
 import { UserCog, Edit, Save, X, Camera } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
+import { getAdminProfile, updateAdminProfile } from "@/lib/dashboard-utils"
 
 interface AdminProfile {
   id: string
@@ -92,39 +93,36 @@ export default function ProfilePage() {
       }
 
       try {
-        const { data: adminData, error } = await supabase
-          .from('schooladmin')
-          .select('*')
-          .eq('id', adminId)
-          .single()
+        const adminData = await getAdminProfile(adminId, admin?.emailaddress)
 
-        if (error) throw error
+        if (!adminData) throw new Error("Could not fetch profile")
 
         if (adminData) {
-          setProfile(adminData as AdminProfile)
+          const data = adminData as any
+          setProfile(data as AdminProfile)
           setEditFormData({
             // Personal Information
-            adminname: adminData.adminname || adminData.adminName || adminData.name || "",
-            firstname: adminData.firstname || "",
-            lastname: adminData.lastname || "",
-            middlename: adminData.middlename || "",
-            email: adminData.emailaddress || adminData.email || "",
-            phone: adminData.phonenumber || adminData.phone || "",
-            gender: adminData.gender || "",
-            nationality: adminData.nationality || "",
-            dateOfBirth: adminData.dob || adminData.dateOfBirth || "",
-            marital_status: adminData.marital_status || "",
-            religion: adminData.religion || "",
-            address: adminData.homeaddress || adminData.address || "",
+            adminname: data.adminname || data.adminName || data.name || "",
+            firstname: data.firstname || "",
+            lastname: data.lastname || "",
+            middlename: data.middlename || "",
+            email: data.emailaddress || data.email || "",
+            phone: data.phonenumber || data.phone || "",
+            gender: data.gender || "",
+            nationality: data.nationality || "",
+            dateOfBirth: data.dob || data.dateOfBirth || "",
+            marital_status: data.marital_status || "",
+            religion: data.religion || "",
+            address: data.homeaddress || data.address || "",
 
             // School Information
-            school_id: adminData.school_id || "",
-            schoolname: adminData.schoolname || adminData.schoolName || adminData.school_name || "",
-            academicYear: adminData.academicYear || "",
+            school_id: data.school_id || "",
+            schoolname: data.schoolname || data.schoolName || data.school_name || "",
+            academicYear: data.academicYear || "",
 
             // Account Information
-            role: adminData.role || "",
-            hasloggedinbefore: adminData.hasloggedinbefore || false,
+            role: data.role || "",
+            hasloggedinbefore: data.hasloggedinbefore || false,
           })
         }
       } catch (error) {
@@ -242,15 +240,11 @@ export default function ProfilePage() {
       const updateData = {
         ...editFormData,
         admin_images: profilePictureUrl,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date(),
       }
 
-      const { error } = await supabase
-        .from('schooladmin')
-        .update(updateData)
-        .eq('id', adminId)
-
-      if (error) throw error
+      const res = await updateAdminProfile(adminId, updateData)
+      if (!res.success) throw new Error(res.error)
 
       // Update local state
       setProfile((prev) => prev ? { ...prev, ...updateData } : null)

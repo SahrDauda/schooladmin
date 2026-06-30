@@ -3,7 +3,7 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { fetchApi } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
@@ -52,25 +52,27 @@ export default function LoginPage() {
     }
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: emailaddress.trim(),
-        password: password,
+      const response = await fetchApi('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: emailaddress.trim(), password })
       })
 
-      if (authError) {
-        const failure = await resolveLoginFailureMessage(emailaddress, authError)
-        if (failure.field === "email") setEmailError(failure.message)
-        if (failure.field === "password") setPasswordError(failure.message)
-        if (!failure.field) setErrorMessage(failure.message)
+      if (!response.success) {
+        const failureMessage = response.message || "Invalid credentials"
+        setErrorMessage(failureMessage)
         toast({
           title: "Login Failed",
-          description: failure.message,
+          description: failureMessage,
           variant: "destructive",
         })
         return
       }
 
-      router.push("/dashboard")
+      // Important: Since we successfully logged in via the Express backend,
+      // refresh the global Auth state so the frontend knows who is logged in.
+      if (typeof window !== 'undefined') {
+        window.location.href = "/dashboard";
+      }
     } catch (err) {
       const error = err as Error
       console.error("Login error:", error)

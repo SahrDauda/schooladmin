@@ -1,5 +1,11 @@
-import { supabase } from "@/lib/supabase"
+"use server"
+import { fetchApi } from "@/lib/api-client"
+import { cookies } from "next/headers"
 
+const getCookieHeader = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.getAll().map((c: any) => `${c.name}=${c.value}`).join('; ');
+}
 export interface AuditLog {
   id?: string
   action: "create" | "update" | "delete" | "view"
@@ -21,14 +27,17 @@ export interface AuditLog {
 }
 
 export const createAuditLog = async (log: Omit<AuditLog, "id" | "created_at">) => {
-  const { data, error } = await supabase
-    .from("audit_logs")
-    .insert(log)
-    .select()
-    .single()
+  const response = await fetchApi<any>('/audit', {
+    method: 'POST',
+    headers: { 'Cookie': await getCookieHeader() },
+    body: JSON.stringify(log)
+  });
 
-  if (error) throw error
-  return data
+  if (!response.success) {
+    throw new Error(response.message || "Failed to create audit log");
+  }
+  
+  return response.data
 }
 
 export const logClassAction = async (
@@ -52,7 +61,7 @@ export const logClassAction = async (
   })
 }
 
-export const getChangesBetweenObjects = (before: any, after: any): string[] => {
+const getChangesBetweenObjects = (before: any, after: any): string[] => {
   const changes: string[] = []
   const allKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})])
 

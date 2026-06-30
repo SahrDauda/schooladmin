@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -201,7 +202,7 @@ export default function ReportsPage() {
                         <span>{item.class}</span>
                         <span className="text-orange-400">{item.score}%</span>
                       </div>
-                      <Progress value={item.score} className="h-1 bg-white/10" indicatorClassName="bg-orange-400" />
+                      <Progress value={item.score} className="h-1 bg-white/10" />
                     </div>
                   ))}
                 </CardContent>

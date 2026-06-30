@@ -1,8 +1,9 @@
-import { type NextRequest } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
+import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  // For now, since we removed Supabase, just passthrough.
+  // The client-side useAuth will handle redirections based on the API response.
+  return NextResponse.next()
 }
 
 export const config = {

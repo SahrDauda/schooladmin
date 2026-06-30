@@ -23,19 +23,20 @@ interface Notification {
 
 export default function NotificationDetailPage() {
   const params = useParams()
+  const notificationId = params?.id as string
   const router = useRouter()
-  const id = params.id as string
   const [notification, setNotification] = useState<Notification | null>(null)
   const [loading, setLoading] = useState(true)
   const [markingAsRead, setMarkingAsRead] = useState(false)
 
   const fetchNotification = async () => {
+    if (!notificationId) return
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('id', id)
+        .eq('id', notificationId)
         .single()
 
       if (error) throw error
@@ -74,8 +75,8 @@ export default function NotificationDetailPage() {
   }
 
   useEffect(() => {
-    if (id) fetchNotification()
-  }, [id])
+    if (notificationId) fetchNotification()
+  }, [notificationId])
 
   const getNotificationIcon = (type: string) => {
     switch (type) {

@@ -251,7 +251,7 @@ export function ClassTable({
                       <span>{cls.occupancy_rate || 0}%</span>
                     </Badge>
                   </TableCell>
-                  <TableCell>{cls.teacher_id ? getTeacherName(cls.teacher_id) : "Not Assigned"}</TableCell>
+                  <TableCell>{cls.form_teacher_id ? getTeacherName(cls.form_teacher_id) : "Not Assigned"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()} className="space-x-2">
                     <Button
                       variant="outline"

@@ -1,5 +1,12 @@
-import { supabase } from "@/lib/supabase"
+"use server"
+import { getAdminProfile } from "@/lib/dashboard-utils"
+import { fetchApi } from "@/lib/api-client"
+import { cookies } from "next/headers"
 
+const getCookieHeader = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.getAll().map((c: any) => `${c.name}=${c.value}`).join('; ');
+}
 export interface SchoolInfo {
   school_id: string
   schoolName: string
@@ -8,87 +15,24 @@ export interface SchoolInfo {
 
 export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    const uid = user?.id || null
-
-    const candidateIds = [uid].filter(Boolean) as string[]
-
-    if (candidateIds.length === 0) {
+    // Instead of parsing from supabase, we use the backend /auth/me
+    const adminProfile = await getAdminProfile("", "");
+    
+    if (adminProfile) {
       return {
-        school_id: "unknown",
-        schoolName: "",
-        stage: "",
+        school_id: adminProfile.school_id || adminProfile.id,
+        schoolName: adminProfile.schoolName || "",
+        stage: adminProfile.schoolStage || "",
       }
     }
 
-    let resolvedAdminData: any | null = null
-    let resolvedAdminDocId: string | null = null
-
-    // Try reading admin profile by possible IDs
-    for (const candId of candidateIds) {
-      try {
-        const { data: aDoc, error } = await supabase
-          .from('schooladmin')
-          .select('*')
-          .eq('id', candId)
-          .single()
-
-        if (!error && aDoc) {
-          resolvedAdminData = aDoc
-          resolvedAdminDocId = candId
-          break
-        }
-      } catch (error) {
-        console.warn(`Failed to read admin document for ID ${candId}:`, error)
-        continue
-      }
-    }
-
-    if (resolvedAdminData) {
-      const schoolId = resolvedAdminData.school_id
-
-      // Fetch school details from the 'schools' table via school_id
-      let schoolStage = ""
-      let schoolName = ""
-
-      if (schoolId) {
-        try {
-          const { data: schoolData, error } = await supabase
-            .from('schools')
-            .select('*')
-            .eq('id', schoolId)
-            .single()
-
-          if (!error && schoolData) {
-            // Assuming 'stage' might be a field in schools table or derived
-            // For now, we'll check if it exists, otherwise default
-            schoolName = schoolData.name || ""
-            // If stage is not in schools table, we might need to add it or infer it
-            // For now, let's assume it might be there or we leave it empty
-            schoolStage = (schoolData as any).stage || ""
-            schoolStage = (schoolData as any).stage || ""
-          }
-        } catch (error) {
-          console.warn("Failed to read schools table:", error)
-        }
-      }
-
-      return {
-        school_id: schoolId || resolvedAdminDocId!,
-        schoolName: schoolName || resolvedAdminData.schoolname || resolvedAdminData.schoolName || "",
-        stage: schoolStage || "",
-      }
-    }
-
-    // Could not read any admin profile, fallback to first candidateId
-    console.warn("Could not read admin profile, using fallback ID:", candidateIds[0])
     return {
-      school_id: candidateIds[0],
+      school_id: "unknown",
       schoolName: "",
       stage: "",
     }
   } catch (error) {
-    console.error("Error fetching school admin data:", error)
+    console.error("Error fetching school admin data via API:", error)
     return {
       school_id: "unknown",
       schoolName: "",
@@ -97,44 +41,17 @@ export async function getCurrentSchoolInfo(): Promise<SchoolInfo> {
   }
 }
 
-export function getCurrentSchoolInfoSync(): SchoolInfo {
-  // Synchronous access is disabled when localStorage is removed
-  return {
-    school_id: "unknown",
-    schoolName: "",
-    stage: "",
-  }
-}
 
 export async function getStudentCountsByClass(schoolId: string): Promise<{ [className: string]: number }> {
   try {
-    // We need to join with classes table to get class names if we only have class_id in students
-    // But students table has class_id (UUID). 
-    // We want counts by class NAME.
+    const response = await fetchApi<{ [className: string]: number }>(`/school/${schoolId}/student-counts`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
 
-    const { data: classes, error: classesError } = await supabase
-      .from('classes')
-      .select('id, name')
-      .eq('school_id', schoolId)
-
-    if (classesError) throw classesError
-
-    const { data: students, error: studentsError } = await supabase
-      .from('students')
-      .select('class_id')
-      .eq('school_id', schoolId)
-
-    if (studentsError) throw studentsError
-
-    const studentCounts: { [className: string]: number } = {}
-    const classMap = new Map(classes?.map(c => [c.id, c.name]))
-
-    students?.forEach((student: any) => {
-      const className = classMap.get(student.class_id) || "Unassigned"
-      studentCounts[className] = (studentCounts[className] || 0) + 1
-    })
-
-    return studentCounts
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return {};
   } catch (error) {
     console.error("Error fetching student counts by class:", error)
     return {}
@@ -143,14 +60,14 @@ export async function getStudentCountsByClass(schoolId: string): Promise<{ [clas
 
 export async function getTotalStudentCount(schoolId: string): Promise<number> {
   try {
-    const { count, error } = await supabase
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_id', schoolId)
-
-    if (error) throw error
-
-    return count || 0
+    const response = await fetchApi<number>(`/school/${schoolId}/total-students`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
+    
+    if (response.success && response.data !== undefined) {
+      return response.data;
+    }
+    return 0;
   } catch (error) {
     console.error("Error fetching total student count:", error)
     return 0
@@ -159,24 +76,14 @@ export async function getTotalStudentCount(schoolId: string): Promise<number> {
 
 export async function generateAdmissionNumber(schoolId: string, year: string): Promise<string> {
   try {
-    // Get count of students for this school to generate sequential number
-    // Note: This is a simple approach. For strict uniqueness, we might need a sequence or atomic increment.
-    // But for now, count + 1 is reasonable for low concurrency.
+    const response = await fetchApi<string>(`/school/${schoolId}/generate-admission-number?year=${year}`, {
+      headers: { 'Cookie': await getCookieHeader() }
+    });
 
-    const { count, error } = await supabase
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_id', schoolId)
-
-    if (error) throw error
-
-    const existingCount = count || 0
-    const nextNumber = (existingCount + 1).toString().padStart(3, '0')
-
-    // Format: SCH-YEAR-NUM (e.g., SCH-2024-001)
-    // We might want a school code/prefix if available in schools table
-
-    return `${year}${nextNumber}`
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return `${year}${Date.now().toString().slice(-3)}`
   } catch (error) {
     console.error("Error generating admission number:", error)
     return `${year}${Date.now().toString().slice(-3)}`

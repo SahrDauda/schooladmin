@@ -43,7 +43,8 @@ import {
   Line
 } from "recharts"
 import Link from "next/link"
-import { getCurrentSchoolInfo, getTotalStudentCount } from "@/lib/school-utils"
+import { getCurrentSchoolInfo } from "@/lib/school-utils"
+import { getDashboardStats } from "@/lib/dashboard-utils"
 import { useAuth } from "@/hooks/use-auth"
 import FirstLoginModal from "@/components/first-login-modal"
 import { Badge } from "@/components/ui/badge"
@@ -87,22 +88,28 @@ export default function Dashboard() {
         })
         
         if (info.school_id && info.school_id !== "unknown") {
-          // 1. Parallel collection fetching
-          const [students, teachers, classes, logs] = await Promise.all([
-            getTotalStudentCount(info.school_id),
-            supabase.from("teachers").select("id", { count: "exact" }).eq("school_id", info.school_id),
-            supabase.from("classes").select("id", { count: "exact" }).eq("school_id", info.school_id),
-            supabase.from("audit_logs").select("*").eq("school_id", info.school_id).order("created_at", { ascending: false }).limit(5)
-          ])
-
-          setStats({
-            students: { total: students, trend: "+3.2%" },
-            teachers: { total: teachers.count || 0, trend: "Stable" },
-            classes: { total: classes.count || 0, trend: "+1 new" },
-            attendance: { rate: 94.5, trend: "+1.2%" }
-          })
+          // 1. Parallel collection fetching via Prisma
+          const dbStats = await getDashboardStats(info.school_id)
           
-          setAuditLogs(logs.data || [])
+          if (dbStats) {
+            setStats({
+              students: { total: dbStats.students, trend: "+3.2%" },
+              teachers: { total: dbStats.teachers, trend: "Stable" },
+              classes: { total: dbStats.classes, trend: "+1 new" },
+              attendance: { rate: 94.5, trend: "+1.2%" }
+            })
+            
+            setAuditLogs(dbStats.logs || [])
+
+            // Update school info if Prisma returned a valid name
+            if (dbStats.schoolName) {
+              setSchoolInfo(prev => ({
+                ...prev,
+                name: dbStats.schoolName as string,
+                stage: dbStats.schoolStage as string || prev.stage
+              }))
+            }
+          }
         }
       } catch (err) {
         console.error("Dashboard Load Error:", err)
