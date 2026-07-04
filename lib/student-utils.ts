@@ -11,7 +11,7 @@ const getCookieHeader = async () => {
 }
 
 // Validation schemas
-export const studentSchema = z.object({
+const studentSchema = z.object({
   firstname: z.string().min(1, "First name is required").max(100, "First name too long"),
   lastname: z.string().min(1, "Last name is required").max(100, "Last name too long"),
   othernames: z.string().optional().nullable(),
@@ -33,7 +33,7 @@ export const studentSchema = z.object({
   house: z.string().optional().nullable(),
 })
 
-export const studentUpdateSchema = studentSchema.partial()
+const studentUpdateSchema = studentSchema.partial()
 
 // Types
 export interface Student {

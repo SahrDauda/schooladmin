@@ -10,6 +10,7 @@ export async function fetchApi<T>(
   try {
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       ...options,
+      cache: options.cache || 'no-store', // Prevent aggressive Next.js caching
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
